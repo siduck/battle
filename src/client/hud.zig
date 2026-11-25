@@ -723,7 +723,7 @@ pub fn vehicleStatus(g: Game, font: rl.Font) void {
     const at = g.player.center();
 
     for (g.vehicles) |v| {
-        if (!v.alive() or !vehicle.usableBy(at, v)) continue;
+        if (!v.alive() or !vehicle.usableBy(at, v) or !vehicle.inView(at, g.yaw, v)) continue;
 
         interact(font, u, w / 2, h / 2 + 90 * u, "F", "ENTER", print(&buf, "{s}", .{v.spec().name}), ui.accent);
 

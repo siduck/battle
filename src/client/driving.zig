@@ -370,7 +370,7 @@ fn enter(g: *Game) void {
     var best_d: f32 = 1e9;
 
     for (g.vehicles, 0..) |v, i| {
-        if (!v.alive() or !vehicle.usableBy(at, v)) continue;
+        if (!v.alive() or !vehicle.usableBy(at, v) or !vehicle.inView(at, g.yaw, v)) continue;
 
         const d = at.distance(v.pos);
 

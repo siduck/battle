@@ -714,3 +714,15 @@ pub fn usableBy(pos: Vec3, v: Vehicle) bool {
     return pos.distance(v.pos) < v.spec().length * 0.5 + 1.8;
 }
 
+pub fn inView(pos: Vec3, yaw: f32, v: Vehicle) bool {
+    const dx = v.pos.x - pos.x;
+    const dz = v.pos.z - pos.z;
+    const d = @sqrt(dx * dx + dz * dz);
+
+    if (d < v.spec().width * 0.5 + 0.6) return true;
+
+    const f = math.flatDir(yaw);
+
+    return (dx * f.x + dz * f.z) / d > 0.5;
+}
+
