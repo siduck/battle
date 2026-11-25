@@ -398,7 +398,7 @@ fn promenade(b: *Builder) void {
             },
             1 => putAt(b, .shelter, x, prom_y, z + 1.5, pi),
             2 => {
-                putAt(b, .icecream, x, prom_y, z, half_pi);
+                putAt(b, .bench, x, prom_y, z, 0);
                 putAt(b, .bin, x + 2, prom_y, z - 1, 0);
             },
             3 => putAt(b, .planter, x, prom_y, z + 2, 0),
@@ -501,7 +501,7 @@ fn pier(b: *Builder) void {
 
     putAt(b, .kiosk, pier_x + 8, prom_y, hz + 8, pi);
     box(b, pier_x + 6, prom_y, hz + 6, pier_x + 10, prom_y + 3.4, hz + 10);
-    putAt(b, .icecream, pier_x - 8, prom_y, hz + 8, 0);
+    putAt(b, .bench, pier_x - 8, prom_y, hz + 8, 0);
     putAt(b, .bench, pier_x - 9, prom_y, hz - 9, 0.8);
     putAt(b, .bench, pier_x + 9, prom_y, hz - 9, -0.8);
     putAt(b, .flag, pier_x - 11, prom_y, hz - 11, 0);
@@ -571,7 +571,7 @@ fn beach(b: *Builder) void {
                 put(b, .lounger, px, z, pi + b.rng.range(-0.4, 0.4));
                 put(b, .lounger, px + 1.1, z + 0.2, pi + b.rng.range(-0.4, 0.4));
             } else if (roll < 0.6) {
-                put(b, .dinghy, px, z, b.rng.range(-0.5, 0.5));
+                put(b, .windbreak, px, z, b.rng.range(-0.5, 0.5));
             } else if (roll < 0.66) {
                 put(b, .driftwood, px, z, spin(b));
             }
@@ -671,10 +671,6 @@ fn harbour(b: *Builder) void {
     house(b, .hmhut, harbour_x - 4, -76, -half_pi);
     house(b, .toilets, harbour_x - 4, -94, -half_pi);
 
-    for ([_][3]f32{ .{ 120, -48, 0.1 }, .{ 134, -60, -0.2 }, .{ 150, -44, 0.3 }, .{ 128, -86, 1.4 }, .{ 158, -80, -0.1 } }) |bt| {
-        putAt(b, .fishboat, bt[0], sea_y - 0.4, bt[1], bt[2]);
-    }
-
     z = -32;
 
     while (z > -108) : (z -= 6) {
@@ -685,7 +681,7 @@ fn harbour(b: *Builder) void {
         putAt(b, .pots, p[0], prom_y, p[1], p[2]);
         putAt(b, .pots, p[0] - 0.8, prom_y, p[1] + 0.6, p[2]);
         putAt(b, .nets, p[0] - 1, prom_y, p[1] - 3, p[2]);
-        putAt(b, .dinghy, p[0] - 2.4, prom_y, p[1] + 3.6, p[2] + 1.4);
+        putAt(b, .bin, p[0] - 2.4, prom_y, p[1] + 3.6, 0);
     }
 
     claimRect(harbour_x - 12, -112, 176, wall_z);
@@ -711,11 +707,10 @@ fn seaRoad(b: *Builder) void {
     while (px < 160) : (px += 6.5) {
         if (rnd(b) < 0.45) continue;
 
-        const e: K = b.rng.pick(K, &.{ .camper, .hatch, .sedan, .hatch });
-
-        put(b, e, px, road_z1 - 1.6, half_pi + (if (rnd(b) < 0.5) @as(f32, 0) else pi));
+        put(b, if (rnd(b) < 0.5) .planter else .bikes, px, road_z1 + 1.2, 0);
     }
 
+    for ([_]f32{ -60, 60 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, height(cx, high_z), high_z), .yaw = half_pi }) catch {};
     for ([_]f32{ -140, -70, 0, 70, 140 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, height(cx, -2.5), -2.5), .yaw = half_pi }) catch {};
 }
 
@@ -831,7 +826,7 @@ fn highStreet(b: *Builder, x0: f32, x1: f32) void {
             put(b, .tree, x + 2, zn + 0.6, 0);
         }
 
-        if (rnd(b) < 0.5) put(b, b.rng.pick(K, &.{ .hatch, .sedan, .camper, .hatch }), x + 1, high_z + 2.3 * (if (rnd(b) < 0.5) @as(f32, 1) else -1), half_pi + (if (rnd(b) < 0.5) @as(f32, 0) else pi));
+        if (rnd(b) < 0.25) put(b, b.rng.pick(K, &.{ .planter, .bench, .bin }), x + 1, high_z + 5 * (if (rnd(b) < 0.5) @as(f32, 1) else -1), 0);
     }
 
     lootY(b, (x0 + x1) / 2, tr.height((x0 + x1) / 2, high_z), high_z);
@@ -852,7 +847,7 @@ fn square(b: *Builder) void {
     put(b, .phone, -20, cz - 10, 0);
     put(b, .phone, -18.6, cz - 10, 0);
     put(b, .newsstand, 20, cz - 10, pi);
-    put(b, .icecream, 24, cz + 4, half_pi);
+    put(b, .bench, 24, cz + 4, half_pi);
     put(b, .shelter, -24, cz + 6, half_pi);
     terraceRow(b, -36, -10, 62, pi, 4);
     house(b, .tavern, -4, 62, pi);
@@ -889,7 +884,7 @@ fn hillside(b: *Builder) void {
             put(b, .tree, px + 7, z + 3, spin(b));
             put(b, .shrub, px - 6, z - 4, spin(b));
 
-            if (rnd(b) < 0.4) put(b, b.rng.pick(K, &.{ .hatch, .camper }), px + 6, z - 5, 0.1);
+            if (rnd(b) < 0.4) put(b, .shed, px + 6, z - 5, 0.1);
 
             if (rnd(b) < 0.5) lootY(b, px + 4, tr.height(px + 4, z - 7), z - 7);
         }
