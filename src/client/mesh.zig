@@ -425,6 +425,18 @@ pub const Builder = struct {
         b.tri(p0, p1, p2, n, n, n, n);
     }
 
+    pub fn smoothTri(b: *Builder, p: [3]Vec3, n: [3]Vec3, c: [3]palette.Rgb) void {
+        if (b.count + 3 > max_vertices) return;
+
+        const face = p[1].sub(p[0]).cross(p[2].sub(p[0]));
+        const order: [3]usize = if (face.y >= 0) .{ 0, 1, 2 } else .{ 0, 2, 1 };
+
+        for (order) |k| {
+            b.style.color = c[k];
+            b.vertex(p[k], n[k]);
+        }
+    }
+
     pub fn flatBlend(b: *Builder, p: [3]Vec3, c: [3]palette.Rgb, hint: Vec3) void {
         if (b.count + 3 > max_vertices) return;
 

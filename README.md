@@ -53,6 +53,7 @@ Models used under CC BY 4.0 and modified for the game, by:
 
 CC0 assets by:
 - Quaternius
+- Kenney
 - AurynSky
 - ambientCG
 - Poly Haven

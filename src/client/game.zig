@@ -333,6 +333,7 @@ pub const Controls = struct {
     throw_gun: bool = false,
     fireball: bool = false,
     enter: bool = false,
+    reset: bool = false,
 };
 
 pub const View = struct {
@@ -501,30 +502,42 @@ pub const Game = struct {
         return g.prng.random().uintLessThan(u8, weapons.knife);
     }
 
+    pub fn maxZoom(g: Game) f32 {
+        const spec = g.arsenal.spec();
+
+        if (spec.flame) return 0;
+
+        return switch (spec.class) {
+            .pistol, .smg, .shotgun, .launcher => 2,
+            .rifle, .lmg => 4,
+            .dmr => 6,
+            .sniper, .special => 8,
+            else => 0,
+        };
+    }
+
+    pub fn currentZoom(g: Game) f32 {
+        return @min(2 + 2 * @as(f32, @floatFromInt(g.scope_level)), g.maxZoom());
+    }
+
     pub fn scopeMultiplier(g: Game) f32 {
         if (!g.hasScope()) return 1;
 
-        const levels = [_]f32{ 1, 1.7, 2.9 };
-
-        return levels[@min(g.scope_level, 2)];
+        return g.currentZoom() / 2;
     }
 
     pub fn hasScope(g: Game) bool {
-        const optic = g.arsenal.spec().look.optic;
-
-        return optic == .scope4 or optic == .scope8;
+        return g.maxZoom() >= 2;
     }
 
     pub fn zoom(g: Game) f32 {
-        const full = g.arsenal.spec().ads_zoom * g.scopeMultiplier();
+        const full = if (g.hasScope()) g.currentZoom() else g.arsenal.spec().ads_zoom;
 
         return 1 + (full - 1) * g.ads;
     }
 
     pub fn scoped(g: Game) bool {
-        const optic = g.arsenal.spec().look.optic;
-
-        return (optic == .scope4 or optic == .scope8) and g.ads > 0.85;
+        return g.hasScope() and g.ads > 0.85;
     }
 
     pub fn look(g: *Game, dx: f32, dy: f32, sensitivity: f32) void {
@@ -744,10 +757,14 @@ pub const Game = struct {
 
         if (!g.hasScope()) g.scope_level = 0;
 
+        if (g.currentZoom() < 2 + 2 * @as(f32, @floatFromInt(g.scope_level))) g.scope_level = @intFromFloat((g.maxZoom() - 2) / 2);
+
         if (scoped_in and c.zoom_step != 0) {
             const next = @as(i32, g.scope_level) + c.zoom_step;
 
-            g.scope_level = @intCast(std.math.clamp(next, 0, 2));
+            const levels: i32 = @intFromFloat((g.maxZoom() - 2) / 2);
+
+            g.scope_level = @intCast(std.math.clamp(next, 0, levels));
         }
 
         g.steadying = scoped_in and c.steady and g.breath > 0;

@@ -19,6 +19,7 @@ const entries = [_]Entry{
     .{ .map = .islands, .name = "Islands", .note = "Floating islands, fireball jumps", .tint = .{ .r = 110, .g = 180, .b = 90, .a = 255 } },
     .{ .map = .valley, .name = "Valley", .note = "Mountain pass and compounds", .tint = .{ .r = 150, .g = 130, .b = 110, .a = 255 } },
     .{ .map = .prism, .name = "Prism", .note = "Glass arena", .tint = .{ .r = 96, .g = 196, .b = 200, .a = 255 } },
+    .{ .map = .courtyard, .name = "Courtyard", .note = "Desert arena", .tint = .{ .r = 226, .g = 176, .b = 132, .a = 255 } },
 };
 
 fn padId() ?c_int {
@@ -61,12 +62,12 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
         const w: f32 = @floatFromInt(rl.GetScreenWidth());
         const h: f32 = @floatFromInt(rl.GetScreenHeight());
         const u = h / 900;
-        const cols: usize = 3;
+        const cols: usize = 4;
         const gap = 22 * u;
-        const cw = @min(380 * u, (w - 160 * u - gap * 2) / 3);
+        const cw = @min(300 * u, (w - 160 * u - gap * 3) / 4);
         const ch = cw * 0.56;
-        const gx = (w - (cw * 3 + gap * 2)) / 2;
-        const gy = h * 0.3 + 10 * u;
+        const gx = (w - (cw * 4 + gap * 3)) / 2;
+        const gy = h * 0.27;
         const pad = padId();
         var choose = false;
 

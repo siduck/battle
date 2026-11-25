@@ -8,6 +8,7 @@ const movement = shared.movement;
 const math = shared.math;
 const terrain = shared.terrain;
 const world = shared.world;
+const props = shared.props;
 const weapons = shared.weapons;
 const Vec3 = math.Vec3;
 const Game = game_mod.Game;
@@ -28,6 +29,7 @@ var blast_clock: f32 = 0;
 
 var cam_pos: Vec3 = .{};
 var cam_ready = false;
+var cam_reach: f32 = 8;
 var last_yaw: f32 = 0;
 var look_idle: f32 = 0;
 var run_cd: [vehicle.count]f32 = @splat(0);
@@ -64,6 +66,8 @@ pub fn tick(g: *Game, c: Controls) void {
             if (vtest) {
                 vclock += dt;
                 cc = scripted(vclock, c);
+
+                if (cc.reset) vehicle.reset(v);
                 trace(v.*, dt);
             }
 
@@ -79,8 +83,9 @@ pub fn tick(g: *Game, c: Controls) void {
             vehicle.step(v, .{ .throttle = (push + auto) * pedal, .steer = steer_smooth + auto * 0.4, .brake = cc.jump, .boost = cc.boost or autoboost }, world.pieces, dt);
 
             boost_view = v.boosting;
+            speed_fov = math.clamp01(@abs(v.speed) / @max(s.top_speed, 1)) * 8;
             cam_shake = @max(cam_shake * @exp(-dt * 7), @max(v.impact * 0.6, if (v.boosting) 0.05 + v.boost_start * 0.35 else 0));
-        } else if (@abs(v.speed) > 0.4 or @abs(v.side) > 0.4 or v.vy < -0.8 or v.vy > 0.8) {
+        } else if (@abs(v.speed) > 0.4 or @abs(v.side) > 0.4 or v.vy < -0.8 or v.vy > 0.8 or v.righting > 0) {
             vehicle.step(v, .{}, world.pieces, dt);
         }
     }
@@ -127,6 +132,8 @@ fn scripted(t: f32, base: Controls) Controls {
         c.forward = -1;
     }
 
+    c.reset = t >= 14.5 and t < 14.52;
+
     return c;
 }
 
@@ -143,6 +150,21 @@ fn trace(v: vehicle.Vehicle, dt: f32) void {
     vprint = 0;
 }
 
+fn extent(v: vehicle.Vehicle, n: Vec3) f32 {
+    const s = v.spec();
+
+    return @abs(n.dot(v.forward())) * s.length * 0.46 + @abs(n.dot(v.right())) * s.width * 0.48;
+}
+
+fn velocityOf(v: vehicle.Vehicle) Vec3 {
+    return v.forward().scale(v.speed).add(v.right().scale(v.side));
+}
+
+fn setVelocity(v: *vehicle.Vehicle, vel: Vec3) void {
+    v.speed = vel.dot(v.forward());
+    v.side = vel.dot(v.right());
+}
+
 fn collide(g: *Game) void {
     for (&g.vehicles, 0..) |*a, i| {
         if (!a.alive()) continue;
@@ -150,36 +172,45 @@ fn collide(g: *Game) void {
         for (g.vehicles[i + 1 ..], i + 1..) |*b, j| {
             if (!b.alive()) continue;
 
-            const ra = a.spec().length * 0.42;
-            const rb = b.spec().length * 0.42;
             const d = b.pos.sub(a.pos);
             const flat = Vec3{ .x = d.x, .z = d.z };
             const dist = flat.length();
+            const reach = (a.spec().length + b.spec().length) * 0.5;
 
-            if (dist >= ra + rb or dist < 0.001 or @abs(d.y) > 2) continue;
+            if (dist >= reach or dist < 0.001 or @abs(d.y) > 2) continue;
 
             const n = flat.scale(1 / dist);
-            const push = (ra + rb - dist) * 0.5;
-            const va = a.forward().scale(a.speed);
-            const vb = b.forward().scale(b.speed);
-            const closing = va.sub(vb).dot(n);
+            const overlap = extent(a.*, n) + extent(b.*, n) - dist;
 
-            a.pos = a.pos.sub(n.scale(push));
-            b.pos = b.pos.add(n.scale(push));
+            if (overlap <= 0) continue;
+
+            const ma = vehicle.massOf(a.*);
+            const mb = vehicle.massOf(b.*);
+            const wa = mb / (ma + mb);
+            const wb = ma / (ma + mb);
+
+            a.pos = a.pos.sub(n.scale(overlap * wa));
+            b.pos = b.pos.add(n.scale(overlap * wb));
+
+            const va = velocityOf(a.*);
+            const vb = velocityOf(b.*);
+            const closing = va.sub(vb).dot(n);
 
             if (closing <= 0) continue;
 
-            a.speed *= 0.55;
-            b.speed = b.speed * 0.6 + closing * 0.4 * std.math.sign(b.forward().dot(n) + 0.001);
+            const impulse = closing * 1.2;
+
+            setVelocity(a, va.sub(n.scale(impulse * wa)));
+            setVelocity(b, vb.add(n.scale(impulse * wb)));
 
             if (closing > 2.5) {
-                vehicle.hit(a, closing, b.forward().dot(a.right()) * closing);
-                vehicle.hit(b, -closing, a.forward().dot(b.right()) * closing);
+                vehicle.hit(a, closing * wa * 2, b.forward().dot(a.right()) * closing);
+                vehicle.hit(b, -closing * wb * 2, a.forward().dot(b.right()) * closing);
             }
 
             if (closing > 6) {
-                damage(g, i, closing * 6, a.pos.add(n.scale(ra)));
-                damage(g, j, closing * 6, b.pos.sub(n.scale(rb)));
+                damage(g, i, closing * 6 * wa * 2, a.pos.add(n.scale(extent(a.*, n))));
+                damage(g, j, closing * 6 * wb * 2, b.pos.sub(n.scale(extent(b.*, n))));
             }
         }
     }
@@ -308,6 +339,8 @@ pub fn update(g: *Game, dt: f32, c: Controls) void {
         return;
     };
 
+    if (c.reset or (c.reload and lean < 0.3)) vehicle.reset(&g.vehicles[i]);
+
     if (g.vehicles[i].spec().class == .tank) aimTurret(g, &g.vehicles[i], dt);
 
     const shooting = lean_test or g.ads > 0.3 or g.arsenal.flash > 0 or c.fire_down;
@@ -375,6 +408,7 @@ pub fn exit(g: *Game) void {
     v.occupied = false;
     seat = null;
     boost_view = false;
+    speed_fov = 0;
     fov_extra = 0;
     g.player.pos = spot;
     g.prev_pos = spot;
@@ -389,19 +423,34 @@ pub fn view(g: Game) ?View {
     const pos = v.prev.lerp(v.pos, alpha);
     const pitch = std.math.clamp(g.pitch + g.recoil, -0.7, 0.6);
     const dir = math.lookDir(g.yaw + g.recoil_yaw, pitch);
-    const target = pos.add(.{ .y = s.height * 0.75 + 0.5 });
+    const target = pos.add(.{ .y = s.height * 0.6 + 0.35 });
+    const pace = math.clamp01(@abs(v.speed) / @max(s.top_speed, 1));
     const dist: f32 = switch (s.class) {
-        .car => 5.6 + s.length * 0.25,
+        .car => 5.6 + s.length * 0.25 + pace * 1.4,
         .tank => 9.5,
-        else => 3.6 + s.length * 0.3,
+        else => 3.6 + s.length * 0.3 + pace * 0.9,
     };
-    const orbit = math.lookDir(g.yaw, pitch - 0.2);
+    const orbit = math.lookDir(g.yaw, pitch - 0.1);
     var reach = dist;
 
     if (movement.raycast(world.pieces, target, orbit.scale(-1), dist)) |hit| reach = @max(1.2, hit.t - 0.3);
 
+    if (propHit(target, orbit.scale(-1), reach)) |t| reach = @max(1.2, t - 0.4);
+
+    var tries: usize = 0;
+
+    while (tries < 16 and reach > 1.2 and insideProp(target.sub(orbit.scale(reach)), 0.9)) : (tries += 1) reach = @max(1.2, reach - 0.45);
+
+    if (reach < cam_reach) cam_reach = reach else cam_reach += (reach - cam_reach) * 0.06;
+
+    reach = @min(reach, cam_reach);
+
     var eye = target.sub(orbit.scale(reach));
 
+    const edge = terrain.play - 1;
+
+    eye.x = std.math.clamp(eye.x, -edge, edge);
+    eye.z = std.math.clamp(eye.z, -edge, edge);
     eye.y = @max(eye.y, terrain.height(eye.x, eye.z) + 0.5);
 
     const right = dir.cross(math.up).normalize();
@@ -420,9 +469,135 @@ var cam_time: f32 = 0;
 pub var cam_shake: f32 = 0;
 pub var fov_extra: f32 = 0;
 pub var boost_view = false;
+var speed_fov: f32 = 0;
 pub var lean: f32 = 0;
 pub var lean_test = false;
 var lean_hold: f32 = 0;
+
+fn propHit(origin: Vec3, dir: Vec3, limit: f32) ?f32 {
+    var best: ?f32 = null;
+    var reach = limit;
+
+    for (world.placements) |pl| {
+        const info = props.info(pl.kind);
+
+        switch (info.group) {
+            .bush, .ground, .road, .street, .car => continue,
+            else => {},
+        }
+
+        if (info.foliage) continue;
+
+        const s = pl.scale;
+        const lo_y = pl.pos.y + info.min[1] * s;
+        const hi_y = pl.pos.y + info.max[1] * s;
+
+        if (hi_y - lo_y < 1.4) continue;
+
+        const ex = @max(@abs(info.min[0]), @abs(info.max[0])) * s;
+        const ez = @max(@abs(info.min[2]), @abs(info.max[2])) * s;
+        const r = @sqrt(ex * ex + ez * ez);
+        const dx = pl.pos.x - origin.x;
+        const dz = pl.pos.z - origin.z;
+        const far = reach + r;
+
+        if (dx * dx + dz * dz > far * far) continue;
+
+        const lo = [3]f32{ info.min[0] * s, lo_y, info.min[2] * s };
+        const hi = [3]f32{ info.max[0] * s, hi_y, info.max[2] * s };
+        var hit_t: ?f32 = null;
+
+        for ([_]f32{ 1, -1 }) |sign| {
+            const c = @cos(pl.yaw * sign);
+            const sn = @sin(pl.yaw * sign);
+            const ox = origin.x - pl.pos.x;
+            const oz = origin.z - pl.pos.z;
+            const o = [3]f32{ ox * c - oz * sn, origin.y, ox * sn + oz * c };
+            const d = [3]f32{ dir.x * c - dir.z * sn, dir.y, dir.x * sn + dir.z * c };
+
+            if (slab(o, d, lo, hi, reach)) |t| hit_t = if (hit_t) |h| @min(h, t) else t;
+        }
+
+        const t = hit_t orelse continue;
+
+        if (t < reach) {
+            reach = t;
+            best = t;
+        }
+    }
+
+    return best;
+}
+
+fn insideProp(p: Vec3, margin: f32) bool {
+    for (world.placements) |pl| {
+        const info = props.info(pl.kind);
+
+        switch (info.group) {
+            .bush, .ground, .road, .street, .car => continue,
+            else => {},
+        }
+
+        if (info.foliage) continue;
+
+        const s = pl.scale;
+        const lo_y = pl.pos.y + info.min[1] * s - margin;
+        const hi_y = pl.pos.y + info.max[1] * s + margin;
+
+        if (hi_y - lo_y < 1.4 + margin * 2 or p.y < lo_y or p.y > hi_y) continue;
+
+        const ex = @max(@abs(info.min[0]), @abs(info.max[0])) * s + margin;
+        const ez = @max(@abs(info.min[2]), @abs(info.max[2])) * s + margin;
+        const dx = p.x - pl.pos.x;
+        const dz = p.z - pl.pos.z;
+
+        if (dx * dx + dz * dz > ex * ex + ez * ez) continue;
+
+        for ([_]f32{ 1, -1 }) |sign| {
+            const c = @cos(pl.yaw * sign);
+            const sn = @sin(pl.yaw * sign);
+            const lx = dx * c - dz * sn;
+            const lz = dx * sn + dz * c;
+
+            if (lx > info.min[0] * s - margin and lx < info.max[0] * s + margin and lz > info.min[2] * s - margin and lz < info.max[2] * s + margin) return true;
+        }
+    }
+
+    return false;
+}
+
+fn slab(o: [3]f32, d: [3]f32, lo: [3]f32, hi: [3]f32, limit: f32) ?f32 {
+    var t0: f32 = 0;
+    var t1: f32 = limit;
+
+    for (0..3) |k| {
+        if (@abs(d[k]) < 1e-6) {
+            if (o[k] < lo[k] or o[k] > hi[k]) return null;
+
+            continue;
+        }
+
+        const inv = 1 / d[k];
+        var a = (lo[k] - o[k]) * inv;
+        var b = (hi[k] - o[k]) * inv;
+
+        if (a > b) {
+            const tmp = a;
+
+            a = b;
+            b = tmp;
+        }
+
+        t0 = @max(t0, a);
+        t1 = @min(t1, b);
+
+        if (t0 > t1) return null;
+    }
+
+    if (t0 <= 0) return null;
+
+    return t0;
+}
 
 pub fn smooth(raw: View, dt: f32) View {
     if (!cam_ready) {
@@ -430,9 +605,13 @@ pub fn smooth(raw: View, dt: f32) View {
         cam_ready = true;
     }
 
-    cam_pos = cam_pos.lerp(raw.eye, @min(1, dt * 14));
+    const gap = raw.eye.sub(cam_pos).length();
+
+    cam_pos = if (gap > 6) raw.eye else cam_pos.lerp(raw.eye, @min(1, dt * 16));
     cam_time += dt;
-    fov_extra += ((if (boost_view) @as(f32, 16) else 0) - fov_extra) * @min(1, dt * (if (boost_view) @as(f32, 5) else 3));
+    const want_fov = (if (boost_view) @as(f32, 16) else 0) + speed_fov;
+
+    fov_extra += (want_fov - fov_extra) * @min(1, dt * (if (boost_view) @as(f32, 5) else 3));
 
     var out = raw;
 
@@ -574,7 +753,14 @@ pub fn start(g: *Game, index: usize) void {
     g.pitch = -0.12;
     g.wave_break = 1e9;
 
-    if (vtest) {
+    if (vtest and std.c.getenv("DF_VYAW") != null) {
+        const v2 = &g.vehicles[index];
+        const off = std.fmt.parseFloat(f32, std.mem.sliceTo(std.c.getenv("DF_VYAW").?, 0)) catch 0;
+
+        v2.yaw += off;
+        vehicle.settle(v2, world.pieces);
+        g.yaw = v2.yaw;
+    } else if (vtest) {
         const r = terrain.runway;
         const v2 = &g.vehicles[index];
 

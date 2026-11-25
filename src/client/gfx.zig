@@ -9,6 +9,7 @@ const Vec3 = shared.math.Vec3;
 
 pub const near_plane: f32 = 0.08;
 pub var sharpen_amount: f32 = 0.22;
+pub var vm_near: f32 = 0.02;
 pub const far_plane: f32 = 800;
 
 pub var shadow_res: c_int = if (assets.mobile) 1024 else 2048;
@@ -214,6 +215,7 @@ const lit_fs_head =
     \\uniform float glassAlpha;
     \\uniform float sheen;
     \\uniform float prism;
+    \\uniform float courtyard;
     \\uniform sampler2D mtex0;
     \\uniform sampler2D mtex1;
     \\uniform sampler2D mtex2;
@@ -226,266 +228,22 @@ const lit_fs_head =
 ;
 
 const lit_fs_body =
-    \\float matTap(int id, vec2 q) {
-    \\    int t = id / 4;
-    \\    int c = id - t * 4;
-    \\    vec4 m;
-    \\    if (t == 0) m = texture(mtex0, q);
-    \\    else if (t == 1) m = texture(mtex1, q);
-    \\    else if (t == 2) m = texture(mtex2, q);
-    \\    else if (t == 3) m = texture(mtex3, q);
-    \\    else m = texture(mtex4, q);
-    \\    return c == 0 ? m.r : (c == 1 ? m.g : (c == 2 ? m.b : m.a));
-    \\}
-    \\float matTri(int id, vec3 p, vec3 n, float sc) {
-    \\    vec3 w = pow(abs(n), vec3(4.0));
-    \\    w /= max(w.x + w.y + w.z, 1e-4);
-    \\    float r = 0.0;
-    \\    if (w.x > 0.02) r += matTap(id, p.zy * sc) * w.x;
-    \\    if (w.y > 0.02) r += matTap(id, p.xz * sc) * w.y;
-    \\    if (w.z > 0.02) r += matTap(id, p.xy * sc) * w.z;
-    \\    return r;
-    \\}
-    \\float matF(float t) {
-    \\    return 0.62 + t * 0.76;
-    \\}
-    \\float matWear(vec3 p) {
-    \\    float a = dnoise(p.xz * 0.07 + p.y * 0.05);
-    \\    float b = dnoise(p.xz * 0.21 - p.y * 0.13 + 3.7);
-    \\    return 0.9 + a * 0.14 + smoothstep(0.62, 0.8, b) * -0.07;
-    \\}
-    \\int matAuto(vec3 c, float up) {
-    \\    float mx = max(max(c.r, c.g), c.b);
-    \\    float mn = min(min(c.r, c.g), c.b);
-    \\    float sat = (mx - mn) / max(mx, 0.001);
-    \\    if (c.g > c.r * 1.02 && c.g > c.b * 1.15) return -1;
-    \\    if (sat < 0.12) return mx > 0.5 ? 12 : 10;
-    \\    if (c.r > c.g * 1.35 && c.r > c.b * 1.6) return up > 0.5 ? 7 : 3;
-    \\    if (mx < 0.42 && c.r > c.b) return 8;
-    \\    if (c.b > c.r) return 9;
-    \\    return up > 0.5 ? 0 : 1;
-    \\}
-    \\float shadowCmp(sampler2D map, vec2 uv, float z) {
-    \\    vec2 f = uv / shadowTexel - 0.5;
-    \\    vec2 i = floor(f);
-    \\    vec2 k = f - i;
-    \\    vec2 base = (i + 0.5) * shadowTexel;
-    \\    float a = z > texture(map, base).r ? 0.0 : 1.0;
-    \\    float b = z > texture(map, base + vec2(shadowTexel, 0.0)).r ? 0.0 : 1.0;
-    \\    float c = z > texture(map, base + vec2(0.0, shadowTexel)).r ? 0.0 : 1.0;
-    \\    float d = z > texture(map, base + vec2(shadowTexel)).r ? 0.0 : 1.0;
-    \\    return mix(mix(a, b, k.x), mix(c, d, k.x), k.y);
-    \\}
-    \\float shadowIn(sampler2D map, mat4 vp, vec3 n, vec3 l, float bias, float spread) {
-    \\    vec4 p = vp * vec4(worldPos + n * 0.03, 1.0);
-    \\    p.xyz = p.xyz / p.w * 0.5 + 0.5;
-    \\    float z = p.z - max(bias * (1.0 - dot(n, l)), bias * 0.25);
-    \\    float lit = 0.0;
-    \\    for (int x = -1; x <= 1; x++) {
-    \\        for (int y = -1; y <= 1; y++) {
-    \\            lit += shadowCmp(map, p.xy + vec2(x, y) * shadowTexel * spread, z);
-    \\        }
-    \\    }
-    \\    return lit / 9.0;
-    \\}
-    \\vec2 shadowUV(mat4 vp) {
-    \\    vec4 p = vp * vec4(worldPos, 1.0);
-    \\    return p.xy / p.w * 0.5 + 0.5;
-    \\}
-    \\float shadowAt(vec3 n, vec3 l) {
-    \\    vec2 q = shadowUV(lightVP);
-    \\    float edge = max(abs(q.x - 0.5), abs(q.y - 0.5));
-    \\    if (edge < 0.47) return shadowIn(shadowMap, lightVP, n, l, 0.0012, 2.2);
-    \\    if (cascades < 1.5) return edge < 0.5 ? shadowIn(shadowMap, lightVP, n, l, 0.0012, 2.2) : 1.0;
-    \\    vec2 r = shadowUV(lightVPFar);
-    \\    if (max(abs(r.x - 0.5), abs(r.y - 0.5)) >= 0.5) return 1.0;
-    \\    float far = shadowIn(shadowMapFar, lightVPFar, n, l, 0.0016, 1.4);
-    \\    if (edge < 0.5) return mix(shadowIn(shadowMap, lightVP, n, l, 0.0012, 2.2), far, (edge - 0.47) / 0.03);
-    \\    return far;
-    \\}
+    \\uniform vec3 fogColor;
     \\void main() {
     \\    vec4 texel = texture(texture0, uv);
     \\    if (texel.a * colDiffuse.a < 0.45) discard;
-    \\    vec3 base = tint.rgb * colDiffuse.rgb * texel.rgb;
-    \\    vec3 albedo = pow(base, vec3(2.2));
-    \\    float darkness = max(max(albedo.r, albedo.g), albedo.b);
-    \\    albedo = mix(albedo, max(albedo, vec3(0.022, 0.024, 0.028)) + albedo * 0.4, smoothstep(0.08, 0.0, darkness));
-    \\    if (prism > 0.5) {
-    \\        float pglow = 1.0 - tint.a;
-    \\        vec3 pv = normalize(viewPos - worldPos);
-    \\        vec3 pn = normalize(worldNormal);
-    \\        if (!gl_FrontFacing) pn = -pn;
-    \\        vec3 pl = normalize(sunDir);
-    \\        vec3 hue = fogColor;
-    \\        if (detail > 2.5 && pn.y > 0.9) {
-    \\            vec2 cell = worldPos.xz / 7.0;
-    \\            vec2 f = abs(fract(cell) - 0.5);
-    \\            float seam = smoothstep(0.485, 0.5, max(f.x, f.y));
-    \\            albedo *= 1.0 - seam * 0.12;
-    \\            vec2 big = abs(fract(worldPos.xz / 28.0) - 0.5);
-    \\            pglow = max(pglow, smoothstep(0.494, 0.5, max(big.x, big.y)) * 0.55);
-    \\        }
-    \\        float pwrap = clamp(dot(pn, pl) * 0.5 + 0.5, 0.0, 1.0);
-    \\        vec3 hemi = mix(hue * 0.16, hue * 1.05 + vec3(0.04), pn.y * 0.5 + 0.5);
-    \\        float pao = mix(0.42, 1.0, clamp(worldPos.y * 0.14 + 0.18, 0.0, 1.0));
-    \\        pao = mix(pao, 1.0, smoothstep(0.7, 1.0, pn.y) * 0.55);
-    \\        pao *= mix(1.0, 0.5, smoothstep(-0.2, -0.8, pn.y));
-    \\        vec3 pcol = albedo * (hemi * 0.9 * pao + sunColor * 0.75 * pwrap * pwrap);
-    \\        pcol *= mix(1.0, 0.7, smoothstep(0.7, 1.0, pn.y));
-    \\        float pndv = max(dot(pn, pv), 0.0);
-    \\        float prim = pow(1.0 - pndv, 3.0);
-    \\        pcol += hue * prim * 0.3 * (1.0 - pglow);
-    \\        vec3 ph = normalize(pl + pv);
-    \\        pcol += vec3(pow(max(dot(pn, ph), 0.0), 70.0)) * 0.1 * (1.0 - pglow);
-    \\        pcol = mix(pcol, albedo * 4.4 + hue * 0.7, pglow);
-    \\        float pdist = length(viewPos - worldPos);
-    \\        float pfog = clamp(1.0 - exp(-max(pdist - 18.0, 0.0) * fogDensity), 0.0, 0.94);
-    \\        float palpha = 1.0;
-    \\        if (glassAlpha > 0.0) {
-    \\            pcol = mix(hue * 1.1 + vec3(0.08), vec3(0.95, 1.0, 1.0), prim * 0.7);
-    \\            palpha = clamp(glassAlpha + prim * 0.5, 0.0, 0.9);
-    \\        }
-    \\        pcol = mix(pcol, hue * 1.22 + vec3(0.03), pfog);
-    \\        finalColor = vec4(grade(pcol), palpha);
-    \\        return;
-    \\    }
-    \\    if (detail > 1.5 && detail < 3.5) {
-    \\        vec3 an = abs(normalize(worldNormal));
-    \\        vec2 q = an.y > 0.6 ? worldPos.xz : (an.x > an.z ? worldPos.zy : worldPos.xy);
-    \\        float cell = an.y > 0.6 ? 2.0 : 1.5;
-    \\        vec2 g = q / cell;
-    \\        vec2 id = floor(g);
-    \\        vec2 f = fract(g);
-    \\        float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
-    \\        float seam = 1.0 - smoothstep(0.0, 0.035, edge) * 0.16;
-    \\        float bevel = smoothstep(0.035, 0.09, edge);
-    \\        float tone = fract(sin(dot(id, vec2(12.9898, 78.233))) * 43758.5453);
-    \\        float grad = mix(0.94, 1.05, f.y);
-    \\        float fine = dnoise(q * 6.0) * 0.5 + dnoise(q * 1.3) * 0.5;
-    \\        float grime = mix(0.86, 1.0, smoothstep(0.0, 1.6, worldPos.y));
-    \\        albedo *= seam * mix(1.0, grad, bevel) * (0.95 + tone * 0.08) * (0.94 + fine * 0.12) * mix(1.0, grime, 1.0 - an.y);
-    \\        if (matOn > 0.5 && length(viewPos - worldPos) < 70.0) {
-    \\            float fmx = max(max(base.r, base.g), base.b);
-    \\            int fid = an.y > 0.6 ? 12 : (fmx > 0.45 ? 12 : 11);
-    \\            if (fid >= 0) albedo *= mix(1.0, matF(matTri(fid, worldPos, normalize(worldNormal), 0.45)) * matWear(worldPos), 1.0 - smoothstep(35.0, 70.0, length(viewPos - worldPos)));
-    \\        }
-    \\    } else if (detail > 3.5) {
-    \\        vec3 sn = normalize(worldNormal);
-    \\        float sd = length(viewPos - worldPos);
-    \\        float near = 1.0 - smoothstep(14.0, 40.0, sd);
-    \\        if (near > 0.0 && abs(sn.y) < 0.4) {
-    \\            vec2 q = abs(sn.x) > abs(sn.z) ? worldPos.zy : worldPos.xy;
-    \\            float mottle = dnoise(q * 0.9) * 0.55 + dnoise(q * 3.1) * 0.3 + dnoise(q * 9.0) * 0.15;
-    \\            float grime = mix(0.74, 1.0, smoothstep(0.0, 1.1, localY));
-    \\            albedo *= mix(1.0, (0.87 + mottle * 0.24) * grime, near);
-    \\        }
-    \\        float mnear = (1.0 - smoothstep(35.0, 70.0, sd)) * matOn;
-    \\        if (mnear > 0.0) {
-    \\            int mid = matAuto(base, sn.y);
-    \\            if (matId >= 0.0 && mid >= 0) {
-    \\                int code = int(matId + 0.5);
-    \\                int ms = code / 32;
-    \\                mid = sn.y > 0.55 ? code - ms * 32 : ms;
-    \\            }
-    \\            if (mid >= 0) albedo *= mix(1.0, matF(matTri(mid, worldPos, sn, 0.5)) * matWear(worldPos), mnear);
-    \\        }
-    \\    } else if (detail > 0.5) {
-    \\        vec3 sn = normalize(worldNormal);
-    \\        float sd = length(viewPos - worldPos);
-    \\        float near = 1.0 - smoothstep(22.0, 65.0, sd);
-    \\        float fineFade = 1.0 - smoothstep(8.0, 20.0, sd);
-    \\        float up = smoothstep(0.55, 0.85, sn.y);
-    \\        float steep = 1.0 - up;
-    \\        if (near > 0.0) {
-    \\            vec2 p = worldPos.xz;
-    \\            float mx = max(max(base.r, base.g), base.b);
-    \\            float mn = min(min(base.r, base.g), base.b);
-    \\            float sat = (mx - mn) / max(mx, 0.001);
-    \\            float veg = step(base.r * 0.95, base.g) * step(base.b * 1.35, base.g);
-    \\            float grey = 1.0 - smoothstep(0.1, 0.22, sat);
-    \\            float sandy = (1.0 - veg) * (1.0 - grey);
-    \\            float dirt = sandy * (1.0 - smoothstep(0.55, 0.7, mx));
-    \\            sandy *= 1.0 - dirt;
-    \\            float n1 = dnoise(p * 0.45);
-    \\            float n2 = dnoise(p * 1.3 + 7.0);
-    \\            float nf = dnoise(p * 6.0 - 3.0);
-    \\            float grass = 0.86 + n1 * 0.18 + n2 * 0.08 + (nf - 0.5) * 0.12 * fineFade;
-    \\            float rip = sin(dot(p, vec2(2.3, 0.8)) + dnoise(p * 0.3) * 5.0);
-    \\            rip = smoothstep(-0.2, 1.0, rip);
-    \\            float sand = 0.85 + rip * 0.17 + (n1 - 0.5) * 0.14 + (nf - 0.5) * 0.07 * fineFade;
-    \\            float grav = dhash(floor(p * 5.0));
-    \\            float dirtv = 0.92 + (n2 - 0.5) * 0.12 + (grav - 0.5) * 0.16 * fineFade;
-    \\            vec2 slab = abs(fract(p / 3.0) - 0.5);
-    \\            float seam = smoothstep(0.47, 0.495, max(slab.x, slab.y));
-    \\            float conc = (0.96 + (n1 - 0.5) * 0.1) * (1.0 - seam * 0.1 * fineFade);
-    \\            if (matOn > 0.5) {
-    \\                grass = (0.9 + n1 * 0.14) * matF(matTap(15, p * 0.33)) * matWear(worldPos);
-    \\                sand = (0.92 + rip * 0.1 + (n1 - 0.5) * 0.08) * matF(matTap(14, p * 0.28));
-    \\                dirtv = (0.95 + (n2 - 0.5) * 0.1) * matF(matTap(16, p * 0.33)) * matWear(worldPos);
-    \\                conc = (1.0 - seam * 0.1 * fineFade) * matF(matTap(12, p * 0.3)) * matWear(worldPos);
-    \\            }
-    \\            float flatv = veg * grass + sandy * sand + dirt * dirtv + grey * conc;
-    \\            float strata = sin(worldPos.y * 3.2 + dnoise(p * 0.6) * 2.5) * 0.5 + 0.5;
-    \\            float rock = 0.9 + strata * 0.08 + (dnoise(vec2(p.x + worldPos.y, p.y) * 2.5) - 0.5) * 0.08;
-    \\            if (matOn > 0.5 && steep > 0.02) rock = (0.94 + strata * 0.06) * matF(matTri(17, worldPos, sn, 0.22));
-    \\            float v = mix(flatv, rock, steep);
-    \\            albedo *= mix(1.0, v, near);
-    \\            if (veg > 0.5) albedo = mix(albedo, albedo * vec3(1.06, 1.08, 0.88), (n1 - 0.4) * 0.6 * near * up);
-    \\        }
-    \\        albedo *= mix(0.9, 1.0, up);
-    \\    }
-    \\    float glow = 1.0 - tint.a;
-    \\    vec3 v = normalize(viewPos - worldPos);
-    \\    vec3 n = dot(worldNormal, worldNormal) > 1e-8 ? normalize(worldNormal) : vec3(0.0, 1.0, 0.0);
+    \\    vec3 n = normalize(worldNormal);
     \\    if (!gl_FrontFacing) n = -n;
-    \\    vec3 l = normalize(sunDir);
-    \\    vec3 h = normalize(l + v);
-    \\    float ndl = max(dot(n, l), 0.0);
-    \\    float ndv = max(dot(n, v), 0.001);
-    \\    float ndh = max(dot(n, h), 0.0);
-    \\    float sh = ndl > 0.0 ? shadowAt(n, l) : 0.0;
-    \\    float wrap = pow(clamp(dot(n, l) * 0.5 + 0.5, 0.0, 1.0), 2.2);
-    \\    float lit = sh;
-    \\    sh = mix(0.42, 1.0, sh);
-    \\    vec3 f0 = mix(vec3(0.04), albedo, metallic);
-    \\    vec3 fres = f0 + (1.0 - f0) * pow(1.0 - ndv, 5.0);
-    \\    float r = max(roughness, 0.06);
-    \\    float a2 = r * r * r * r;
-    \\    float dd = ndh * ndh * (a2 - 1.0) + 1.0;
-    \\    float ggx = a2 / (PI * dd * dd);
-    \\    float k = (r + 1.0) * (r + 1.0) / 8.0;
-    \\    float vis = (ndv / (ndv * (1.0 - k) + k)) * (ndl / (ndl * (1.0 - k) + k));
-    \\    vec3 diffuse = albedo * (1.0 - metallic * 0.25);
-    \\    vec3 direct = diffuse * wrap * 0.95 * sunColor * sh;
-    \\    vec3 skyIrr = env(vec3(0.0, 1.0, 0.0), 8.0);
-    \\    vec3 irr = max(mix(skyIrr * ambGround, skyIrr * ambSky, n.y * 0.5 + 0.5), vec3(0.16, 0.17, 0.2));
-    \\    float ao = mix(1.0, mix(0.62, 1.0, clamp(worldPos.y * 0.55 + 0.25, 0.0, 1.0)), 1.0 - abs(n.y));
-    \\    vec3 ambient = diffuse * irr * ao;
-    \\    vec3 col = direct + ambient;
-    \\    if (sheen > 0.0) {
-    \\        float sat = max(albedo.r, max(albedo.g, albedo.b)) - min(albedo.r, min(albedo.g, albedo.b));
-    \\        float luma = dot(albedo, vec3(0.299, 0.587, 0.114));
-    \\        float metalish = clamp((0.1 - sat) * 8.0, 0.0, 1.0) * clamp(1.2 - luma * 2.0, 0.0, 1.0);
-    \\        float gloss = clamp(1.0 - r + metalish * 0.35, 0.0, 1.0);
-    \\        float spec = pow(ndh, mix(12.0, 80.0, gloss)) * mix(0.05, 0.35, max(max(metallic, metalish), gloss * 0.6)) * ndl;
-    \\        float rim = pow(1.0 - ndv, 3.0) * 0.16 * (0.6 + 0.4 * n.y);
-    \\        col += (spec * sunColor * sh + rim * skyIrr) * sheen;
-    \\    }
-    \\    col *= mix(shadeTint, vec3(1.0), lit);
-    \\    col = mix(col, albedo * 2.5, glow);
+    \\    float tone = 0.86 + 0.14 * n.y + 0.05 * n.x - 0.03 * n.z;
+    \\    vec3 col = tint.rgb * colDiffuse.rgb * texel.rgb * tone;
     \\    float dist = length(viewPos - worldPos);
-    \\    float fog = 1.0 - exp(-max(dist - 70.0, 0.0) * fogDensity * 0.55);
-    \\    fog *= mix(0.55, 1.0, exp(-max(worldPos.y - 2.0, 0.0) * 0.02));
-    \\    fog = min(fog, 0.8);
-    \\    float sunward = pow(max(dot(-v, l), 0.0), 6.0);
-    \\    vec3 haze = fogColor * envScale * 0.55 + sunColor * sunward * 0.12;
-    \\    col = mix(col, haze, fog);
-    \\    if (any(isnan(col)) || any(isinf(col))) col = albedo * skyIrr;
-    \\    finalColor = vec4(grade(col), glassAlpha > 0.0 ? glassAlpha : 1.0);
+    \\    float fog = min(1.0 - exp(-max(dist - 60.0, 0.0) * fogDensity * 0.55), 0.85);
+    \\    col = mix(col, fogColor, fog);
+    \\    finalColor = vec4(col, glassAlpha > 0.0 ? glassAlpha : 1.0);
     \\}
 ;
 
-const lit_fs = lit_fs_head ++ common_fs ++ lit_fs_body;
+const lit_fs = lit_fs_head ++ lit_fs_body;
 
 const sky_vs =
     \\#version 330
@@ -651,6 +409,7 @@ pub const Renderer = struct {
     shadow_depth_far: c_uint = 0,
     light_vp_far: rl.Matrix = .{},
     cascades: u8 = if (assets.mobile) 1 else 2,
+    shadows_on: bool = true,
     fog_color: [3]f32 = .{ 0.62, 0.80, 0.96 },
     post: bool = false,
     ssao: bool = true,
@@ -907,7 +666,7 @@ pub const Renderer = struct {
 
         const post_on: f32 = if (r.in_post) 1 else 0;
         const far_unit = shadow_slot_far;
-        const cascades: f32 = @floatFromInt(r.cascades);
+        const cascades: f32 = if (r.shadows_on) @floatFromInt(r.cascades) else 0;
         const no_detail: f32 = 0;
 
         rl.SetShaderValue(sh, l.post, &post_on, rl.SHADER_UNIFORM_FLOAT);
@@ -921,6 +680,10 @@ pub const Renderer = struct {
 
         rl.SetShaderValue(sh, l.prism, &prism_on, rl.SHADER_UNIFORM_FLOAT);
 
+        const courtyard_on: f32 = if (shared.terrain.current == .courtyard) 1 else 0;
+
+        rl.SetShaderValue(sh, rl.GetShaderLocation(sh, "courtyard"), &courtyard_on, rl.SHADER_UNIFORM_FLOAT);
+
         const names = [_][:0]const u8{ "mtex0", "mtex1", "mtex2", "mtex3", "mtex4" };
 
         for (names, 0..) |name, i| {
@@ -929,7 +692,7 @@ pub const Renderer = struct {
             rlgl.rlSetUniform(rl.GetShaderLocation(sh, name.ptr), &unit, rl.SHADER_UNIFORM_INT, 1);
         }
 
-        const on: f32 = if (prism_on > 0.5) 0 else r.mat_on;
+        const on: f32 = if (prism_on > 0.5 or courtyard_on > 0.5) 0 else r.mat_on;
         const auto_id: f32 = -1;
 
         rl.SetShaderValue(sh, rl.GetShaderLocation(sh, "matOn"), &on, rl.SHADER_UNIFORM_FLOAT);
@@ -977,7 +740,7 @@ pub const Renderer = struct {
     pub fn setPropDetail(r: *Renderer, on: bool) void {
         if (r.phase == .shadow) return;
 
-        const v: f32 = if (on and shared.terrain.current != .prism) 4 else 0;
+        const v: f32 = if (on and shared.terrain.current != .prism and shared.terrain.current != .courtyard) 4 else 0;
 
         rl.SetShaderValue(r.lit_inst, rl.GetShaderLocation(r.lit_inst, "detail"), &v, rl.SHADER_UNIFORM_FLOAT);
     }
@@ -986,7 +749,7 @@ pub const Renderer = struct {
         if (r.phase == .shadow) return;
 
         const panel = shared.terrain.current == .facility;
-        const v: f32 = if (!on) 0 else if (shared.terrain.current == .prism) 3 else if (panel) 2 else 1;
+        const v: f32 = if (!on or shared.terrain.current == .courtyard) 0 else if (shared.terrain.current == .prism) 3 else if (panel) 2 else 1;
 
         rl.SetShaderValue(r.lit, r.locs.detail, &v, rl.SHADER_UNIFORM_FLOAT);
     }
@@ -1125,7 +888,7 @@ pub const Renderer = struct {
         const base: f64 = std.math.degreesToRadians(54.0);
         const hfov = 2 * std.math.atan(@tan(base / 2) * (16.0 / 9.0));
         const fovy = if (aspect < 16.0 / 9.0) 2 * std.math.atan(@tan(hfov / 2) / aspect) else base;
-        const near: f64 = 0.02;
+        const near: f64 = @max(0.02, vm_near);
         const top = near * @tan(fovy / 2);
         const right = top * aspect;
 
@@ -1148,6 +911,8 @@ pub const Renderer = struct {
 
         rl.SetShaderValue(r.lit, r.locs.prism, &flat, rl.SHADER_UNIFORM_FLOAT);
         rl.SetShaderValue(r.lit_inst, r.inst_locs.prism, &flat, rl.SHADER_UNIFORM_FLOAT);
+        rl.SetShaderValue(r.lit, rl.GetShaderLocation(r.lit, "courtyard"), &flat, rl.SHADER_UNIFORM_FLOAT);
+        rl.SetShaderValue(r.lit_inst, rl.GetShaderLocation(r.lit_inst, "courtyard"), &flat, rl.SHADER_UNIFORM_FLOAT);
 
         if (r.in_post) {
             r.fx.resolve();

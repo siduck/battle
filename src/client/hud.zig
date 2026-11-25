@@ -76,14 +76,15 @@ fn scope(g: Game, w: f32, h: f32, u: f32) void {
     const cx = w / 2;
     const cy = h / 2;
     const settle = std.math.clamp((g.ads - 0.85) / 0.15, 0, 1);
-    const lens = @import("render.zig").lens_px;
-    const r = if (lens > 1) @min(lens * 0.94, h * 0.48) else h * (0.62 - 0.17 * settle);
+    const r = h * (0.62 - 0.17 * settle);
     const c = v2(cx, cy);
     const black = ui.rgba(6, 7, 10, 255);
     const ink = ui.rgba(10, 10, 12, 235);
     var k: f32 = 0;
 
-    rl.DrawRing(c, r, w, 0, 360, 128, black);
+    rl.DrawRing(c, r * 1.07, w, 0, 360, 128, ui.fade(black, 0.86));
+    rl.DrawRing(c, r, r * 1.07, 0, 360, 128, ui.rgba(34, 36, 40, 255));
+    rl.DrawRing(c, r * 1.055, r * 1.07, 0, 360, 128, ui.rgba(70, 74, 80, 255));
 
     while (k < 14) : (k += 1) {
         const t = k / 14;
@@ -93,6 +94,19 @@ fn scope(g: Game, w: f32, h: f32, u: f32) void {
 
     rl.DrawCircleV(c, r, ui.rgba(40, 90, 80, 10));
     rl.DrawRing(c, r * 0.9, r * 0.93, 200, 245, 40, ui.rgba(255, 255, 255, 28));
+
+    if (g.currentZoom() < 2.5) {
+        const ink2 = ui.rgba(14, 14, 16, 230);
+
+        rl.DrawLineEx(v2(cx - r, cy), v2(cx - 10 * u, cy), 2 * u, ink2);
+        rl.DrawLineEx(v2(cx + 10 * u, cy), v2(cx + r, cy), 2 * u, ink2);
+        rl.DrawLineEx(v2(cx, cy + 10 * u), v2(cx, cy + r), 2 * u, ink2);
+        rl.DrawCircleV(c, 2.6 * u, ui.rgba(255, 50, 40, 255));
+        rl.DrawCircleV(c, 5 * u, ui.rgba(255, 50, 40, 60));
+        ui.text(font_ref, "2x", cx + r * 0.55, cy + r * 0.62, 26 * u, ui.fade(ui.white, 0.85));
+
+        return;
+    }
 
     const post = 5 * u;
     const thin = 1.6 * u;
@@ -120,7 +134,7 @@ fn scope(g: Game, w: f32, h: f32, u: f32) void {
     rl.DrawCircleV(c, 5 * u, ui.rgba(255, 40, 40, 60));
 
     var buf: [24]u8 = undefined;
-    const level = print(&buf, "{d:.0}x", .{g.arsenal.spec().ads_zoom * g.scopeMultiplier()});
+    const level = print(&buf, "{d:.0}x", .{g.currentZoom()});
 
     ui.text(font_ref, level, cx + r * 0.55, cy + r * 0.62, 26 * u, ui.fade(ui.white, 0.85));
 

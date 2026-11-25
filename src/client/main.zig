@@ -47,6 +47,20 @@ fn parseVec(text: []const u8) shared.math.Vec3 {
     return .{ .x = out[0], .y = out[1], .z = out[2] };
 }
 
+fn parse4(text: []const u8, fallback: [4]f32) [4]f32 {
+    var out = fallback;
+    var it = std.mem.splitScalar(u8, text, ',');
+    var i: usize = 0;
+
+    while (it.next()) |part| : (i += 1) {
+        if (i >= 4) break;
+
+        out[i] = std.fmt.parseFloat(f32, part) catch out[i];
+    }
+
+    return out;
+}
+
 fn loadFont(data: []const u8) rl.Font {
     var font = rl.LoadFontFromMemory(".ttf", data.ptr, @intCast(data.len), 96, null, 0);
 
@@ -101,6 +115,8 @@ const Pad = struct {
     fire_held: bool = false,
     aim_held: bool = false,
     x_held: f32 = 0,
+    y_held: f32 = 0,
+    y_used: bool = false,
     x_used: bool = false,
     edge_time: f32 = 0,
     active: bool = false,
@@ -210,6 +226,25 @@ fn readPad(p: *Pad, dt: f32, knife_active: bool, scoped: bool) Frame {
         p.x_used = false;
     }
 
+    var enter = false;
+    var reset = false;
+
+    if (in_car and p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_UP)) {
+        p.y_held += dt;
+
+        if (p.y_held >= 0.7 and !p.y_used) {
+            reset = true;
+            p.y_used = true;
+        }
+    } else {
+        if (in_car and p.y_held > 0 and !p.y_used) enter = true;
+
+        p.y_held = 0;
+        p.y_used = false;
+    }
+
+    if (!in_car and p.pressed(rl.GAMEPAD_BUTTON_RIGHT_FACE_UP)) enter = true;
+
     var cycle: i32 = 0;
 
     if (p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) cycle = 1;
@@ -245,7 +280,8 @@ fn readPad(p: *Pad, dt: f32, knife_active: bool, scoped: bool) Frame {
             .boost = in_car and (p.down(rl.GAMEPAD_BUTTON_LEFT_THUMB) or p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)),
             .throw_gun = !scoped and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN),
             .fireball = p.down(rl.GAMEPAD_BUTTON_RIGHT_THUMB),
-            .enter = p.pressed(rl.GAMEPAD_BUTTON_RIGHT_FACE_UP),
+            .enter = enter,
+            .reset = reset,
         },
         .look = look,
         .aim_started = aim_started,
@@ -276,6 +312,7 @@ fn merge(a: Controls, b: Controls) Controls {
         .throw_gun = a.throw_gun or b.throw_gun,
         .fireball = a.fireball or b.fireball,
         .enter = a.enter or b.enter,
+        .reset = a.reset or b.reset,
     };
 }
 
@@ -475,12 +512,34 @@ fn applyLive() void {
 }
 
 var prism_glow: gfx.Glow = .{};
+var auto_scale: f32 = 1;
+var slow_time: f32 = 0;
+var fast_time: f32 = 0;
+
+fn sceneScale() f32 {
+    return settings.render_scale * auto_scale;
+}
+
+fn adaptScale(dt: f32) void {
+    if (!assets.mobile) return;
+
+    if (dt > 1.0 / 40.0) slow_time += dt else slow_time = 0;
+    if (dt < 1.0 / 57.0) fast_time += dt else fast_time = 0;
+
+    if (slow_time > 1.5 and auto_scale > 0.55) {
+        auto_scale = @max(0.5, auto_scale - 0.1);
+        slow_time = 0;
+    } else if (fast_time > 8 and auto_scale < 1) {
+        auto_scale = @min(1, auto_scale + 0.1);
+        fast_time = 0;
+    }
+}
 
 fn sceneTarget() ?rl.RenderTexture2D {
-    if (settings.render_scale >= 0.99 and shared.terrain.current != .prism) return null;
+    if (sceneScale() >= 0.99 and shared.terrain.current != .prism) return null;
 
-    const w: c_int = @intFromFloat(@max(64, @as(f32, @floatFromInt(rl.GetScreenWidth())) * settings.render_scale));
-    const h: c_int = @intFromFloat(@max(64, @as(f32, @floatFromInt(rl.GetScreenHeight())) * settings.render_scale));
+    const w: c_int = @intFromFloat(@max(64, @as(f32, @floatFromInt(rl.GetScreenWidth())) * sceneScale()));
+    const h: c_int = @intFromFloat(@max(64, @as(f32, @floatFromInt(rl.GetScreenHeight())) * sceneScale()));
 
     if (scene_rt) |rt| {
         if (rt.texture.width == w and rt.texture.height == h) return rt;
@@ -637,9 +696,7 @@ pub fn main() void {
     const sky_path = assets.file(&sky_buf, "sky/sky.hdr");
     var renderer = gfx.Renderer.init(sky_path, models.sky);
 
-    var mat_buf: [1024]u8 = undefined;
 
-    if (!assets.mobile and std.c.getenv("DF_NOMAT") == null) renderer.loadMaterials(assets.dir(&mat_buf, "textures"));
 
     if (shared.terrain.current == .facility) {
         const mag = (renderer.sun_color[0] + renderer.sun_color[1] + renderer.sun_color[2]) / 3;
@@ -651,9 +708,9 @@ pub fn main() void {
         renderer.grade_sat = 1.1;
         renderer.fog = 0.0014;
         renderer.fog_color = .{ 0.72, 0.78, 0.84 };
-        renderer.amb_sky = .{ 1.08, 1.06, 1.04 };
-        renderer.amb_ground = .{ 0.98, 0.9, 0.8 };
-        renderer.shade_tint = .{ 0.98, 0.98, 1.0 };
+        renderer.amb_sky = .{ 1.22, 1.2, 1.16 };
+        renderer.amb_ground = .{ 1.18, 1.1, 0.98 };
+        renderer.shade_tint = .{ 1.02, 1.0, 0.97 };
         renderer.zenith = .{ 0.06, 0.24, 0.6 };
     }
 
@@ -712,6 +769,21 @@ pub fn main() void {
         renderer.exposure = 0.78;
     }
 
+    if (shared.terrain.current == .courtyard) {
+        const mag = (renderer.sun_color[0] + renderer.sun_color[1] + renderer.sun_color[2]) / 3;
+
+        renderer.sun_dir = (shared.math.Vec3{ .x = 0.7, .y = 0.62, .z = 0.35 }).normalize();
+        renderer.sun_color = .{ mag * 1.12, mag * 1.02, mag * 0.9 };
+        renderer.grade_tint = .{ 1.02, 1, 0.97 };
+        renderer.grade_sat = 1.08;
+        renderer.fog = 0.0018;
+        renderer.fog_color = .{ 0.78, 0.86, 0.96 };
+        renderer.amb_sky = .{ 1.3, 1.3, 1.38 };
+        renderer.amb_ground = .{ 1.3, 1.14, 0.98 };
+        renderer.shade_tint = .{ 1.0, 0.98, 1.02 };
+        renderer.zenith = .{ 0.08, 0.32, 0.74 };
+    }
+
     if (shared.terrain.current == .desert) {
         const mag = (renderer.sun_color[0] + renderer.sun_color[1] + renderer.sun_color[2]) / 3;
 
@@ -720,7 +792,7 @@ pub fn main() void {
         renderer.grade_tint = .{ 1.05, 1, 0.92 };
         renderer.grade_sat = 1.18;
         renderer.fog = 0.0042;
-        renderer.fog_color = .{ 0.82, 0.82, 0.82 };
+        renderer.fog_color = .{ 0.86, 0.84, 0.78 };
         renderer.amb_sky = .{ 0.95, 1, 1.18 };
         renderer.amb_ground = .{ 0.88, 0.7, 0.52 };
         renderer.shade_tint = .{ 0.9, 0.92, 1.05 };
@@ -768,6 +840,8 @@ pub fn main() void {
     if (std.c.getenv("DF_LOFF")) |t| render.l_off = parseVec(std.mem.sliceTo(t, 0));
     if (std.c.getenv("DF_VMREACH")) |t| render.vm_reach = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
     if (std.c.getenv("DF_SHARP")) |t| gfx.sharpen_amount = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch gfx.sharpen_amount;
+    if (std.c.getenv("DF_ADSR")) |t| render.ads_r = parse4(std.mem.sliceTo(t, 0), render.ads_r);
+    if (std.c.getenv("DF_ADSL")) |t| render.ads_l = parse4(std.mem.sliceTo(t, 0), render.ads_l);
     if (std.c.getenv("DF_VMDOWN")) |t| render.vm_down = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
     if (std.c.getenv("DF_LROLL")) |t| render.l_roll = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
     if (std.c.getenv("DF_LROLLFAR")) |t| render.l_roll_far = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
@@ -782,12 +856,12 @@ pub fn main() void {
 
     render.clean_shot = std.c.getenv("DF_NOHUD") != null;
 
+    driving.vtest = std.c.getenv("DF_VTEST") != null;
     if (std.c.getenv("DF_DRIVE")) |pick| driving.start(&game, std.fmt.parseInt(usize, std.mem.sliceTo(pick, 0), 10) catch 0);
 
     if (std.c.getenv("DF_FLY")) |pick| air.start(&game, std.fmt.parseInt(usize, std.mem.sliceTo(pick, 0), 10) catch 0);
 
     driving.autodrive = std.c.getenv("DF_AUTODRIVE") != null;
-    driving.vtest = std.c.getenv("DF_VTEST") != null;
     air.autofly = std.c.getenv("DF_AUTOFLY") != null;
     air.autofire = std.c.getenv("DF_AUTOFIRE") != null;
     driving.autoboost = std.c.getenv("DF_AUTOBOOST") != null;
@@ -1012,7 +1086,9 @@ pub fn main() void {
         const now = if (air.flying()) air.smooth(game.view(), frame_dt) else if (driving.driving()) driving.smooth(game.view(), frame_dt) else game.view();
         const cam = render.camera(game, now);
 
-        if (settings.shadows > 0 and shared.terrain.current != .prism and shared.terrain.current != .facility) {
+        renderer.shadows_on = settings.shadows > 0 and shared.terrain.current != .prism and shared.terrain.current != .courtyard and shared.terrain.current != .facility;
+
+        if (settings.shadows > 0 and shared.terrain.current != .prism and shared.terrain.current != .courtyard and shared.terrain.current != .facility) {
             shadows_cleared = false;
 
             for (0..renderer.cascades) |cascade| {
@@ -1029,9 +1105,10 @@ pub fn main() void {
             }
         }
 
-        renderer.render_scale = settings.render_scale;
-        renderer.post = !assets.mobile and settings.effects > 0 and shared.terrain.current != .prism and std.c.getenv("DF_NOFX") == null;
-        renderer.ssao = settings.effects >= 2 and std.c.getenv("DF_NOAO") == null;
+        adaptScale(frame_dt);
+        renderer.render_scale = sceneScale();
+        renderer.post = false;
+        renderer.ssao = false;
         renderer.fxaa = false;
         renderer.fx.samples = if (settings.msaa and std.c.getenv("DF_NOMSAA") == null) 4 else 0;
 

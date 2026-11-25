@@ -2,6 +2,8 @@ const std = @import("std");
 const math = @import("math.zig");
 const map = @import("map.zig");
 const terrain = @import("terrain.zig");
+const world = @import("world.zig");
+const props = @import("props.zig");
 
 const Vec3 = math.Vec3;
 
@@ -128,6 +130,8 @@ pub const Vehicle = struct {
     body_roll: f32 = 0,
     body_roll_v: f32 = 0,
     paved: bool = true,
+    tilt_time: f32 = 0,
+    righting: f32 = 0,
 
     pub fn hasNitro(v: Vehicle) bool {
         return v.spec().class != .cycle and v.spec().class != .tank;
@@ -278,6 +282,37 @@ pub fn massOf(v: Vehicle) f32 {
     return mass(v.spec());
 }
 
+fn massive(file: []const u8) bool {
+    return std.mem.indexOf(u8, file, "mesa") != null;
+}
+
+fn insideMassive(p: Vec3, r: f32) bool {
+    for (world.placements) |pl| {
+        const info = props.info(pl.kind);
+
+        if (info.collide != .none or !massive(info.file)) continue;
+
+        const s = pl.scale * 0.85;
+        const ex = @max(@abs(info.min[0]), @abs(info.max[0])) * s + r;
+        const ez = @max(@abs(info.min[2]), @abs(info.max[2])) * s + r;
+        const dx = p.x - pl.pos.x;
+        const dz = p.z - pl.pos.z;
+
+        if (dx * dx + dz * dz > ex * ex + ez * ez) continue;
+
+        if (p.y > pl.pos.y + info.max[1] * pl.scale * 0.5) continue;
+
+        const c = @cos(pl.yaw);
+        const sn = @sin(pl.yaw);
+        const lx = dx * c - dz * sn;
+        const lz = dx * sn + dz * c;
+
+        if (lx > info.min[0] * s - r and lx < info.max[0] * s + r and lz > info.min[2] * s - r and lz < info.max[2] * s + r) return true;
+    }
+
+    return false;
+}
+
 fn hull(pieces: []const map.Piece, v: Vehicle, at: Vec3, dir_sign: f32) bool {
     const s = v.spec();
     const climb = climbLimit(s);
@@ -288,6 +323,8 @@ fn hull(pieces: []const map.Piece, v: Vehicle, at: Vec3, dir_sign: f32) bool {
     const half = @max(s.length * 0.5 - r, 0);
 
     if (blocked(pieces, at, r, climb, h)) return true;
+
+    if (insideMassive(at, r) and !insideMassive(v.pos, r)) return true;
 
     const lead = at.add(fwd.scale(half * dir_sign));
 
@@ -303,6 +340,8 @@ fn hull(pieces: []const map.Piece, v: Vehicle, at: Vec3, dir_sign: f32) bool {
 }
 
 pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void {
+    if (rightingStep(v, pieces, dt)) return;
+
     const s = v.spec();
     const two = s.class != .car and s.class != .tank;
     const tank = s.class == .tank;
@@ -388,7 +427,7 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
         if (handbrake) target_rate *= 1.7;
     }
 
-    const yaw_response: f32 = if (!v.grounded) 0.5 else if (handbrake) 3 else if (two) 7 else 9;
+    const yaw_response: f32 = if (!v.grounded) 3 else if (handbrake) 3 else if (two) 7 else 9;
 
     v.yaw_rate += (target_rate - v.yaw_rate) * @min(1, dt * yaw_response);
 
@@ -407,7 +446,8 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
 
     if (v.grounded) {
         const counter = v.side * v.steer < 0;
-        const lat_grip: f32 = if (tank) 60 else if (handbrake) lat_max * 0.22 else if (counter) lat_max * 1.3 else lat_max;
+        const base_grip = if (two) lat_max * 1.5 else lat_max;
+        const lat_grip: f32 = if (tank) 60 else if (handbrake) lat_max * 0.22 else if (counter) base_grip * 1.3 else base_grip;
         const slide = @abs(v.side);
 
         v.side = math.approach(v.side, 0, lat_grip * dt);
@@ -439,11 +479,11 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
         if (@abs(part.x) > 1e-5 and !hull(pieces, v.*, only_x, dir_sign)) {
             v.pos.x = only_x.x;
             normal_speed = @max(normal_speed, @abs(vel.z));
-            slideAlong(v, .{ .x = vel.x }, fwd, right);
+            slideAlong(v, .{ .x = vel.x }, fwd, right, dt);
         } else if (@abs(part.z) > 1e-5 and !hull(pieces, v.*, only_z, dir_sign)) {
             v.pos.z = only_z.z;
             normal_speed = @max(normal_speed, @abs(vel.x));
-            slideAlong(v, .{ .z = vel.z }, fwd, right);
+            slideAlong(v, .{ .z = vel.z }, fwd, right, dt);
         } else {
             normal_speed = @max(normal_speed, vel.length());
             stopped = true;
@@ -461,7 +501,7 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
         hit(v, normal_speed * dir_sign * 0.6, v.side);
     }
 
-    if (v.grounded) long_accel = (v.speed - before) / dt;
+    if (v.grounded and !stopped) long_accel = (v.speed - before) / dt;
 
     const lat_accel = v.speed * v.yaw_rate;
     const bound = terrain.play - 2;
@@ -481,7 +521,7 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
             v.pos.y = ground;
             v.vy = 0;
 
-            if (rise > 0.05) v.body_pitch_v += rise * 1.5 * std.math.sign(v.speed);
+            if (rise > 0.05) v.body_pitch_v += @min(rise, 0.3) * 1.5 * std.math.sign(v.speed);
         } else if (v.pos.y - ground < 0.08 + @abs(v.speed) * 0.006) {
             v.pos.y = ground;
             v.vy = 0;
@@ -530,6 +570,8 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
     v.body_pitch += v.body_pitch_v * dt;
     v.body_roll_v += ((roll_target - v.body_roll) * k - v.body_roll_v * c) * dt;
     v.body_roll += v.body_roll_v * dt;
+    v.body_pitch = std.math.clamp(v.body_pitch, -0.15, 0.15);
+    v.body_roll = std.math.clamp(v.body_roll, -0.12, 0.12);
 
     const target_lean = if (two) std.math.clamp(-std.math.atan2(lat_accel, gravity), -0.75, 0.75) else 0;
 
@@ -539,9 +581,16 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
 
     const wobble = @sin(v.impact * 38) * v.impact * 0.5;
 
-    v.pitch = v.ground_pitch + v.body_pitch + v.jolt * (1 + wobble);
+    v.pitch = std.math.clamp(v.ground_pitch + v.body_pitch + v.jolt * (1 + wobble), -0.75, 0.75);
     v.roll = v.ground_roll + v.body_roll + v.jolt_roll * (1 - wobble);
     v.lean += (target_lean - v.lean) * @min(1, dt * 7);
+
+    const tilted = @abs(v.pitch) > 0.45 or @abs(v.roll + v.lean) > 0.6;
+    const slow = @abs(v.speed) < 0.6 and @abs(v.side) < 0.6;
+
+    v.tilt_time = if (tilted and slow and v.grounded) v.tilt_time + dt else 0;
+
+    if (v.tilt_time > 2) reset(v);
     v.spin += v.speed * dt / @max(s.wheel, 0.1);
 }
 
@@ -554,12 +603,21 @@ fn brakeDecel(s: Spec) f32 {
     };
 }
 
-fn slideAlong(v: *Vehicle, kept: Vec3, fwd: Vec3, right: Vec3) void {
-    const scrub: f32 = 0.85;
+fn slideAlong(v: *Vehicle, kept: Vec3, fwd: Vec3, right: Vec3, dt: f32) void {
+    const scrub = 1 - dt * 1.5;
+    const mag = @sqrt(kept.x * kept.x + kept.z * kept.z);
 
     v.speed = kept.dot(fwd) * scrub;
     v.side = kept.dot(right) * scrub;
-    v.yaw_rate *= 0.6;
+    v.yaw_rate *= 1 - dt * 6;
+
+    if (mag > 1.5) {
+        const dir = if (kept.dot(fwd) >= 0) kept else kept.scale(-1);
+        const want = std.math.atan2(dir.x, dir.z);
+        const diff = std.math.atan2(@sin(want - v.yaw), @cos(want - v.yaw));
+
+        v.yaw += diff * @min(1, dt * 4);
+    }
 }
 
 pub fn hit(v: *Vehicle, speed: f32, side: f32) void {
@@ -598,6 +656,52 @@ pub fn settle(v: *Vehicle, pieces: []const map.Piece) void {
     v.grounded = true;
     v.vy = 0;
     v.prev = v.pos;
+}
+
+pub fn reset(v: *Vehicle) void {
+    if (v.righting > 0) return;
+
+    v.righting = 0.6;
+    v.speed = 0;
+    v.side = 0;
+    v.yaw_rate = 0;
+    v.vy = 0;
+    v.tilt_time = 0;
+}
+
+fn rightingStep(v: *Vehicle, pieces: []const map.Piece, dt: f32) bool {
+    if (v.righting <= 0) return false;
+
+    v.righting = @max(0, v.righting - dt);
+
+    const k = @min(1, dt * 9);
+
+    v.prev = v.pos;
+    v.speed = 0;
+    v.side = 0;
+    v.yaw_rate = 0;
+    v.ground_pitch += (0 - v.ground_pitch) * k;
+    v.ground_roll += (0 - v.ground_roll) * k;
+    v.body_pitch = 0;
+    v.body_roll = 0;
+    v.body_pitch_v = 0;
+    v.body_roll_v = 0;
+    v.jolt = 0;
+    v.jolt_roll = 0;
+    v.pitch = v.ground_pitch;
+    v.roll = v.ground_roll;
+    v.lean += (0 - v.lean) * k;
+
+    const touch = contact(pieces, v.*, v.pos);
+
+    v.pos.y += (touch.y + 0.6 * (v.righting / 0.6) - v.pos.y) * k;
+
+    if (v.righting <= 0) {
+        v.grounded = false;
+        v.vy = 0;
+    }
+
+    return true;
 }
 
 pub fn spawn(kind: u8, pos: Vec3, yaw: f32) Vehicle {

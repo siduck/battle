@@ -76,7 +76,6 @@ fn lensFree(i: usize, m: rl.Model) rl.Model {
 }
 
 const reliefs = [_]f32{ 0.2, 0.2, 0.11, 0.095, 0.085 };
-const lens_radius = [_]f32{ 0.014, 0.016, 0.0135, 0.018, 0.021 };
 
 pub fn eyepiece(o: Mount) f32 {
     return o.z + optic_info[o.kind].length * o.scale / 2;
@@ -86,13 +85,7 @@ pub fn relief(o: Mount) f32 {
     return reliefs[o.kind];
 }
 
-pub fn lensRadius(o: Mount) f32 {
-    return lens_radius[o.kind] * o.scale;
-}
 
-pub fn magnified(o: Mount) bool {
-    return o.kind >= 2;
-}
 pub const none: usize = 255;
 
 fn opticKind(o: weapons.Optic) usize {
@@ -185,6 +178,15 @@ fn fitOptic(body: rl.Model, box: rl.BoundingBox, spec: weapons.Spec) ?Mount {
     }
 
     return .{ .kind = kind, .y = base - 0.002, .z = z, .scale = scale, .eye = base - 0.002 + info.eye * scale };
+}
+
+fn fallbackOptic(box: rl.BoundingBox, spec: weapons.Spec) Mount {
+    const len = box.max.z - box.min.z;
+    const kind = opticKind(spec.look.optic);
+    const scale: f32 = std.math.clamp(len / 0.72, 0.55, 1.15);
+    const y = box.max.y - (box.max.y - box.min.y) * 0.08;
+
+    return .{ .kind = kind, .y = y, .z = box.min.z + len * 0.55, .scale = scale, .eye = y + optic_info[kind].eye * scale };
 }
 
 const Plan = struct {
@@ -482,7 +484,7 @@ pub fn loadAll(dir: []const u8) [weapons.count]Art {
             const spec = weapons.specs[wi];
             const skip = art.blade or art.tips != null or spec.class == .bow or spec.class == .crossbow or spec.class == .melee or spec.flame;
 
-            if (!skip and art.box != null) art.optic = fitOptic(body, art.box.?, spec);
+            if (!skip and art.box != null) art.optic = fitOptic(body, art.box.?, spec) orelse fallbackOptic(art.box.?, spec);
             mesh.smoothModel(body, 38);
             mesh.dropCpu(body);
         }

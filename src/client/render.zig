@@ -164,7 +164,7 @@ fn swordPose(g: Game, v: View) Pose {
 }
 
 fn gunPose(g: Game, v: View, top: ?f32) ?Pose {
-    if (g.dead > 0) return null;
+    if (g.scoped() or g.dead > 0) return null;
 
     if (g.arsenal.spec().class == .melee) return swordPose(g, v);
 
@@ -263,7 +263,6 @@ pub var vm_reach: f32 = 0;
 pub var scope_eyepiece: ?f32 = null;
 var optic_see_through = false;
 pub var scope_relief: f32 = 0.1;
-pub var lens_px: f32 = 0;
 pub var vm_down: f32 = 0;
 pub var l_roll: f32 = 0;
 pub var melee_tilt: f32 = -1.57;
@@ -328,9 +327,31 @@ pub fn drawGun(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.co
     drawOptic(r, art, origin, basis, s);
 }
 
+fn adsGloves(r: *gfx.Renderer, models: *const Models, v: View, pose: Pose, pistol: bool) void {
+    const down = v.up.neg();
+    const gr = if (pistol)
+        v.eye.add(v.forward.scale(ads_r[0])).add(down.scale(ads_r[1] + 0.01)).add(v.right.scale(0.0))
+    else
+        v.eye.add(v.forward.scale(ads_r[0])).add(down.scale(ads_r[1])).add(v.right.scale(ads_r[2]));
+    const er = gr.add(down.scale(0.3)).add(v.forward.scale(-0.12)).add(v.right.scale(0.12));
+
+    limb(r, models.block_sleeve, gr.add(er.sub(gr).normalize().scale(0.03)), er, 0.04);
+    r.draw(models.block_glove, mesh.transform(gr, pose.basis, ads_r[3]), false);
+
+    if (pistol) return;
+
+    const gl = v.eye.add(v.forward.scale(ads_l[0])).add(down.scale(ads_l[1])).add(v.right.scale(ads_l[2]));
+    const el = gl.add(down.scale(0.4)).add(v.forward.scale(-0.1)).add(v.right.scale(-0.14));
+
+    limb(r, models.block_sleeve, gl.add(el.sub(gl).normalize().scale(0.03)), el, 0.042);
+    r.draw(models.block_glove, mesh.transform(gl, pose.basis, ads_l[3]), false);
+}
+
+pub var ads_r = [4]f32{ 0.22, 0.1, 0.04, 0.8 };
+pub var ads_l = [4]f32{ 0.32, 0.12, -0.085, 0.85 };
+
 fn scopeSetup(art: gunart.Art) void {
     scope_eyepiece = null;
-    lens_px = 0;
 
     const o = art.optic orelse return;
 
@@ -338,15 +359,6 @@ fn scopeSetup(art: gunart.Art) void {
 
     scope_eyepiece = gunart.eyepiece(o);
     scope_relief = gunart.relief(o);
-
-    const h: f32 = @floatFromInt(@max(1, rl.GetScreenHeight()));
-    const w: f32 = @floatFromInt(@max(1, rl.GetScreenWidth()));
-    const aspect = w / h;
-    const base = std.math.degreesToRadians(@as(f32, 54));
-    const hfov = 2 * std.math.atan(@tan(base / 2) * (16.0 / 9.0));
-    const fovy = if (aspect < 16.0 / 9.0) 2 * std.math.atan(@tan(hfov / 2) / aspect) else base;
-
-    lens_px = if (gunart.magnified(o)) gunart.lensRadius(o) / scope_relief / @tan(fovy / 2) * h / 2 else 0;
 }
 
 fn drawOptic(r: *gfx.Renderer, art: gunart.Art, origin: Vec3, basis: Basis, s: f32) void {
@@ -506,18 +518,14 @@ fn arms(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.count]gun
 
         r.setSurface(.{ .roughness = 0.9 });
 
-        if (gr.sub(v.eye).dot(v.forward) > 0.09) {
-            limb(r, models.block_sleeve, gr.add(er.sub(gr).normalize().scale(0.05)), er, 0.06);
-            r.draw(models.block_glove, mesh.transform(gr, pose.basis, kb * 1.2), false);
+        if (g.ads > 0.3 and spec.class != .melee and spec.class != .crossbow) {
+            adsGloves(r, models, v, pose, spec.class == .pistol);
+
+            return;
         }
 
-        if (g.ads > 0.3 and spec.class != .pistol and spec.class != .melee and spec.class != .crossbow) {
-            const gl = at(left_hand, pose.basis, .{ .y = -0.025 }).add(down.scale(0.035));
-            const el = gl.add(down.scale(0.6)).add(pose.basis.z.scale(0.2)).add(v.right.scale(-0.04));
-
-            limb(r, models.block_sleeve, gl.add(el.sub(gl).normalize().scale(0.04)), el, 0.048);
-            r.draw(models.block_glove, mesh.transform(gl, pose.basis, kb), false);
-        }
+        limb(r, models.block_sleeve, gr.add(er.sub(gr).normalize().scale(0.05)), er, 0.06);
+        r.draw(models.block_glove, mesh.transform(gr, pose.basis, kb * 1.2), false);
 
         return;
     }
@@ -633,6 +641,10 @@ fn dust(eye: Vec3, t: f32) void {
 }
 
 fn indoors(eye: Vec3) bool {
+    for (shared.world.hangar_zones[0..shared.world.hangar_count]) |h| {
+        if (@abs(eye.x - h[0]) < 13.6 and @abs(eye.z - h[1]) < 9.4 and eye.y < h[2] + 9.5) return true;
+    }
+
     return shared.terrain.current == .facility and @abs(eye.x) < 56 and @abs(eye.z) < 44 and eye.y < 17;
 }
 
@@ -649,7 +661,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
 
     if (shared.terrain.current == .facility) r.setDetailMode(1);
 
-    drawChunks(r, v);
+    if (shared.terrain.current != .courtyard) drawChunks(r, v);
     r.setDetail(false);
     r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
     r.setPropDetail(true);
@@ -761,6 +773,8 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     const sight_top: ?f32 = if (held_art.optic) |o| o.eye - sightHeight(g.arsenal.spec()) else if (held_art.body != null) held_art.top else null;
 
     scopeSetup(held_art);
+    gfx.vm_near = if (scope_eyepiece != null) 0.02 + @max(0, scope_relief - 0.05) * math.clamp01((g.ads - 0.4) / 0.4) else 0.02;
+    r.viewmodelProjection();
 
     if (gunPose(g, v, sight_top)) |pose| {
         const a = g.arsenal;

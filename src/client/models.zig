@@ -213,12 +213,51 @@ fn faceMix(a: palette.Rgb, c: palette.Rgb, e: palette.Rgb) palette.Rgb {
     return out;
 }
 
+fn smoothNormal(x: f32, z: f32, e: f32) Vec3 {
+    const t = shared.terrain;
+    const dx = t.height(x + e, z) - t.height(x - e, z);
+    const dz = t.height(x, z + e) - t.height(x, z - e);
+
+    return (Vec3{ .x = -dx, .y = 2 * e, .z = -dz }).normalize();
+}
+
+fn smoothCorner(x: f32, z: f32) palette.Rgb {
+    return grounded(groundColor(x, z), x, z, 0);
+}
+
+fn smoothTerrain() bool {
+    return switch (shared.terrain.current) {
+        .desert, .valley, .islands, .conquest, .facility => true,
+        else => false,
+    };
+}
+
 fn terrainCell(b: *Builder, x: f32, z: f32, cell: f32) void {
     const t = shared.terrain;
     const p00 = vec(x, t.height(x, z), z);
     const p10 = vec(x + cell, t.height(x + cell, z), z);
     const p01 = vec(x, t.height(x, z + cell), z + cell);
     const p11 = vec(x + cell, t.height(x + cell, z + cell), z + cell);
+
+    if (smoothTerrain()) {
+        const e = @max(cell * 0.8, 1.2);
+        const n00 = smoothNormal(x, z, e);
+        const n10 = smoothNormal(x + cell, z, e);
+        const n01 = smoothNormal(x, z + cell, e);
+        const n11 = smoothNormal(x + cell, z + cell, e);
+        const c00 = smoothCorner(x, z);
+        const c10 = smoothCorner(x + cell, z);
+        const c01 = smoothCorner(x, z + cell);
+        const c11 = smoothCorner(x + cell, z + cell);
+        const low = t.void_floor + 1;
+        const skip_low = t.current == .islands or t.current == .valley;
+
+        if (!skip_low or (p00.y > low and p01.y > low and p11.y > low)) b.smoothTri(.{ p00, p01, p11 }, .{ n00, n01, n11 }, .{ c00, c01, c11 });
+
+        if (!skip_low or (p00.y > low and p11.y > low and p10.y > low)) b.smoothTri(.{ p00, p11, p10 }, .{ n00, n11, n10 }, .{ c00, c11, c10 });
+
+        return;
+    }
 
     if (t.current == .islands or t.current == .valley) {
         const low = t.void_floor + 1;
@@ -518,9 +557,9 @@ fn desertColor(x: f32, z: f32) palette.Rgb {
     if (town_k > 0) {
         const street = mix3(.{ 200, 180, 140 }, .{ 196, 160, 108 }, t.smooth(4.5, 2.0, lane));
 
-        if (town_k >= 1) return shade(street, light);
+        if (town_k >= 1) return shade(sandPatches(street, x, z, 0.6), light);
 
-        return shade(mix3(sand, street, town_k), light);
+        return shade(sandPatches(mix3(sand, street, town_k), x, z, 0.8), light);
     }
 
     if (od < 13 and h > water_level - 0.2) return shade(.{ 150, 156, 104 }, light);
@@ -530,7 +569,20 @@ fn desertColor(x: f32, z: f32) palette.Rgb {
     const rock = strata[level];
     const ground = mix3(sand, rock, t.smooth(0.4, 0.62, slope));
 
-    return shade(mix3(.{ 206, 150, 92 }, ground, t.smooth(13, 24, od)), light);
+    return shade(sandPatches(mix3(.{ 206, 150, 92 }, ground, t.smooth(13, 24, od)), x, z, 1 - t.smooth(0.3, 0.55, slope)), light);
+}
+
+fn sandPatches(c: [3]f32, x: f32, z: f32, amount: f32) [3]f32 {
+    const t = shared.terrain;
+    const p = t.fbm(x * 0.028 + 17, z * 0.028 - 5);
+    const q = t.fbm(x * 0.11 - 3, z * 0.11 + 9);
+    const warm = t.smooth(0.5, 0.64, p) * amount;
+    const pale = t.smooth(0.46, 0.34, p) * amount;
+    const a = mix3(c, .{ 186, 150, 106 }, warm * 0.9);
+    const b2 = mix3(a, .{ 230, 216, 182 }, pale * 0.8);
+    const k = 0.94 + q * 0.12;
+
+    return .{ b2[0] * k, b2[1] * k, b2[2] * k };
 }
 
 var water_level: f32 = 0;
@@ -711,6 +763,7 @@ pub fn groundColor(x: f32, z: f32) palette.Rgb {
         .facility => return facilityColor(x, z),
         .conquest => return conquestColor(x, z),
         .prism => return prismColor(x, z),
+        .courtyard => return .{ 228, 228, 224 },
     }
 
     const n = t.normal(x, z);
@@ -738,6 +791,13 @@ pub fn groundColor(x: f32, z: f32) palette.Rgb {
 fn buildWorld() rl.Mesh {
     const t = shared.terrain;
     var b: Builder = .{};
+
+    if (t.current == .courtyard) {
+        b.style = .{ .color = .{ 226, 204, 168 } };
+        b.flat(vec(0, -40, 0), vec(0, -40, 1), vec(1, -40, 1), .{ .y = 1 });
+
+        return b.finish();
+    }
 
     if (t.current == .valley or t.current == .islands) {
         ivWorld(&b);
@@ -834,20 +894,20 @@ fn toneBase(tone: shared.world.Tone) [3]f32 {
             .cloth_red => .{ 196, 98, 62 },
             .cloth_blue => .{ 70, 128, 132 },
             .cloth_yellow => .{ 214, 164, 72 },
-            .f_floor => .{ 118, 116, 110 },
-            .f_floor_dark => .{ 100, 98, 94 },
+            .f_floor => .{ 142, 140, 134 },
+            .f_floor_dark => .{ 124, 122, 116 },
             .f_line => .{ 196, 176, 110 },
-            .f_mint => .{ 150, 150, 142 },
-            .f_mint_dark => .{ 120, 128, 116 },
-            .f_grey => .{ 146, 146, 140 },
-            .f_grey_dark => .{ 108, 110, 108 },
+            .f_mint => .{ 172, 172, 164 },
+            .f_mint_dark => .{ 146, 152, 140 },
+            .f_grey => .{ 172, 170, 164 },
+            .f_grey_dark => .{ 140, 140, 136 },
             .f_hazard => .{ 184, 152, 72 },
-            .f_black => .{ 74, 76, 78 },
+            .f_black => .{ 98, 100, 100 },
             .f_rail => .{ 184, 152, 72 },
             .f_light => .{ 236, 226, 196 },
             .f_screen => .{ 58, 80, 86 },
-            .f_metal => .{ 118, 120, 118 },
-            .f_ceiling => .{ 126, 126, 120 },
+            .f_metal => .{ 142, 144, 140 },
+            .f_ceiling => .{ 156, 154, 146 },
             .f_crate => .{ 150, 124, 84 },
             .f_crate_teal => .{ 88, 112, 112 },
             .f_container_red => .{ 150, 86, 58 },
@@ -1068,6 +1128,7 @@ fn buildBackdrop() rl.Mesh {
         .facility => .{ 150, 148, 120 },
         .conquest => .{ 214, 168, 112 },
         .prism => .{ 120, 190, 196 },
+        .courtyard => .{ 226, 204, 168 },
     } };
 
     const floor_y: f32 = switch (shared.terrain.current) {
@@ -1423,10 +1484,22 @@ fn buildBand(p: Paint) rl.Mesh {
 fn buildBeam(p: Paint) rl.Mesh {
     var b: Builder = .{};
 
-    b.glowing(p, 40);
-    b.cylinder(.{}, vec(0, 1.0, 0), 0.02, 6, false);
-    b.glowing(p, 15);
-    b.cylinder(vec(0, -0.5, 0), vec(0, -0.47, 0), 0.32, 16, true);
+    const segs: usize = 28;
+
+    b.glowing(p, 70);
+
+    for (0..segs) |i| {
+        const a0 = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(segs)) * std.math.tau;
+        const a1 = @as(f32, @floatFromInt(i + 1)) / @as(f32, @floatFromInt(segs)) * std.math.tau;
+        const r0: f32 = 0.38;
+        const r1: f32 = 0.42;
+        const y: f32 = -0.47;
+
+        b.quad(vec(@cos(a0) * r0, y, @sin(a0) * r0), vec(@cos(a1) * r0, y, @sin(a1) * r0), vec(@cos(a1) * r1, y, @sin(a1) * r1), vec(@cos(a0) * r1, y, @sin(a0) * r1), .{ .y = 1 });
+    }
+
+    b.glowing(p, 25);
+    b.cylinder(vec(0, -0.47, 0), vec(0, -0.05, 0), 0.006, 5, false);
 
     return b.finish();
 }
@@ -1564,7 +1637,13 @@ fn buildBlockGlove() rl.Mesh {
     var b: Builder = .{};
 
     b.paint(.glove);
-    b.bevelBox(vec(-0.045, -0.04, -0.055), vec(0.045, 0.04, 0.055), 0.012);
+    b.bevelBox(vec(-0.044, -0.04, -0.05), vec(0.044, 0.034, 0.042), 0.012);
+    b.paint(.steel);
+    b.bevelBox(vec(-0.046, 0.016, -0.056), vec(0.046, 0.04, -0.022), 0.007);
+    b.paint(.glove);
+    b.bevelBox(vec(-0.04, -0.034, -0.068), vec(0.04, 0.012, -0.046), 0.008);
+    b.paint(.olive);
+    b.bevelBox(vec(-0.048, -0.045, 0.038), vec(0.048, 0.04, 0.066), 0.008);
 
     return b.finish();
 }

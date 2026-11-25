@@ -8,7 +8,7 @@ pub var play: f32 = 98;
 pub const town: f32 = 54;
 pub const road_half: f32 = 7;
 
-pub const Map = enum { town, desert, valley, islands, facility, conquest, prism };
+pub const Map = enum { town, desert, valley, islands, facility, conquest, prism, courtyard };
 
 pub var current: Map = .facility;
 
@@ -68,12 +68,12 @@ pub fn roadLine(z: f32) f32 {
         .town => 0,
         .desert => 8 * @sin(z * 0.022),
         .valley => 40 * @sin(z * 0.011) + 12 * @sin(z * 0.03 + 1),
-        .islands, .facility, .conquest, .prism => 0,
+        .islands, .facility, .conquest, .prism, .courtyard => 0,
     };
 }
 
 pub fn roadDistance(x: f32, z: f32) f32 {
-    if (current == .islands or current == .prism) return 1000;
+    if (current == .islands or current == .prism or current == .courtyard) return 1000;
 
     if (current == .valley) return valleyRoad(x, z);
 
@@ -95,7 +95,7 @@ pub fn roadDistance(x: f32, z: f32) f32 {
 }
 
 pub fn flatness(x: f32, z: f32) f32 {
-    if (current == .islands or current == .facility or current == .prism) return 0;
+    if (current == .islands or current == .facility or current == .prism or current == .courtyard) return 0;
 
     if (current == .conquest) return @max(@max(1 - smooth(road_half + 1, road_half + 14, conquestRoad(x, z)), districtMask(x, z)), runwayMask(x, z));
 
@@ -209,6 +209,13 @@ pub fn configure() void {
         return;
     }
 
+    if (current == .courtyard) {
+        half = 175;
+        play = 147;
+
+        return;
+    }
+
     if (current == .valley) {
         half = 275;
         play = 250;
@@ -242,6 +249,7 @@ pub fn configure() void {
     if (current == .desert) {
         half = 280;
         play = 250;
+        facet = 2.5;
         runway = .{ 150, -200, 80, 15 };
         helipads = .{ .{ 90, -168 }, .{ 115, -168 }, .{ 140, -168 } };
 
@@ -252,6 +260,7 @@ pub fn configure() void {
 
     half = 270;
     play = 250;
+    facet = 2.5;
     runway = .{ 130, -205, 95, 12 };
     helipads = .{ .{ 180, -155 }, .{ 203, -130 }, .{ 200, -95 } };
     town_center = .{ districts[0].x, districts[0].z };
@@ -390,9 +399,10 @@ fn strata(h: f32) f32 {
 fn desert(x: f32, z: f32) f32 {
     const flat = flatness(x, z);
     const box = @max(@abs(x), @abs(z));
-    const wave = z * 0.05 + x * 0.012 + fbm(x * 0.02, z * 0.02) * 5;
-    const crest = 1 - @abs(@sin(wave));
-    const dunes = crest * crest * 3.2 * (0.4 + fbm(x * 0.03 + 5, z * 0.03));
+    const wave = (z * 0.026 + x * 0.008 + fbm(x * 0.01, z * 0.01) * 2.6) / (2 * std.math.pi);
+    const u = wave - @floor(wave);
+    const profile = if (u < 0.78) smooth(0, 0.78, u) else 1 - smooth(0.78, 1, u);
+    const dunes = profile * 6.5 * (0.5 + fbm(x * 0.014 + 5, z * 0.014));
     const rolling = (fbm(x * 0.01, z * 0.01) - 0.4) * 7;
     const ridge = smooth(play - 10, half, box) * 10;
     const od = oasisDistance(x, z);
@@ -523,7 +533,7 @@ pub fn rawHeight(x: f32, z: f32) f32 {
         .islands => islandHeight(x, z),
         .facility => facilityHeight(x, z),
         .conquest => conquest(x, z),
-        .prism => 0,
+        .prism, .courtyard => 0,
     };
 }
 

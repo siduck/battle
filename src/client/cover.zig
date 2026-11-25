@@ -181,7 +181,7 @@ fn blocked(x: f32, z: f32) bool {
 fn init() void {
     ready = true;
 
-    if (terrain.current == .prism) return;
+    if (terrain.current == .prism or terrain.current == .courtyard) return;
 
     var sum: [3]f32 = .{ 0, 0, 0 };
     var count: f32 = 0;
@@ -244,6 +244,8 @@ fn rebuild(eye: Vec3) void {
 
             if (cls == .sand and roll > 0.05) continue;
 
+            if (terrain.current == .valley and terrain.roadDistance(x, z) < terrain.road_half + 0.6) continue;
+
             const nrm = terrain.normal(x, z);
 
             if (nrm.y < 0.82) continue;
@@ -276,7 +278,7 @@ pub fn draw(r: *gfx.Renderer, eye: Vec3) void {
 
     if (!ready) init();
 
-    if (terrain.current == .prism) return;
+    if (terrain.current == .prism or terrain.current == .courtyard) return;
 
     const d = eye.sub(centre);
 
