@@ -1,0 +1,59 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: contains(github.event.head_commit.message, 'stable-release')
+    runs-on: ubuntu-24.04
+    env:
+      ZIG_VERSION: 0.17.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zig
+        run: |
+          curl -sSfL "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz" | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev libxext-dev
+
+      - name: Android SDK layout
+        run: |
+          sdk="$ANDROID_HOME"
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "build-tools;35.0.1" "platforms;android-35" > /dev/null
+          out="$RUNNER_TEMP/android"
+          mkdir -p "$out"
+          ln -s "$sdk/ndk/27.3.13750724" "$out/ndk"
+          ln -s "$sdk/build-tools/35.0.1" "$out/build-tools"
+          ln -s "$sdk/platforms/android-35" "$out/platform"
+          if [ -n "${{ secrets.ANDROID_KEY_PEM }}" ]; then
+            printf '%s' "${{ secrets.ANDROID_KEY_PEM }}" | base64 -d > "$out/debug-key.pem"
+            printf '%s' "${{ secrets.ANDROID_CERT_DER }}" | base64 -d > "$out/debug-cert.der"
+          fi
+          echo "ANDROID_SDK_DIR=$out" >> "$GITHUB_ENV"
+
+      - name: Linux build
+        run: |
+          zig build -Drelease
+          tar -czf dronefire-linux-x86_64.tar.gz -C zig-out bin share
+
+      - name: Android build
+        run: |
+          zig build -Dandroid -Drelease -Dandroid_sdk="$ANDROID_SDK_DIR"
+          cp zig-out/dronefire.apk dronefire.apk
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" dronefire.apk dronefire-linux-x86_64.tar.gz --title "Dronefire $tag" --notes "$(git log -1 --pretty=%s)" --target "$GITHUB_SHA"
