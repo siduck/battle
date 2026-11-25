@@ -279,18 +279,14 @@ fn frontage(b: *Builder, s: Side, e: K, along: f32) void {
             put(b, .vending, q[0], q[1], yaw);
         }
     } else if (r < 0.34) {
-        put(b, .bike, p[0], p[1], yaw + hp + jitter(b, 0.2));
-
-        const q = local(s, along + 0.8, front + 0.9);
-
-        put(b, .bike, q[0], q[1], yaw + hp + jitter(b, 0.2));
+        put(b, .bikerack, p[0], p[1], yaw + hp);
     } else if (r < 0.44) {
         put(b, .potted, p[0], p[1], 0);
         put(b, .planter, local(s, along + 1.4, front + 0.6)[0], local(s, along + 1.4, front + 0.6)[1], yaw);
     } else if (r < 0.52) {
         put(b, .board, p[0], p[1], yaw);
     } else if (r < 0.6) {
-        put(b, .moped, p[0], p[1], yaw + hp);
+        put(b, .bin, p[0], p[1], yaw);
     } else if (r < 0.68) {
         const sh = local(s, along, front + 0.3);
 
@@ -414,7 +410,7 @@ fn gapDress(b: *Builder, s: Side, along: f32) void {
 
     const q = local(s, along, -3.2);
 
-    if (chance(b, 0.5)) put(b, .bike, q[0], q[1], s.yaw + hp) else put(b, .potted, q[0], q[1], 0);
+    put(b, .potted, q[0], q[1], 0);
 }
 
 fn lineSide(b: *Builder, s: Side, gap: bool) void {
@@ -564,7 +560,8 @@ fn backyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         if (r < 0.14) {
             place(b, .barhut, px, pz, @round(b.rng.range(0, 4)) * hp);
         } else if (r < 0.26) {
-            put(b, .keivan, px, pz, @round(b.rng.range(0, 4)) * hp + jitter(b, 0.1));
+            put(b, .crate, px, pz, b.rng.range(0, 6));
+            put(b, .crate, px + 0.9, pz + 0.2, b.rng.range(0, 6));
         } else if (r < 0.4) {
             put(b, .maple, px, pz, b.rng.range(0, 6));
         } else if (r < 0.52) {
@@ -572,7 +569,6 @@ fn backyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
             put(b, .drum, px + 0.7, pz + 0.2, 0);
             put(b, .crate, px - 0.6, pz, 0.3);
         } else if (r < 0.62) {
-            put(b, .bike, px, pz, b.rng.range(0, 6));
             put(b, .bikerack, px + 1, pz, 0);
         } else if (r < 0.72) {
             put(b, .potted, px, pz, 0);
@@ -581,7 +577,7 @@ fn backyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
             put(b, .wheelie, px, pz, 0);
             put(b, .wheelie, px + 0.8, pz, 0);
         } else if (r < 0.88) {
-            put(b, .hatch, px, pz, @round(b.rng.range(0, 4)) * hp);
+            put(b, .planter, px, pz, @round(b.rng.range(0, 4)) * hp);
         } else {
             put(b, .bush, px, pz, b.rng.range(0, 6));
         }
@@ -652,14 +648,11 @@ fn parking(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         while (x < x1 - 2) : (x += 2.6) {
             paint(b, x - 0.06, z - 2.5, x + 0.06, z + 2.5, .marking);
 
-            if (chance(b, 0.3)) {
+            if (chance(b, 0.82)) {
                 continue;
             }
 
-            const r = b.rng.next();
-            const e: K = if (r < 0.35) .keivan else if (r < 0.6) .taxi else .hatch;
-
-            put(b, e, x + 1.3, z, (if (ri % 2 == 0) @as(f32, 0) else pi) + jitter(b, 0.05));
+            put(b, if (chance(b, 0.5)) .planter else .blockwall, x + 1.3, z, if (ri % 2 == 0) @as(f32, 0) else pi);
         }
 
         ri += 1;
@@ -694,7 +687,7 @@ fn lot(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         const yaw = @round(b.rng.range(0, 4)) * hp;
 
         if (r < 0.2) {
-            put(b, .keivan, px, pz, yaw + jitter(b, 0.2));
+            put(b, .vending, px, pz, yaw);
         } else if (r < 0.38) {
             put(b, .guardrail, px, pz, yaw);
             put(b, .cone, px + 2.4, pz + 0.6, 0);
@@ -705,7 +698,7 @@ fn lot(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         } else if (r < 0.7) {
             put(b, .blockwall, px, pz, yaw);
         } else if (r < 0.82) {
-            put(b, .keivan, px, pz, yaw);
+            put(b, .blockwall, px, pz, yaw);
         } else {
             put(b, .cone, px, pz, 0);
             put(b, .cone, px + 1, pz + 1, 0);
@@ -871,25 +864,17 @@ fn avenue(b: *Builder) void {
     footbridge(b, -75);
     footbridge(b, 75);
 
-    put(b, .tram, -30, 2.2, hp);
-    put(b, .tram, -21.8, 2.2, hp);
-    put(b, .tram, 118, -2.2, -hp);
-    put(b, .tram, -128, -2.2, hp + 0.02);
-
     for ([_]f32{ -38, -26 }) |sx| {
         put(b, .bench, sx, 10.4, pi);
         put(b, .bin, sx + 2, 10.6, 0);
     }
 
     put(b, .kanji, -32, 10.6, 0);
-    put(b, .taxi, 30, -7, hp);
-    put(b, .taxi, 60, 7.2, -hp);
-    put(b, .keivan, -60, -7, hp);
-    put(b, .hatch, 96, 7.2, -hp);
-    put(b, .keivan, -110, 7, -hp);
-    put(b, .taxi, 3.5, 40, 0);
-    put(b, .hatch, -3.5, -60, pi);
-    put(b, .keivan, 3.5, 120, 0);
+    put(b, .guardrail, -60, -7, hp);
+    put(b, .guardrail, 96, 7.2, -hp);
+    put(b, .guardrail, -110, 7, -hp);
+    put(b, .guardrail, -3.5, -60, pi);
+    put(b, .guardrail, 3.5, 120, 0);
     put(b, .ramen, 20, 11.5, pi);
     put(b, .ramen, -96, -11.5, 0);
     put(b, .postbox, 9, 12, 0);

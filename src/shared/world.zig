@@ -748,7 +748,7 @@ pub fn ruinsPocket(b: *Builder) void {
         b.putAt(.kd_tent_0, vec(px, terrain.height(px, pz), pz), o[2], 1);
     }
 
-    b.putAt(.kd_cart, vec(cx - 4, terrain.height(cx - 4, cz + 8), cz + 8), 2.4, 1);
+    b.putAt(.kd_crate, vec(cx - 4, terrain.height(cx - 4, cz + 8), cz + 8), 2.4, 1);
     b.putAt(.kd_bench, vec(cx + 4, terrain.height(cx + 4, cz - 7), cz - 7), 0.2, 1);
     b.putAt(.kd_lantern, vec(cx - 12, terrain.height(cx - 12, cz), cz), 0, 1);
     b.putAt(.kd_lantern, vec(cx + 12, terrain.height(cx + 12, cz), cz), std.math.pi, 1);
@@ -770,7 +770,7 @@ pub fn oasisPocket(b: *Builder) void {
         const x = ox + @cos(t[1]) * t[0];
         const z = oz + @sin(t[1]) * t[0];
 
-        b.putAt(b.rng.pick(Kind, &.{ .kd_stall_0, .kd_stall_1 }), vec(x, terrain.height(x, z), z), std.math.atan2(ox - x, oz - z), 1);
+        b.putAt(b.rng.pick(Kind, &.{ .kd_box, .kd_crate }), vec(x, terrain.height(x, z), z), std.math.atan2(ox - x, oz - z), 1);
     }
 
     coverNode(b, ox + 28, oz - 10, 0.6);

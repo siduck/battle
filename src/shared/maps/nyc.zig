@@ -488,7 +488,7 @@ fn courtyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
             put(b, .can, px, pz, 0);
             put(b, .can, px + 0.7, pz + 0.3, 0);
         } else if (r < 0.45) {
-            put(b, .towncar, px, pz, yaw + jitter(b, 0.1));
+            put(b, .dumpster, px, pz, yaw);
         } else if (r < 0.55) {
             put(b, .ac, px, pz, yaw);
         } else if (r < 0.65) {
@@ -496,7 +496,7 @@ fn courtyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         } else if (r < 0.75) {
             put(b, .steam, px, pz, 0);
         } else if (r < 0.85) {
-            put(b, .hatch, px, pz, yaw + jitter(b, 0.1));
+            put(b, .barricade, px, pz, yaw);
         } else {
             put(b, .scaffold, px, pz, yaw);
         }
@@ -575,7 +575,7 @@ fn plazaBlock(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         put(b, .bollard, cx + sd * 4, z0 + 1, 0);
     }
 
-    put(b, .foodtruck, cx + 10, z0 + 14, hp);
+    put(b, .newsstand, cx + 10, z0 + 14, hp);
     put(b, .hotdog, cx - 4, z0 + 10, 0.3);
     put(b, .newsstand, cx + 4, cz - 8, pi);
     put(b, .dining, cx - 9, cz - 6, hp);
@@ -670,8 +670,8 @@ fn site(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         put(b, .barricade, p[0] + 2, p[1], 0);
     }
 
-    put(b, .deltruck, x1 - 6, z0 + 14, 0);
-    put(b, .garbage, x0 + 4, z1 - 14, 0.1);
+    put(b, .dumpster, x1 - 6, z0 + 14, 0);
+    put(b, .dumpster, x0 + 4, z1 - 14, 0.1);
 
     var n: usize = 0;
 
@@ -699,7 +699,7 @@ fn site(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
             put(b, .barricade, px, pz, yaw);
             put(b, .cone, px + 1.5, pz, 0);
         } else {
-            put(b, .deltruck, px, pz, yaw);
+            put(b, .hoarding, px, pz, yaw);
         }
     }
 }
@@ -824,14 +824,14 @@ fn crossing(b: *Builder, lx: Line, lz: Line) void {
 }
 
 fn traffic(b: *Builder) void {
-    const cars = [_]K{ .cab, .cab, .cab, .hatch, .towncar, .cab, .deltruck, .bus, .cruiser, .garbage, .foodtruck };
+    const cars = [_]K{ .barricade, .dumpster, .barricade, .newsstand, .hoarding, .barricade, .dumpster, .hoarding, .barricade, .newsstand, .dumpster };
 
     for (xs) |l| {
         if (l.kind == .edge or l.kind == .alley) continue;
 
         var z: f32 = -edge + 10;
 
-        while (z < edge - 10) : (z += b.rng.range(9, 20)) {
+        while (z < edge - 10) : (z += b.rng.range(22, 40)) {
             if (near(z, &zs) != null) continue;
 
             const lane: f32 = if (l.kind == .broadway) (if (chance(b, 0.5)) 6.5 else -6.5) else (if (chance(b, 0.5)) 4.5 else -4.5);
@@ -846,7 +846,7 @@ fn traffic(b: *Builder) void {
 
         var x: f32 = -edge + 10;
 
-        while (x < edge - 10) : (x += b.rng.range(10, 22)) {
+        while (x < edge - 10) : (x += b.rng.range(24, 44)) {
             if (near(x, &xs)) |s| {
                 if (s.kind != .alley) continue;
             }
@@ -859,8 +859,8 @@ fn traffic(b: *Builder) void {
     }
 
     for ([_][3]f32{ .{ 100, -35, 0 }, .{ -100, 35, 1 } }) |p| {
-        put(b, .cruiser, p[0] + 3, p[1] + 10, 0.4);
-        put(b, .cruiser, p[0] - 4, p[1] + 12, -0.3);
+        put(b, .barricade, p[0] + 3, p[1] + 11, 0.4);
+        put(b, .barricade, p[0] - 4, p[1] + 12, -0.3);
         put(b, .barricade, p[0], p[1] + 9, 0);
         put(b, .barricade, p[0] + 2.6, p[1] + 9, 0);
         put(b, .barricade, p[0] - 2.6, p[1] + 9, 0);
@@ -868,7 +868,7 @@ fn traffic(b: *Builder) void {
         put(b, .steam, p[0] - 1, p[1] + 14, 0);
     }
 
-    put(b, .fireengine, -100, -60, 0.05);
+    put(b, .hoarding, -100, -60, 0.05);
     put(b, .steam, 40, -35, 0);
     put(b, .steam, -60, 105, 0);
     put(b, .steam, 4.2, 20, 0);

@@ -458,12 +458,12 @@ fn village(b: *Builder) void {
     put(b, .sled, 24, -118, 0.3, 1.25);
     put(b, .sled, 27, -117, 0.1, 1.25);
     put(b, .sled, 30, -118.5, -0.2, 1.25);
-    put(b, .plough, -2, -152, hp, 1.2);
-    put(b, .van, 46, -153, -hp, 1.25);
-    put(b, .van, -78, -131, hp, 1.25);
+    put(b, .logs, -2, -152, hp, 1.2);
+    put(b, .cordwood, 46, -153, -hp, 1.3);
+    put(b, .cordwood, -78, -131, hp, 1.3);
     put(b, .gondola, -30, -118, 0, 1.2);
     put(b, .gondola, -34, -117, 0, 1.2);
-    put(b, .snowcat, -40, -110, hp, 1.4);
+    put(b, .fort, -40, -110, hp, 1.5);
     put(b, .drum, -46, -112, 0, 1.2);
     put(b, .drum, -46.5, -109.8, 0, 1.2);
     put(b, .winch, -36, -103, 0, 1.4);
@@ -627,7 +627,7 @@ fn piste(b: *Builder) void {
                 put(b, .fence, px - 1.2, pz - 1.6, 0, 1.2);
             },
             1 => {
-                put(b, .snowcat, px, pz, 0.15, 1.45);
+                put(b, .fort, px, pz, 0.15, 1.5);
                 put(b, .drum, px + 3.2, pz - 2, 0, 1.2);
                 put(b, .drum, px + 3.4, pz + 0.3, 0, 1.2);
                 put(b, .cordwood, px - 3.4, pz + 1, hp, 1.4);
@@ -647,7 +647,7 @@ fn piste(b: *Builder) void {
 
     _ = house(b, .patrol, mid_x, 30, -hp);
     _ = house(b, .starthut, pisteX(146) + 8, 146, std.math.pi);
-    put(b, .snowcat, mid_x + 2, 40, 1.2, 1.45);
+    put(b, .fort, mid_x + 2, 40, 1.2, 1.5);
     put(b, .flood, mid_x - 5, 24, 0, 1.4);
     put(b, .flood, mid_x - 5, 37, 0, 1.4);
     put(b, .logs, mid_x + 4, 22, hp, 1.4);
@@ -726,7 +726,7 @@ fn westRidge(b: *Builder) void {
     put(b, .trough, -94, -48, 0, 1.3);
     put(b, .firepit, -96, -30, 0, 1.3);
     put(b, .bench, -96, -26.6, std.math.pi, 1.2);
-    put(b, .van, -110, -36, 0.4, 1.25);
+    put(b, .cordwood, -110, -36, 0.4, 1.3);
 
     _ = house(b, .refuge, -178, 60, hp);
     yard(b, -178, 60, hp, 4, 4);
@@ -754,8 +754,8 @@ fn eastCamp(b: *Builder) void {
     put(b, .firepit, 122, -8, 0, 1.4);
     put(b, .bench, 122, -4.4, std.math.pi, 1.2);
     put(b, .bench, 118.4, -8, hp, 1.2);
-    put(b, .van, 130, 14, 0.2, 1.25);
-    put(b, .plough, 98, -58, 0.1, 1.2);
+    put(b, .cordwood, 130, 14, 0.2, 1.3);
+    put(b, .logs, 98, -58, 0.1, 1.2);
 
     var x: f32 = 112;
 

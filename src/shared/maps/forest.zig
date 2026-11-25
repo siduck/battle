@@ -377,7 +377,7 @@ fn scatterIn(b: *Builder, kinds: []const K, n: usize, cx: f32, cz: f32, r: f32, 
 fn around(b: *Builder, x: f32, z: f32, yaw: f32, w: f32, d: f32) void {
     const c = @cos(yaw);
     const s = @sin(yaw);
-    const kinds = [_]K{ .firewood, .barrel, .bench, .cordwood, .cart, .barrel, .firewood, .table };
+    const kinds = [_]K{ .firewood, .barrel, .bench, .cordwood, .barrel, .barrel, .firewood, .table };
     var i: usize = 0;
 
     while (i < 5) : (i += 1) {
@@ -435,8 +435,8 @@ fn camp(b: *Builder) void {
 
     put(b, .lights, -38, 16, 0, 1);
     put(b, .lights, -30, 12, hp, 1);
-    put(b, .pickup, -18, -6, 2.6, 1);
-    put(b, .van, -70, -16, 0.3, 1);
+    put(b, .cordwood, -18, -6, 2.6, 1);
+    put(b, .firewood, -70, -16, 0.3, 1);
 
     for ([_][3]f32{ .{ -20, 40, 0 }, .{ -12, 44, 0.3 }, .{ -4, 38, -0.4 } }) |p| {
         put(b, .walltent, p[0], p[1], p[2] + std.math.pi, 1);
@@ -490,20 +490,12 @@ fn lakeshore(b: *Builder) void {
         api.box(b, x - 1.7, water - 3, z - 1.7, x + 1.7, water + 1.35, z + 1.7);
     }
 
-    const tip_x = lake[0] + @cos(dock_a) * (dr - 18);
-    const tip_z = lake[1] + @sin(dock_a) * (dr - 18);
-
-    b.putAt(kit.of(.rowboat), vec(tip_x + 3, water + 0.1, tip_z + 1), 0.4, 1);
-    b.putAt(kit.of(.canoe), vec(tip_x - 2, water + 0.1, tip_z - 3.5), 1.2, 1);
-    b.putAt(kit.of(.raft), vec(lake[0] + 4, water - 0.4, lake[1] - 6), 0.3, 1);
-    b.putAt(kit.of(.raft), vec(lake[0] + 14, water - 0.4, lake[1] + 10), 1.1, 1);
-
     const shore_x = lake[0] + @cos(dock_a) * (dr + 8);
     const shore_z = lake[1] + @sin(dock_a) * (dr + 8);
 
     put(b, .rack, shore_x, shore_z + 4, 0.2, 1);
-    put(b, .canoe, shore_x + 3, shore_z - 3, 1.4, 1);
-    put(b, .rowboat, shore_x - 3, shore_z - 4, 2.2, 1);
+    put(b, .fallen, shore_x + 3, shore_z - 3, 1.4, 1);
+    put(b, .barrel, shore_x - 3, shore_z - 4, 2.2, 1);
     put(b, .barrel, shore_x - 4, shore_z + 2, 0, 1);
     put(b, .barrel, shore_x - 4.8, shore_z + 3, 0, 1);
     claim(shore_x, shore_z, 6);
@@ -513,7 +505,7 @@ fn lakeshore(b: *Builder) void {
     house(b, .aframe, 112, 98, -2.4);
     house(b, .porch, 128, 16, -hp);
     around(b, 128, 16, -hp, 5, 5);
-    put(b, .trailer, 116, 30, 0.6, 1);
+    put(b, .woodshed, 116, 30, 0.6, 1);
     put(b, .dome, 104, 18, 0.3, 1);
     put(b, .dome, 100, 26, -0.6, 1);
     put(b, .firepit, 108, 28, 0, 1);
@@ -527,8 +519,8 @@ fn logging(b: *Builder) void {
     house(b, .woodshed, 40, -126, 0);
     house(b, .hiproof, 56, -148, -hp);
     around(b, 56, -148, -hp, 4.8, 2.4);
-    put(b, .pickup, 30, -150, 0.5, 1);
-    put(b, .cart, 44, -158, 1, 1);
+    put(b, .cordwood, 30, -150, 0.5, 1);
+    put(b, .firewood, 44, -158, 1, 1);
 
     var i: usize = 0;
 
@@ -559,8 +551,8 @@ fn campground(b: *Builder) void {
     claim(-110, -96, 3);
     house(b, .outhouse, -132, -110, hp);
     put(b, .kiosk, -98, -92, 0.8, 1);
-    put(b, .van, -132, -78, 0.9, 1);
-    put(b, .trailer, -90, -118, 2.4, 1);
+    put(b, .firewood, -132, -78, 0.9, 1);
+    put(b, .woodshed, -90, -118, 2.4, 1);
     put(b, .lights, -110, -88, 0, 1);
 }
 
@@ -574,7 +566,7 @@ fn outposts(b: *Builder) void {
     house(b, .woodshed, 114, 136, hp);
     around(b, 128, 146, std.math.pi, 4.2, 4.9);
     around(b, 146, 130, -hp, 5, 5);
-    put(b, .pickup, 134, 124, 1.2, 1);
+    put(b, .cordwood, 134, 124, 1.2, 1);
     put(b, .well, 122, 128, 0, 1);
 
     house(b, .leanto, -150, -20, hp);

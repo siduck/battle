@@ -495,8 +495,8 @@ fn matchDay(b: *Builder) void {
         .{ .e = .tarp, .x = -16, .z = 10.5, .yaw = 0.3 },
         .{ .e = .tarp, .x = 22, .z = -12, .yaw = -0.4 },
         .{ .e = .tarp, .x = 24, .z = -9.5, .yaw = -0.4 },
-        .{ .e = .roller, .x = 8, .z = 18, .yaw = 1.2 },
-        .{ .e = .roller, .x = -36, .z = -14, .yaw = 0.1 },
+        .{ .e = .tarp, .x = 8, .z = 18, .yaw = 1.2 },
+        .{ .e = .tarp, .x = -36, .z = -14, .yaw = 0.1 },
         .{ .e = .trolley, .x = -40, .z = 22, .yaw = 0.6 },
         .{ .e = .trolley, .x = 40, .z = 10, .yaw = -0.2 },
         .{ .e = .linecart, .x = -6, .z = -20, .yaw = 0.9 },
@@ -613,7 +613,7 @@ fn plaza(b: *Builder) void {
             put(b, .bin, x, z, 0, 1);
             put(b, .bush, x + 1.4, z, 0, 1);
         } else if (roll < 0.58) {
-            put(b, .minibus, x, z, if (b.rng.next() < 0.5) 0 else hp, 1);
+            put(b, .scaffold, x, z, if (b.rng.next() < 0.5) 0 else hp, 1);
         } else if (roll < 0.7) {
             put(b, .hoarding, x, z, 0, 1.5);
             put(b, .hoarding, x + 1.5, z, 0, 1.5);
@@ -623,7 +623,7 @@ fn plaza(b: *Builder) void {
             put(b, .trolley, x + 2, z + 1, b.rng.range(0, 6), 1);
             put(b, .crate, x - 1.5, z + 1, 0, 1);
         } else if (roll < 0.9) {
-            put(b, .roller, x, z, b.rng.range(0, 6), 1);
+            put(b, .tarp, x, z, b.rng.range(0, 6), 1);
             put(b, .linecart, x + 2, z - 1, 0.4, 1);
         } else {
             put(b, .medtent, x, z, b.rng.range(0, 6), 1);
@@ -641,8 +641,7 @@ fn clubSide(b: *Builder) void {
     house(b, .pressbox, -164, 102, hp);
     house(b, .toilets, -40, -94, 0);
     house(b, .firstaid, 52, -92, 0);
-    put(b, .minibus, -112, 92, 0.1, 1);
-    put(b, .minibus, -104, 92, 0.1, 1);
+    put(b, .medtent, -108, 92, 0.1, 1);
     put(b, .flagpole, -128, 98, 0, 1);
     put(b, .flagpole, -122, 98, 0, 1);
     scatterIn(b, &.{ .kitbag, .bin, .crate, .ballcart, .parkbench }, 18, -130, 116, 24, 0.9, 1.1);
@@ -712,7 +711,7 @@ fn athletics(b: *Builder) void {
     for ([_]f32{ -30, -36, -42 }) |z| put(b, .blocks, 106, z, hp, 1);
 
     scatterIn(b, &.{ .kitbag, .crate, .cones, .bin }, 14, 150, 0, 40, 0.9, 1.2);
-    scatterIn(b, &.{ .oak, .bush, .parkbench, .birch, .tarp, .bush, .medtent, .roller }, 46, 150, -5, 50, 0.9, 1.25);
+    scatterIn(b, &.{ .oak, .bush, .parkbench, .birch, .tarp, .bush, .medtent, .tarp }, 46, 150, -5, 50, 0.9, 1.25);
     house(b, .clubhouse, 150, -80, 0);
     house(b, .toilets, 176, 60, std.math.pi);
 }
@@ -724,7 +723,7 @@ fn carPark(b: *Builder) void {
         for ([_]f32{ -96, -118, -140 }) |z| {
             line(b, x, z - 4.5, x, z + 4.5);
 
-            if (b.rng.next() < 0.18 and @abs(x) > 8) put(b, .minibus, x + 2.5, z, if (b.rng.next() < 0.5) 0 else std.math.pi, 1);
+            if (b.rng.next() < 0.18 and @abs(x) > 8) put(b, .hoarding, x + 2.5, z, hp, 1.5);
         }
     }
 

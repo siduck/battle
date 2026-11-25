@@ -216,7 +216,7 @@ fn bazaar(b: *Builder) void {
         const sx = mx + @cos(a) * r;
         const sz = mz + @sin(a) * r;
         const y = terrain.height(sx, sz);
-        const stalls = [_]Kind{ .kd_stall_0, .kd_stall_1, .kd_stall_0 };
+        const stalls = [_]Kind{ .kd_box, .kd_crate, .kd_box };
 
         b.putAt(stalls[i % stalls.len], vec(sx, y, sz), std.math.atan2(mx - sx, mz - sz), 1);
         b.put(b.rng.pick(Kind, &.{ .kd_box, .kd_chest, .kd_crate }), sx + @sin(a) * 1.6, sz - @cos(a) * 1.6, b.rng.range(0, 6.28), 1);
@@ -304,7 +304,7 @@ fn streetDress(b: *Builder, along_x: bool, line: f32, a0: f32, a1: f32) void {
             const pz = if (along_x) line + side * 2.6 else t + 2;
 
             if (terrain.roadDistance(px, pz) > terrain.road_half + 2) {
-                const pick = b.rng.pick(Kind, &.{ .kd_cart, .kd_bench, .kd_crate, .kd_chest });
+                const pick = b.rng.pick(Kind, &.{ .kd_barrel, .kd_bench, .kd_crate, .kd_chest });
 
                 b.putAt(pick, vec(px, terrain.height(px, pz), pz), if (along_x) 0 else std.math.pi / 2.0, 1);
             }
