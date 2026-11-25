@@ -30,6 +30,38 @@ pub var god_mode = true;
 
 pub var bots_passive = false;
 
+pub const Difficulty = enum { easy, normal, hard };
+
+pub var difficulty: Difficulty = .normal;
+pub var online = false;
+pub var net_hit: ?*const fn (index: usize, amount: f32, at: Vec3, head: bool, splash: bool) void = null;
+
+var splash_hit = false;
+
+fn botReaction() f32 {
+    return switch (difficulty) {
+        .easy => 0.8,
+        .normal => bot_reaction,
+        .hard => 0.25,
+    };
+}
+
+fn botSpread() f32 {
+    return switch (difficulty) {
+        .easy => 1.5,
+        .normal => 1,
+        .hard => 0.65,
+    };
+}
+
+fn botToughness() f32 {
+    return switch (difficulty) {
+        .easy => 0.7,
+        .normal => 1,
+        .hard => 1.35,
+    };
+}
+
 fn bot_index(g: *Game, b: *const Bot) usize {
     return (@intFromPtr(b) - @intFromPtr(&g.bots.items[0])) / @sizeOf(Bot);
 }
@@ -224,6 +256,7 @@ pub const Bot = struct {
     parry: bool = false,
     stagger: f32 = 0,
     melee_cd: f32 = 0,
+    remote: bool = false,
 
     pub fn alive(b: Bot) bool {
         return b.active and b.dead < 0;
@@ -301,7 +334,7 @@ pub const Buzz = struct {
     weak: f32 = 0,
     time: f32 = 0,
 
-    fn add(b: *Buzz, strong: f32, weak: f32, time: f32) void {
+    pub fn add(b: *Buzz, strong: f32, weak: f32, time: f32) void {
         b.strong = @max(b.strong, strong);
         b.weak = @max(b.weak, weak);
         b.time = @max(b.time, time);
@@ -469,6 +502,7 @@ pub const Game = struct {
     steadying: bool = false,
     sway_x: f32 = 0,
     sway_y: f32 = 0,
+    shots: u8 = 0,
 
     pub fn init(seed: u64) Game {
         const start = world.spawns[0];
@@ -658,13 +692,13 @@ pub const Game = struct {
 
                 b.prev = b.body.pos;
 
-                if (b.dead < 0) movement.step(&b.body, b.input, pieces);
+                if (b.dead < 0 and !b.remote) movement.step(&b.body, b.input, pieces);
             }
 
             driving.solid(g);
 
             for (&g.bots.items, 0..) |*b, i| {
-                if (b.active and b.dead < 0 and b.body.pos.y < movement.kill_y) g.damageBot(i, 1e6, b.body.pos, false);
+                if (b.active and !b.remote and b.dead < 0 and b.body.pos.y < movement.kill_y) g.damageBot(i, 1e6, b.body.pos, false);
             }
 
             g.accumulator -= movement.dt;
@@ -1023,6 +1057,7 @@ pub const Game = struct {
         const damage = spec.damage * weapons.rarity_damage[@intFromEnum(held.rarity)] * power;
 
         held.mag -= 1;
+        g.shots +%= 1;
         a.cooldown = spec.interval;
         a.kick = 1;
         a.flash = if (spec.class == .bow or spec.class == .crossbow) 0 else 0.05;
@@ -1509,7 +1544,7 @@ pub const Game = struct {
         b.input.forward = if (dist > spec.range * 0.85) 1 else if (dist < 1.9) -0.6 else 0;
         b.input.right = if (dist < 5) b.strafe * 0.35 else b.strafe * 0.6;
 
-        if (dist < spec.range + 0.4 and b.melee_cd <= 0 and b.seen > bot_reaction) {
+        if (dist < spec.range + 0.4 and b.melee_cd <= 0 and b.seen > botReaction()) {
             b.swing = 0;
             b.struck = false;
         }
@@ -1626,9 +1661,20 @@ pub const Game = struct {
 
         if (!b.alive()) return;
 
+        if (b.remote) {
+            if (net_hit) |send| send(index, amount, at, head, splash_hit);
+
+            b.flash = 0.12;
+            g.hit_marker = 0.15;
+            g.hit_kill = amount >= b.hp;
+            g.popups.spawn(.{ .pos = at.add(.{ .y = 0.3 }), .value = @intFromFloat(@max(1, @round(amount))), .life = 0.8 });
+
+            return;
+        }
+
         b.hp -= amount;
         b.flash = 0.12;
-        b.seen = @max(b.seen, bot_reaction);
+        b.seen = @max(b.seen, botReaction());
         g.hit_marker = 0.15;
         g.hit_kill = false;
         g.popups.spawn(.{ .pos = at.add(.{ .y = 0.3 }), .value = @intFromFloat(@max(1, @round(amount))), .life = 0.8 });
@@ -1677,7 +1723,7 @@ pub const Game = struct {
 
         if (driving.absorb(g, amount, from)) return;
 
-        if (god_mode) return;
+        if (god_mode or online) return;
 
         g.hp -= amount;
         g.since_hurt = 0;
@@ -1709,7 +1755,11 @@ pub const Game = struct {
 
             const f = weapons.splashFalloff(d.chest().distance(at), radius + 0.5);
 
+            splash_hit = true;
+
             if (f > 0) g.damageBot(i, damage * f, d.chest(), false);
+
+            splash_hit = false;
         }
 
         if (g.dead > 0) return;
@@ -2018,6 +2068,8 @@ pub const Game = struct {
         for (&g.bots.items) |*b| {
             if (!b.active) continue;
 
+            if (b.remote) continue;
+
             b.flash = @max(0, b.flash - dt);
             b.shot = @max(0, b.shot - dt);
             b.anim += dt;
@@ -2138,7 +2190,7 @@ pub const Game = struct {
                 continue;
             }
 
-            if (!los or b.seen < bot_reaction or b.fire_cd > 0) continue;
+            if (!los or b.seen < botReaction() or b.fire_cd > 0) continue;
 
             const spec = weapons.specs[b.weapon];
 
@@ -2154,7 +2206,7 @@ pub const Game = struct {
 
             const right = (Vec3{ .x = @cos(b.yaw), .z = -@sin(b.yaw) }).neg();
             const muzzle = eye.add(math.flatDir(b.yaw).scale(0.6)).add(right.scale(0.18)).add(.{ .y = -0.15 });
-            const spread = 0.5 + dist * 0.05 + g.player.vel.flatLength() * 0.07 - @min(wave_f * 0.012, 0.2);
+            const spread = (0.5 + dist * 0.05 + g.player.vel.flatLength() * 0.07 - @min(wave_f * 0.012, 0.2)) * botSpread();
             var pellet: u8 = 0;
 
             while (pellet < spec.pellets) : (pellet += 1) {
@@ -2359,7 +2411,7 @@ pub const Game = struct {
         }
 
         const weapon = g.botWeapon();
-        const hp = 80 + @as(f32, @floatFromInt(g.wave)) * 8;
+        const hp = (80 + @as(f32, @floatFromInt(g.wave)) * 8) * botToughness();
 
         g.bots.spawn(.{
             .body = movement.Player.spawn(at),
@@ -2376,6 +2428,8 @@ pub const Game = struct {
     }
 
     fn updateWaves(g: *Game, dt: f32) void {
+        if (online) return;
+
         if (g.wave_break > 0) {
             g.wave_break -= dt;
 

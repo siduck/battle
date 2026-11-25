@@ -40,7 +40,7 @@ pub fn draw(g: Game, font: rl.Font, icons: *const icons_mod.Icons, playing: bool
     vitals(g, font, u, h, &buf);
 
     if (!in_air) inventory(g, font, icons, u, w, h, &buf);
-    topBar(g, font, u, w, &buf);
+    if (!game_mod.online) topBar(g, font, u, w, &buf);
     feed(g, font, u, w, &buf);
     banner(g, font, u, cx, h, &buf);
     prompt(g, font, u, cx, cy, pad, &buf);

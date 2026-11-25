@@ -82,6 +82,7 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
         if (rl.IsKeyPressed(rl.KEY_DOWN) or rl.IsKeyPressed(rl.KEY_S)) dy = 1;
         if (rl.IsKeyPressed(rl.KEY_UP) or rl.IsKeyPressed(rl.KEY_W)) dy = -1;
         if (rl.IsKeyPressed(rl.KEY_ENTER) or rl.IsKeyPressed(rl.KEY_SPACE)) choose = true;
+        if (rl.IsKeyPressed(rl.KEY_ESCAPE) or rl.IsKeyPressed(rl.KEY_BACK)) return null;
 
         if (pad) |id| {
             const ax = rl.GetGamepadAxisMovement(id, rl.GAMEPAD_AXIS_LEFT_X);
@@ -92,6 +93,7 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
             if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN) or (ay > 0.6 and cool == 0)) dy = 1;
             if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_LEFT_FACE_UP) or (ay < -0.6 and cool == 0)) dy = -1;
             if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) choose = true;
+            if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) return null;
             if (@abs(ax) > 0.6 or @abs(ay) > 0.6) {
                 if (cool == 0) cool = 0.22;
             }
