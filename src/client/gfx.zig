@@ -17,6 +17,8 @@ const shadow_slot: c_int = 13;
 const shadow_slot_far: c_int = 12;
 const env_slot: c_int = 14;
 const mat_slot: c_int = 7;
+const ground_detail_slot: c_int = 5;
+const ground_map_slot: c_int = 6;
 const shadow_span: f32 = if (assets.mobile) 60 else 40;
 const shadow_span_far: f32 = 160;
 
@@ -223,22 +225,51 @@ const lit_fs_head =
     \\uniform sampler2D mtex4;
     \\uniform float matOn;
     \\uniform float matId;
+    \\uniform sampler2D groundMap;
+    \\uniform sampler2D groundDetail;
+    \\uniform vec3 groundXf;
     \\out vec4 finalColor;
     \\
 ;
 
 const lit_fs_body =
     \\uniform vec3 fogColor;
+    \\vec3 groundSurface(vec3 n, float dist) {
+    \\    vec2 guv = (worldPos.xz + groundXf.x) * groundXf.y;
+    \\    vec3 g = texture(groundMap, guv).rgb;
+    \\    float mx = max(max(g.r, g.g), g.b);
+    \\    float mn = min(min(g.r, g.g), g.b);
+    \\    float sat = (mx - mn) / max(mx, 0.001);
+    \\    float lum = dot(g, vec3(0.3, 0.59, 0.11));
+    \\    float grassW = smoothstep(0.0, 0.035, g.g - max(g.r * 0.97, g.b * 1.12));
+    \\    float snowW = smoothstep(0.66, 0.76, lum) * (1.0 - smoothstep(0.1, 0.18, sat));
+    \\    float greyW = (1.0 - smoothstep(0.1, 0.2, sat)) * (1.0 - snowW) * (1.0 - grassW);
+    \\    float warm = max(1.0 - grassW - snowW - greyW, 0.0);
+    \\    float sandW = warm * smoothstep(0.46, 0.56, lum);
+    \\    float dirtW = warm - sandW;
+    \\    float steep = 1.0 - smoothstep(0.62, 0.8, n.y);
+    \\    vec4 w = vec4(grassW, dirtW, sandW + snowW * 0.4, greyW);
+    \\    w = mix(w, vec4(0.0, 0.0, 0.0, 1.0), steep * (1.0 - snowW));
+    \\    vec2 duv = n.y > 0.7 ? worldPos.xz : (abs(n.x) > abs(n.z) ? worldPos.zy : worldPos.xy);
+    \\    vec4 dt = texture(groundDetail, duv * 0.42);
+    \\    float d = dot((dt - 0.5) * vec4(1.0, 0.9, 0.6, 0.8), w) / max(w.x + w.y + w.z + w.w, 0.001);
+    \\    float near = 1.0 - smoothstep(14.0, 70.0, dist);
+    \\    float amp = mix(0.32, 1.0, near) * mix(1.0, 0.55, snowW);
+    \\    vec3 tip = mix(vec3(1.0), vec3(1.05, 1.07, 0.86), grassW * clamp(d * 2.0, 0.0, 1.0));
+    \\    return g * tip * (1.0 + d * 0.95 * amp);
+    \\}
     \\void main() {
     \\    vec4 texel = texture(texture0, uv);
     \\    if (texel.a * colDiffuse.a < 0.45) discard;
     \\    vec3 n = normalize(worldNormal);
     \\    if (!gl_FrontFacing) n = -n;
+    \\    float dist = length(viewPos - worldPos);
+    \\    vec3 base = tint.rgb * colDiffuse.rgb * texel.rgb;
+    \\    if (detail > 0.5 && detail < 1.5 && groundXf.z > 0.5) base = groundSurface(n, dist);
     \\    float ndl = max(dot(n, normalize(sunDir)), 0.0);
     \\    vec3 fill = mix(vec3(0.56, 0.59, 0.66), vec3(0.7, 0.73, 0.8), n.y * 0.5 + 0.5);
     \\    vec3 light = fill + vec3(0.5, 0.48, 0.44) * ndl + 0.06 * max(n.y, 0.0);
-    \\    vec3 col = tint.rgb * colDiffuse.rgb * texel.rgb * min(light, vec3(1.12));
-    \\    float dist = length(viewPos - worldPos);
+    \\    vec3 col = base * min(light, vec3(1.12));
     \\    float fog = min(1.0 - exp(-max(dist - 60.0, 0.0) * fogDensity * 0.55), 0.85);
     \\    col = mix(col, fogColor, fog);
     \\    finalColor = vec4(col, glassAlpha > 0.0 ? glassAlpha : 1.0);
@@ -405,6 +436,9 @@ pub const Renderer = struct {
     env: rl.Texture2D,
     mats: [5]rl.Texture2D = @splat(.{ .id = 0, .width = 0, .height = 0, .mipmaps = 0, .format = 0 }),
     mat_on: f32 = 0,
+    ground_detail: rl.Texture2D = .{ .id = 0, .width = 0, .height = 0, .mipmaps = 0, .format = 0 },
+    ground_map: rl.Texture2D = .{ .id = 0, .width = 0, .height = 0, .mipmaps = 0, .format = 0 },
+    ground_xf: [3]f32 = .{ 0, 0, 0 },
     shadow_fbo: c_uint,
     shadow_depth: c_uint,
     shadow_fbo_far: c_uint = 0,
@@ -611,6 +645,13 @@ pub const Renderer = struct {
             rlgl.rlEnableTexture(m.id);
         }
 
+        if (r.ground_detail.id != 0 and r.ground_map.id != 0) {
+            rlgl.rlActiveTextureSlot(ground_detail_slot);
+            rlgl.rlEnableTexture(r.ground_detail.id);
+            rlgl.rlActiveTextureSlot(ground_map_slot);
+            rlgl.rlEnableTexture(r.ground_map.id);
+        }
+
         if (r.cascades > 1) {
             rlgl.rlActiveTextureSlot(shadow_slot_far);
             rlgl.rlEnableTexture(r.shadow_depth_far);
@@ -686,6 +727,14 @@ pub const Renderer = struct {
 
         rl.SetShaderValue(sh, rl.GetShaderLocation(sh, "courtyard"), &courtyard_on, rl.SHADER_UNIFORM_FLOAT);
 
+        const detail_unit = ground_detail_slot;
+        const map_unit = ground_map_slot;
+        const xf: [3]f32 = if (r.ground_detail.id != 0 and r.ground_map.id != 0) r.ground_xf else .{ 0, 0, 0 };
+
+        rlgl.rlSetUniform(rl.GetShaderLocation(sh, "groundDetail"), &detail_unit, rl.SHADER_UNIFORM_INT, 1);
+        rlgl.rlSetUniform(rl.GetShaderLocation(sh, "groundMap"), &map_unit, rl.SHADER_UNIFORM_INT, 1);
+        rl.SetShaderValue(sh, rl.GetShaderLocation(sh, "groundXf"), &xf, rl.SHADER_UNIFORM_VEC3);
+
         const names = [_][:0]const u8{ "mtex0", "mtex1", "mtex2", "mtex3", "mtex4" };
 
         for (names, 0..) |name, i| {
@@ -699,6 +748,30 @@ pub const Renderer = struct {
 
         rl.SetShaderValue(sh, rl.GetShaderLocation(sh, "matOn"), &on, rl.SHADER_UNIFORM_FLOAT);
         rl.SetShaderValue(sh, rl.GetShaderLocation(sh, "matId"), &auto_id, rl.SHADER_UNIFORM_FLOAT);
+    }
+
+    pub fn loadGround(r: *Renderer, dir: []const u8) void {
+        var buf: [512]u8 = undefined;
+        const path = std.fmt.bufPrintSentinel(&buf, "{s}/ground.png", .{dir}, 0) catch return;
+        var t = rl.LoadTexture(path.ptr);
+
+        if (t.id == 0) return;
+
+        rl.GenTextureMipmaps(&t);
+        rl.SetTextureFilter(t, rl.TEXTURE_FILTER_TRILINEAR);
+        rl.SetTextureWrap(t, rl.TEXTURE_WRAP_REPEAT);
+        r.ground_detail = t;
+    }
+
+    pub fn setGroundMap(r: *Renderer, map: ?rl.Texture2D, extent: f32) void {
+        const t = map orelse {
+            r.ground_xf = .{ 0, 0, 0 };
+
+            return;
+        };
+
+        r.ground_map = t;
+        r.ground_xf = .{ extent, 1 / (2 * extent), 1 };
     }
 
     pub fn loadMaterials(r: *Renderer, dir: []const u8) void {

@@ -3,6 +3,7 @@ const props = @import("../props.zig");
 const api = @import("api.zig");
 
 pub const Def = api.Def;
+pub const Scatter = api.Scatter;
 
 const all = struct {
     pub const desert = @import("desert.zig");

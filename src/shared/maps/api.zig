@@ -31,6 +31,15 @@ pub const Palette = struct {
     zenith: [3]f32 = .{ 0.05, 0.24, 0.62 },
 };
 
+pub const Scatter = struct {
+    enabled: bool = true,
+    clumps: f32 = 1,
+    flowers: f32 = 0.35,
+    pebbles: f32 = 1,
+    litter: f32 = 0.5,
+    flower_colors: [2]Rgb = .{ .{ 236, 214, 96 }, .{ 238, 238, 230 } },
+};
+
 pub const Def = struct {
     name: [:0]const u8,
     note: [:0]const u8,
@@ -57,6 +66,7 @@ pub const Def = struct {
     grip: f32 = 0.84,
     tufts: f32 = 0.85,
     paved: bool = false,
+    scatter: Scatter = .{},
 };
 
 pub fn kind(i: usize) Kind {
@@ -167,6 +177,17 @@ pub fn scatter(b: *Builder, kinds: []const Kind, count: u32, x0: f32, z0: f32, x
 
         b.put(b.rng.pick(Kind, kinds), x, z, b.rng.range(0, std.math.tau), b.rng.range(0.85, 1.15));
         i += 1;
+    }
+}
+
+pub fn clutter(b: *Builder, kinds: []const Kind, x: f32, z: f32, r0: f32, r1: f32, count: u32) void {
+    var i: u32 = 0;
+
+    while (i < count) : (i += 1) {
+        const a = b.rng.range(0, std.math.tau);
+        const d = b.rng.range(r0, r1);
+
+        b.put(b.rng.pick(Kind, kinds), x + @cos(a) * d, z + @sin(a) * d, b.rng.range(0, std.math.tau), b.rng.range(0.85, 1.15));
     }
 }
 

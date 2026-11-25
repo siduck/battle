@@ -695,7 +695,18 @@ pub fn main() void {
     var sky_buf: [1024]u8 = undefined;
     const sky_path = assets.file(&sky_buf, "sky/sky.hdr");
     var renderer = gfx.Renderer.init(sky_path, models.sky);
+    var ground_buf: [1024]u8 = undefined;
 
+    renderer.loadGround(assets.dir(&ground_buf, "textures"));
+
+    if (std.c.getenv("DF_NOGROUND") == null) {
+        const g0 = rl.GetTime();
+
+        models_mod.buildGroundMap();
+        logLine("ground map {d:.0} ms", .{(rl.GetTime() - g0) * 1000});
+    }
+
+    renderer.setGroundMap(models_mod.ground_map, models_mod.ground_extent);
 
 
     if (shared.terrain.current == .facility) {

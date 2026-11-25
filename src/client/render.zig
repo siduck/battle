@@ -607,7 +607,9 @@ fn drawChunks(r: *gfx.Renderer, v: View) void {
         const near = dist < 230 + c.r;
 
         r.setSurface(.{ .roughness = 1, .metallic = 0 });
+        r.setDetailMode(1);
         r.draw(if (near) c.hi else c.lo, mesh.identity, near);
+        r.setDetailMode(0);
 
         if (dist < 480 + c.r) {
             r.setSurface(.{ .roughness = 0.75, .metallic = 0.05 });
@@ -654,15 +656,13 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     r.ambientBoost(if (indoors(v.eye)) 1.8 else 1);
     r.setSurface(.{ .roughness = 1, .metallic = 0 });
     r.draw(models.backdrop, mesh.identity, false);
-    r.setDetail(true);
+    r.setDetailMode(0);
     r.draw(models.world, mesh.identity, true);
 
     for (models_mod.extraMeshes()) |em| r.draw(em, mesh.identity, true);
 
-    if (shared.terrain.current == .facility) r.setDetailMode(1);
-
     if (shared.terrain.current != .courtyard) drawChunks(r, v);
-    r.setDetail(false);
+    r.setDetailMode(0);
     r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
     r.setPropDetail(true);
     scenery.draw(r, v.eye, v.forward);

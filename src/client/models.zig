@@ -163,7 +163,7 @@ fn splat(x: f32, z: f32, r: f32, strength: f32) void {
 fn buildBlobs() void {
     const t = shared.terrain;
 
-    if (t.current != .valley and t.current != .islands) return;
+    if (t.current != .valley and t.current != .islands and shared.maps.current() == null) return;
 
     blob_n = @intFromFloat(@ceil(t.half * 2));
     blob = std.heap.page_allocator.alloc(f32, blob_n * blob_n) catch {
@@ -1536,4 +1536,297 @@ fn buildGlove() rl.Mesh {
     b.cylinder(vec(0, -0.012, 0.022), vec(0, -0.05, 0.045), 0.024, 14, true);
 
     return b.finish();
+}
+
+pub var ground_map: ?rl.Texture2D = null;
+pub var ground_extent: f32 = 0;
+pub var ground_pixels: []u8 = &.{};
+pub var ground_n: usize = 0;
+
+pub fn groundAt(x: f32, z: f32) ?palette.Rgb {
+    if (ground_n == 0) return null;
+
+    const s: f32 = @floatFromInt(ground_n);
+    const fx = (x + ground_extent) / (2 * ground_extent) * s;
+    const fz = (z + ground_extent) / (2 * ground_extent) * s;
+
+    if (fx < 0 or fz < 0 or fx >= s or fz >= s) return null;
+
+    const o = (@as(usize, @intFromFloat(fz)) * ground_n + @as(usize, @intFromFloat(fx))) * 4;
+
+    return .{ ground_pixels[o], ground_pixels[o + 1], ground_pixels[o + 2] };
+}
+
+fn blobSmooth(x: f32, z: f32) f32 {
+    if (blob_n == 0) return 0;
+
+    const fx = x + shared.terrain.half - 0.5;
+    const fz = z + shared.terrain.half - 0.5;
+    const x0 = @floor(fx);
+    const z0 = @floor(fz);
+    const kx = fx - x0;
+    const kz = fz - z0;
+    const a = blobAt(x0 - shared.terrain.half + 0.5, z0 - shared.terrain.half + 0.5);
+    const b = blobAt(x0 - shared.terrain.half + 1.5, z0 - shared.terrain.half + 0.5);
+    const c = blobAt(x0 - shared.terrain.half + 0.5, z0 - shared.terrain.half + 1.5);
+    const d = blobAt(x0 - shared.terrain.half + 1.5, z0 - shared.terrain.half + 1.5);
+
+    return (a * (1 - kx) + b * kx) * (1 - kz) + (c * (1 - kx) + d * kx) * kz;
+}
+
+const GroundGrid = struct {
+    coarse: []f32,
+    cn: usize,
+    raw: []f32,
+    out: []u8,
+    n: usize,
+    extent: f32,
+    texel: f32,
+    reach: f32,
+
+    fn at(g: *const GroundGrid, i: i32, j: i32) [3]f32 {
+        const m: i32 = @intCast(g.n - 1);
+        const ci: usize = @intCast(std.math.clamp(i, 0, m));
+        const cj: usize = @intCast(std.math.clamp(j, 0, m));
+        const k = (cj * g.n + ci) * 3;
+
+        return .{ g.raw[k], g.raw[k + 1], g.raw[k + 2] };
+    }
+
+    fn sample(g: *const GroundGrid, fi: f32, fj: f32) [3]f32 {
+        const x0 = @floor(fi);
+        const z0 = @floor(fj);
+        const kx = fi - x0;
+        const kz = fj - z0;
+        const ix: i32 = @intFromFloat(x0);
+        const iz: i32 = @intFromFloat(z0);
+        const a = g.at(ix, iz);
+        const b = g.at(ix + 1, iz);
+        const c = g.at(ix, iz + 1);
+        const d = g.at(ix + 1, iz + 1);
+        var out: [3]f32 = undefined;
+
+        for (0..3) |q| out[q] = (a[q] * (1 - kx) + b[q] * kx) * (1 - kz) + (c[q] * (1 - kx) + d[q] * kx) * kz;
+
+        return out;
+    }
+
+    fn pos(g: *const GroundGrid, i: usize) f32 {
+        return -g.extent + (@as(f32, @floatFromInt(i)) + 0.5) * g.texel;
+    }
+
+    fn coarsePos(g: *const GroundGrid, i: usize) f32 {
+        return -g.extent + @as(f32, @floatFromInt(i)) * (g.extent * 2 / @as(f32, @floatFromInt(g.cn - 1)));
+    }
+
+    fn rawRows(g: *GroundGrid, r0: usize, r1: usize) void {
+        for (r0..r1) |j| {
+            const z = g.coarsePos(j);
+
+            for (0..g.cn) |i| {
+                const c = groundColor(g.coarsePos(i), z);
+                const k = (j * g.cn + i) * 3;
+
+                for (0..3) |q| g.coarse[k + q] = @as(f32, @floatFromInt(c[q])) / 255.0;
+            }
+        }
+    }
+
+    fn upRows(g: *GroundGrid, r0: usize, r1: usize) void {
+        const scale = @as(f32, @floatFromInt(g.cn - 1)) / (g.extent * 2);
+
+        for (r0..r1) |j| {
+            const fz = (g.pos(j) + g.extent) * scale;
+            const z0: usize = @min(g.cn - 2, @as(usize, @intFromFloat(@max(0, @floor(fz)))));
+            const kz = std.math.clamp(fz - @as(f32, @floatFromInt(z0)), 0, 1);
+
+            for (0..g.n) |i| {
+                const fx = (g.pos(i) + g.extent) * scale;
+                const x0: usize = @min(g.cn - 2, @as(usize, @intFromFloat(@max(0, @floor(fx)))));
+                const kx = std.math.clamp(fx - @as(f32, @floatFromInt(x0)), 0, 1);
+                const a = (z0 * g.cn + x0) * 3;
+                const b = a + 3;
+                const c = a + g.cn * 3;
+                const d = c + 3;
+                const k = (j * g.n + i) * 3;
+
+                for (0..3) |q| g.raw[k + q] = (g.coarse[a + q] * (1 - kx) + g.coarse[b + q] * kx) * (1 - kz) + (g.coarse[c + q] * (1 - kx) + g.coarse[d + q] * kx) * kz;
+            }
+        }
+    }
+
+    fn crispRows(g: *GroundGrid, r0: usize, r1: usize) void {
+        const reach: f32 = g.reach / g.texel;
+        const k: i32 = @max(2, @as(i32, @intFromFloat(@round(reach * 0.5))));
+
+        for (r0..r1) |j| {
+            const z = g.pos(j);
+            const jj: i32 = @intCast(j);
+
+            for (0..g.n) |i| {
+                const x = g.pos(i);
+                const ii: i32 = @intCast(i);
+                const c = g.at(ii, jj);
+                var out = c;
+                const xa = g.at(ii + k, jj);
+                const xb = g.at(ii - k, jj);
+                const za = g.at(ii, jj + k);
+                const zb = g.at(ii, jj - k);
+                const gx = sub3(xa, xb);
+                const gz = sub3(za, zb);
+                const e = if (dot3(gx, gz) >= 0) add3(gx, gz) else sub3(gx, gz);
+
+                if (l1(e) > 0.05 and std.c.getenv("DF_GROUNDRAW") == null) {
+                    var dx = dot3(gx, e);
+                    var dz = dot3(gz, e);
+                    const len = @sqrt(dx * dx + dz * dz);
+
+                    if (len > 1e-5) {
+                        dx /= len;
+                        dz /= len;
+
+                        const fi: f32 = @floatFromInt(i);
+                        const fj: f32 = @floatFromInt(j);
+                        const ca = g.sample(fi - dx * reach, fj - dz * reach);
+                        const cb = g.sample(fi + dx * reach, fj + dz * reach);
+                        const ca2 = g.sample(fi - dx * reach * 1.7, fj - dz * reach * 1.7);
+                        const cb2 = g.sample(fi + dx * reach * 1.7, fj + dz * reach * 1.7);
+                        const diff = sub3(cb, ca);
+                        const len2 = dot3(diff, diff);
+                        const span = l1(diff) + 0.02;
+                        const plateau = 1 - shared.terrain.smooth(0.2, 0.45, (l1(sub3(ca2, ca)) + l1(sub3(cb2, cb))) / span);
+                        const strength = plateau * @max(shared.terrain.smooth(0.16, 0.36, l1(sub3(chroma(ca), chroma(cb)))), shared.terrain.smooth(0.4, 0.7, @abs(@log((luma(ca) + 0.02) / (luma(cb) + 0.02)))));
+
+                        if (len2 > 1e-5 and strength > 0) {
+                            const t = std.math.clamp(dot3(sub3(c, ca), diff) / len2, 0, 1);
+                            const th = 0.5 + (shared.terrain.fbm(x * 0.55 + 13.1, z * 0.55 - 7.7) - 0.5) * 0.55 + (shared.terrain.fbm(x * 2.1, z * 2.1) - 0.5) * 0.18;
+                            const s = shared.terrain.smooth(th - 0.07, th + 0.07, t);
+                            const rim = 1 - 0.12 * (1 - shared.terrain.smooth(0.0, 0.09, @abs(t - th)));
+
+                            for (0..3) |q| {
+                                const crisp = (ca[q] + diff[q] * s) * rim;
+
+                                out[q] = c[q] + (crisp - c[q]) * strength;
+                            }
+                        }
+                    }
+                }
+
+                const ao = 1 - 0.42 * blobSmooth(x, z);
+                const o = (j * g.n + i) * 4;
+
+                for (0..3) |q| g.out[o + q] = @intFromFloat(std.math.clamp(out[q] * ao * 255.0, 0, 255));
+
+                g.out[o + 3] = 255;
+            }
+        }
+    }
+};
+
+fn sub3(a: [3]f32, b: [3]f32) [3]f32 {
+    return .{ a[0] - b[0], a[1] - b[1], a[2] - b[2] };
+}
+
+fn add3(a: [3]f32, b: [3]f32) [3]f32 {
+    return .{ a[0] + b[0], a[1] + b[1], a[2] + b[2] };
+}
+
+fn dot3(a: [3]f32, b: [3]f32) f32 {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+fn l1(a: [3]f32) f32 {
+    return @abs(a[0]) + @abs(a[1]) + @abs(a[2]);
+}
+
+fn luma(a: [3]f32) f32 {
+    return a[0] * 0.3 + a[1] * 0.59 + a[2] * 0.11;
+}
+
+fn chroma(a: [3]f32) [3]f32 {
+    const s = a[0] + a[1] + a[2] + 0.03;
+
+    return .{ a[0] * 3 / s, a[1] * 3 / s, a[2] * 3 / s };
+}
+
+fn groundRaw(g: *GroundGrid, r0: usize, r1: usize) void {
+    g.rawRows(r0, r1);
+}
+
+fn groundUp(g: *GroundGrid, r0: usize, r1: usize) void {
+    g.upRows(r0, r1);
+}
+
+fn groundCrisp(g: *GroundGrid, r0: usize, r1: usize) void {
+    g.crispRows(r0, r1);
+}
+
+fn runRows(g: *GroundGrid, rows: usize, comptime f: fn (*GroundGrid, usize, usize) void) void {
+    const cpus = std.Thread.getCpuCount() catch 1;
+    const workers = std.math.clamp(cpus, 1, 8);
+    var threads: [8]?std.Thread = @splat(null);
+    const per = (rows + workers - 1) / workers;
+
+    for (1..workers) |w| {
+        const r0 = @min(rows, w * per);
+        const r1 = @min(rows, r0 + per);
+
+        threads[w] = std.Thread.spawn(.{}, f, .{ g, r0, r1 }) catch blk: {
+            f(g, r0, r1);
+
+            break :blk null;
+        };
+    }
+
+    f(g, 0, @min(rows, per));
+
+    for (threads) |t| {
+        if (t) |th| th.join();
+    }
+}
+
+pub fn buildGroundMap() void {
+    const t = shared.terrain;
+
+    if (ground_map) |m| rl.UnloadTexture(m);
+
+    ground_map = null;
+
+    if (chunks.len == 0 or t.current == .prism or t.current == .courtyard) return;
+
+    const extent = t.half + 2;
+    const n: usize = @intFromFloat(@min(1024, @ceil(extent * 2 / 0.48)));
+    const gpa = std.heap.page_allocator;
+    const raw = gpa.alloc(f32, n * n * 3) catch return;
+    defer gpa.free(raw);
+    const cn = n / 2 + 1;
+    const coarse = gpa.alloc(f32, cn * cn * 3) catch return;
+    defer gpa.free(coarse);
+    if (ground_pixels.len > 0) gpa.free(ground_pixels);
+
+    ground_pixels = &.{};
+    ground_n = 0;
+
+    const out = gpa.alloc(u8, n * n * 4) catch return;
+    var g: GroundGrid = .{ .coarse = coarse, .cn = cn, .raw = raw, .out = out, .n = n, .extent = extent, .texel = extent * 2 / @as(f32, @floatFromInt(n)), .reach = 3.2 };
+
+    runRows(&g, cn, groundRaw);
+    runRows(&g, n, groundUp);
+    runRows(&g, n, groundCrisp);
+
+    const img: rl.Image = .{ .data = out.ptr, .width = @intCast(n), .height = @intCast(n), .mipmaps = 1, .format = rl.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
+
+    if (std.c.getenv("DF_GROUNDDUMP")) |p| _ = rl.ExportImage(img, p);
+    var tex = rl.LoadTextureFromImage(img);
+
+    ground_pixels = out;
+    ground_n = n;
+    ground_extent = extent;
+
+    if (tex.id == 0) return;
+
+    rl.GenTextureMipmaps(&tex);
+    rl.SetTextureFilter(tex, rl.TEXTURE_FILTER_TRILINEAR);
+    rl.SetTextureWrap(tex, rl.TEXTURE_WRAP_CLAMP);
+    ground_map = tex;
 }
