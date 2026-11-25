@@ -1,985 +1,1361 @@
 const std = @import("std");
 const api = @import("api.zig");
+const k = @import("islands_kit.zig");
 
 const tr = api.terrain;
 const wd = api.world;
-const terrain = api.terrain;
-const props = api.props;
-const geom = api.geom;
-const movement = api.movement;
 const Builder = api.Builder;
-const Rng = api.Rng;
 const Kind = api.Kind;
 const Vec3 = api.Vec3;
 const vec = api.vec;
 const half_pi = api.half_pi;
 const shade = api.shade;
 const mix3 = api.mix3;
-const rotPoint = wd.rotPoint;
-const covered = wd.covered;
-const lowest = wd.lowest;
-const runway = wd.runway;
-const helipad = wd.helipad;
-const Spot = wd.Spot;
-const cHangar = wd.cHangar;
-const clearance = wd.clearance;
-const fuelTank = wd.fuelTank;
-const levelGround = wd.levelGround;
-const tent = wd.tent;
-
-
-const K = enum {
-    olive,
-    cypress,
-    agave,
-    pear,
-    geranium,
-    basil,
-    laundry,
-    gwall,
-    taverna,
-    kafe,
-    chair,
-    lamp,
-    boat,
-    truck,
-    melon,
-    stand,
-    light,
-    boathouse,
-    block,
-    cube1,
-    cube1b,
-    cube1c,
-    cube1d,
-    cube2,
-    cube2b,
-    solar,
-    dome1,
-    dome2,
-    stair,
-    water,
-    parapet,
-    cave1,
-    cave1b,
-};
-
-const kit = api.Kit(K);
-
-const table = [_]api.Info{
-    .{ .file = "islands/olive.glb", .scale = 1.00, .collide = .trunk, .group = .tree, .foliage = false, .min = .{ -3.154, 0.000, -1.974 }, .max = .{ 3.154, 4.523, 1.974 } },
-    .{ .file = "islands/cypress.glb", .scale = 1.00, .collide = .cylinder, .group = .bush, .foliage = false, .min = .{ -0.856, 0.000, -0.900 }, .max = .{ 0.856, 8.100, 0.900 } },
-    .{ .file = "islands/agave.glb", .scale = 1.00, .collide = .cylinder, .group = .bush, .foliage = false, .min = .{ -0.687, 0.000, -0.750 }, .max = .{ 0.687, 2.029, 0.750 } },
-    .{ .file = "islands/pear.glb", .scale = 1.00, .collide = .cylinder, .group = .bush, .foliage = false, .min = .{ -1.067, 0.000, -0.254 }, .max = .{ 1.067, 1.815, 0.254 } },
-    .{ .file = "islands/geranium.glb", .scale = 1.00, .collide = .none, .group = .bush, .foliage = false, .min = .{ -0.315, 0.000, -0.277 }, .max = .{ 0.315, 0.943, 0.277 } },
-    .{ .file = "islands/basil.glb", .scale = 1.00, .collide = .none, .group = .bush, .foliage = false, .min = .{ -0.249, 0.000, -0.244 }, .max = .{ 0.249, 0.639, 0.244 } },
-    .{ .file = "islands/laundry.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -1.980, 0.000, -0.231 }, .max = .{ 1.980, 1.198, 0.231 } },
-    .{ .file = "islands/gwall.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -0.200 }, .max = .{ 2.000, 1.000, 0.200 } },
-    .{ .file = "islands/taverna.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.461, 0.000, -0.914 }, .max = .{ 0.461, 0.920, 0.914 } },
-    .{ .file = "islands/kafe.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.300, 0.000, -0.300 }, .max = .{ 0.300, 0.795, 0.300 } },
-    .{ .file = "islands/chair.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.230, 0.000, -0.225 }, .max = .{ 0.230, 0.920, 0.225 } },
-    .{ .file = "islands/lamp.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.250, 0.000, -0.442 }, .max = .{ 0.250, 3.500, 0.442 } },
-    .{ .file = "islands/boat.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.344, 0.000, -3.660 }, .max = .{ 1.344, 4.910, 3.660 } },
-    .{ .file = "islands/truck.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.718, 0.000, -1.505 }, .max = .{ 0.718, 2.035, 1.505 } },
-    .{ .file = "islands/melon.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.500, 0.000, -1.000 }, .max = .{ 0.500, 1.332, 1.000 } },
-    .{ .file = "islands/stand.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.300, 0.000, -0.293 }, .max = .{ 0.300, 1.600, 0.293 } },
-    .{ .file = "islands/light.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -2.600, 0.000, -2.600 }, .max = .{ 2.600, 6.500, 2.600 } },
-    .{ .file = "islands/boathouse.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -4.400 }, .max = .{ 2.200, 5.830, 4.400 } },
-    .{ .file = "islands/block.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.240, -17.000, -2.240 }, .max = .{ 2.240, 0.000, 2.240 } },
-    .{ .file = "islands/cube1.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 4.520, 2.200 } },
-    .{ .file = "islands/cube1b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 4.520, 2.200 } },
-    .{ .file = "islands/cube1c.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 4.520, 2.200 } },
-    .{ .file = "islands/cube1d.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 4.520, 2.200 } },
-    .{ .file = "islands/cube2.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 7.820, 2.200 } },
-    .{ .file = "islands/cube2b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 7.820, 2.200 } },
-    .{ .file = "islands/solar.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -1.000, 0.000, -0.735 }, .max = .{ 1.000, 2.460, 0.735 } },
-    .{ .file = "islands/dome1.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 5.900, 2.200 } },
-    .{ .file = "islands/dome2.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 9.200, 2.200 } },
-    .{ .file = "islands/stair.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, -1.000, -0.000 }, .max = .{ 2.200, 4.250, 8.800 } },
-    .{ .file = "islands/water.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -6.600, -0.200, -6.600 }, .max = .{ 6.600, 0.010, 6.600 } },
-    .{ .file = "islands/parapet.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.230, 0.000, -0.220 }, .max = .{ 2.230, 0.950, 0.220 } },
-    .{ .file = "islands/cave1.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 3.580, 2.200 } },
-    .{ .file = "islands/cave1b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.200, 0.000, -2.200 }, .max = .{ 2.200, 3.580, 2.200 } },
-};
+const kit = k.kit;
+const K = k.K;
 
 pub const def: api.Def = .{
     .name = "Islands",
-    .note = "Harbour village, hills and coves",
+    .note = "Hillside village, olive terraces, quarry",
     .tint = .{ 110, 180, 90 },
-    .half = 275,
-    .play = 250,
-    .facet = 2.2,
-    .runway = .{ 0, 118, 62, 12 },
-    .helipads = .{ .{ 100, 30 }, .{ 120, 30 }, .{ 140, 30 } },
-    .configure = buildIslands,
+    .half = 215,
+    .play = 172,
+    .facet = 2.0,
     .height = height,
     .ground = groundColor,
-    .build = islandNature,
+    .build = build,
     .spots = setSpots,
-    .props = &table,
+    .props = &k.table,
     .palette = .{
-        .sun_dir = .{ 0.58, 0.65, -0.49 },
-        .sun_tint = .{ 1.15, 1.02, 0.86 },
-        .grade_tint = .{ 1.03, 1, 0.96 },
-        .grade_sat = 1.14,
-        .fog = 0.0024,
-        .fog_color = .{ 0.66, 0.82, 0.96 },
-        .amb_sky = .{ 0.92, 1, 1.18 },
-        .amb_ground = .{ 0.76, 0.74, 0.58 },
-        .shade_tint = .{ 0.9, 0.94, 1.05 },
-        .zenith = .{ 0.04, 0.26, 0.66 },
+        .sun_dir = .{ 0.52, 0.68, -0.52 },
+        .sun_tint = .{ 1.16, 1.03, 0.88 },
+        .grade_tint = .{ 1.04, 1.01, 0.95 },
+        .grade_sat = 1.16,
+        .fog = 0.0026,
+        .fog_color = .{ 0.7, 0.84, 0.95 },
+        .amb_sky = .{ 0.9, 1, 1.2 },
+        .amb_ground = .{ 0.8, 0.76, 0.6 },
+        .shade_tint = .{ 0.86, 0.92, 1.08 },
+        .zenith = .{ 0.05, 0.3, 0.7 },
     },
-    .backdrop = .{ 46, 140, 168 },
-    .floor_y = tr.sea_level - 0.15,
-    .aircraft = true,
+    .backdrop = .{ 34, 112, 150 },
+    .floor_y = 0.12,
     .grip = 0.84,
-    .tufts = 0.025,
+    .tufts = 0.6,
 };
 
-fn setSpots(gpa: std.mem.Allocator) void {
-    islandSpots(gpa);
-    wd.parkClear(gpa);
-}
-
-pub const Island = struct {
-    x: f32,
-    z: f32,
-    r: f32,
-    h: f32,
-    seed: f32,
-};
-
-
-pub const isle_base: f32 = 1.0;
-
-pub const village_cell: f32 = 4.4;
-pub const village_cols: i32 = 15;
-pub const village_rows: i32 = 17;
-pub const village_x0: f32 = -33;
-pub const village_z0: f32 = -186;
-
-const village_tier: f32 = 3.3;
-const harbour_r: f32 = 189;
-const summit = [3]f32{ 0, -62, 40 };
-
-pub fn inBasin(x: f32, z: f32) bool {
-    const x0 = village_x0 + village_cell * 6 - 1.2;
-    const x1 = village_x0 + village_cell * 9 + 1.2;
-    const z0 = village_z0 + village_cell * 1 - 1.2;
-    const z1 = village_z0 + village_cell * 4 + 1.2;
-
-    return x > x0 and x < x1 and z > z0 and z < z1;
-}
-
-fn villageOut(x: f32, z: f32) f32 {
-    const x1 = village_x0 + village_cell * @as(f32, @floatFromInt(village_cols));
-    const z1 = village_z0 + village_cell * @as(f32, @floatFromInt(village_rows));
-    const dx = @max(village_x0 - x, x - x1, 0);
-    const dz = @max(village_z0 - z, z - z1, 0);
-
-    return @sqrt(dx * dx + dz * dz);
-}
+const sea_y: f32 = 0.35;
+const pier_x: f32 = 64;
+const cell: f32 = 4.4;
+const tier: f32 = 3.3;
+const cols: i32 = 25;
+const rows: i32 = 17;
+const tiers: i32 = 7;
+const vx0: f32 = -55.0;
+const vz0: f32 = -132;
+const y0: f32 = 1.3;
+const summit = [2]f32{ -4, 18 };
+const farm = [2]f32{ -62, 86 };
+const quarry = [2]f32{ 70, 78 };
+const hamlet = [2]f32{ 112, -34 };
+const cove = [2]f32{ -132, -58 };
+const mills = [_][3]f32{ .{ -26, 6, 0.4 }, .{ -8, 26, 0.1 }, .{ 14, 14, -0.3 } };
 
 pub fn villageMask(x: f32, z: f32) f32 {
     if (tr.current != .islands) return 0;
 
-    return 1 - tr.smooth(0, 8, villageOut(x, z));
+    return 1 - tr.smooth(0, 6, villageOut(x, z));
 }
 
-fn villageStep(z: f32) f32 {
-    const row = @floor((z - village_z0) / village_cell);
-    const k = std.math.clamp(@floor((row - 5) / 3), 0, 4);
-    const y0 = isle_base + 0.3;
+fn villageOut(x: f32, z: f32) f32 {
+    const x1 = vx0 + cell * @as(f32, @floatFromInt(cols));
+    const z1 = vz0 + cell * @as(f32, @floatFromInt(rows));
+    const dx = @max(vx0 - x, x - x1, 0);
+    const dz = @max(vz0 - z, z - z1, 0);
 
-    if (row < 5) return y0;
+    return @sqrt(dx * dx + dz * dz);
+}
 
-    return y0 + k * village_tier;
+fn rowLevel(r: i32) f32 {
+    if (r < 3) return y0;
+
+    const t = @divFloor(r - 3, 2);
+
+    return y0 + @as(f32, @floatFromInt(if (@mod(r - 3, 2) == 1) t + 1 else t)) * tier;
+}
+
+fn rowOf(z: f32) i32 {
+    return @intFromFloat(std.math.clamp(@floor((z - vz0) / cell), 0, @as(f32, @floatFromInt(rows - 1))));
 }
 
 fn villageRamp(z: f32) f32 {
-    const t = (z - village_z0) / village_cell - 5;
-    const y0 = isle_base + 0.3;
+    const t = (z - vz0) / cell - 3;
 
-    return y0 + std.math.clamp(t / 3, 0, 4) * village_tier;
+    return y0 + std.math.clamp(t / 2, 0, @as(f32, @floatFromInt(tiers))) * tier;
 }
 
-const fixed_islands = [_]Island{
-    .{ .x = 0, .z = 0, .r = 206, .h = isle_base, .seed = 2 },
-};
+pub fn islandEdge(x: f32, z: f32) f32 {
+    const ang = std.math.atan2(z, x);
+    const wob = 150 * (0.86 + 0.24 * tr.fbm(@cos(ang) * 1.6 + 7.3, @sin(ang) * 1.6 + 3.1) + 0.035 * @sin(ang * 6 + 1.3));
+    const s = -@sin(ang);
 
-var island_buf: [4]Island = undefined;
+    if (s < 0.2) return wob;
 
-pub var islands: []Island = island_buf[0..0];
-
-fn buildIslands() void {
-    island_buf[0] = fixed_islands[0];
-    islands = island_buf[0..1];
-}
-
-pub fn islandEdge(i: Island, x: f32, z: f32) f32 {
-    const ang = std.math.atan2(z - i.z, x - i.x);
-    const wobble = 0.86 + 0.24 * tr.fbm(@cos(ang) * 1.7 + 7.3, @sin(ang) * 1.7 + 3.1) + 0.05 * @sin(ang * 7 + 1.3);
-    const south = tr.smooth(0.62, 0.3, @abs(ang + std.math.pi / 2.0));
-
-    return i.r * wobble * (1 - south) + harbour_r * south;
-}
-
-pub fn islandAt(x: f32, z: f32) ?usize {
-    for (islands, 0..) |i, k| {
-        const d = @sqrt((x - i.x) * (x - i.x) + (z - i.z) * (z - i.z));
-
-        if (d < islandEdge(i, x, z)) return k;
-    }
-
-    return null;
+    return @min(wob, 132 / s);
 }
 
 pub fn coastDistance(x: f32, z: f32) f32 {
-    if (islands.len == 0) return 0;
-
-    const i = islands[0];
-    const d = @sqrt((x - i.x) * (x - i.x) + (z - i.z) * (z - i.z));
-
-    return islandEdge(i, x, z) - d;
+    return islandEdge(x, z) - @sqrt(x * x + z * z);
 }
 
-fn height(x: f32, z: f32) f32 {
-    if (islands.len == 0) return tr.void_floor;
-
-    const i = islands[0];
-    const d = @sqrt((x - i.x) * (x - i.x) + (z - i.z) * (z - i.z));
-    const rr = islandEdge(i, x, z);
-
-    if (d > rr) return @max(-30, tr.sea_level - 0.8 - (d - rr) * 1.3);
-
-    const ang = std.math.atan2(z - i.z, x - i.x);
-    const rocky = tr.smooth(0.5, 0.62, tr.fbm(@cos(ang) * 2.3 + 1.7, @sin(ang) * 2.3 - 4.2));
-    const band = 16 - rocky * 11;
-    const coast = tr.smooth(rr - band, rr, d);
-    const hd = @sqrt((x - summit[0]) * (x - summit[0]) + (z - summit[1]) * (z - summit[1]));
-    const hill = summit[2] * (1 - tr.smooth(0, 215, hd)) + 9 * (1 - tr.smooth(0, 70, @sqrt((x + 120) * (x + 120) + (z - 70) * (z - 70)))) + 7 * (1 - tr.smooth(0, 60, @sqrt((x - 115) * (x - 115) + (z - 40) * (z - 40))));
-    const ridge = (tr.fbm(x * 0.018 + 4, z * 0.018 - 9) - 0.45) * 12;
-    const bumps = (tr.fbm(x * 0.06, z * 0.06) - 0.5) * 2.2;
-    const lift = rocky * 5 * (1 - tr.smooth(rr - band * 2.2, rr - band * 0.4, d));
-    var h = i.h + @max(0, hill + ridge + bumps + lift);
-
-    h = h * (1 - coast) + (tr.sea_level - 0.35) * coast;
-
-    const flat = @max(tr.runwayMask(x, z), tr.padMask(x, z));
-
-    h = h * (1 - flat) + (i.h + 3.2) * flat;
-
-    const out = villageOut(x, z);
-
-    if (out <= 0) {
-        const basin: f32 = if (inBasin(x, z)) 1.5 else 0;
-
-        return villageStep(z) - 0.25 - basin;
-    }
-
-    const vm = 1 - tr.smooth(0, 34, out);
-
-    return h * (1 - vm) + (villageRamp(z) - 0.25) * vm;
+fn dist(x: f32, z: f32, p: [2]f32) f32 {
+    return @sqrt((x - p[0]) * (x - p[0]) + (z - p[1]) * (z - p[1]));
 }
 
-pub const isle_hamlets = [_][3]f32{
-    .{ -118, -62, 0.4 },
-    .{ 122, -74, -0.5 },
-    .{ -112, 82, 2.6 },
-    .{ 128, 112, 2.2 },
-};
+fn segDist(x: f32, z: f32, s: [4]f32) f32 {
+    const dx = s[2] - s[0];
+    const dz = s[3] - s[1];
+    const l2 = dx * dx + dz * dz;
+    const t = std.math.clamp(((x - s[0]) * dx + (z - s[1]) * dz) / l2, 0, 1);
+    const px = s[0] + dx * t - x;
+    const pz = s[1] + dz * t - z;
 
-pub const isle_summit = [2]f32{ 0, -62 };
+    return @sqrt(px * px + pz * pz);
+}
 
-pub const isle_paths = [_][4]f32{
-    .{ -36, -112, 0, -62 },
-    .{ 0, -62, -118, -62 },
-    .{ 0, -62, 122, -74 },
-    .{ 0, -62, 0, 96 },
-    .{ 0, 96, -112, 82 },
-    .{ 62, 100, 128, 112 },
-    .{ -38, -150, -118, -62 },
-    .{ 38, -150, 122, -74 },
-    .{ -118, -62, -112, 82 },
-    .{ 122, -74, 128, 112 },
+const paths = [_][4]f32{
+    .{ 0, -56, -4, -30 },
+    .{ -4, -30, -26, 6 },
+    .{ -26, 6, -8, 26 },
+    .{ -8, 26, 14, 14 },
+    .{ 14, 14, -4, -30 },
+    .{ -8, 26, -40, 64 },
+    .{ -40, 64, -62, 86 },
+    .{ 14, 14, 48, 56 },
+    .{ 48, 56, 70, 78 },
+    .{ -46, -70, -100, -60 },
+    .{ -100, -60, -132, -58 },
+    .{ 46, -70, 90, -40 },
+    .{ 90, -40, 112, -34 },
+    .{ -26, 6, -90, 10 },
+    .{ -90, 10, -100, -60 },
+    .{ 14, 14, 100, 10 },
+    .{ 100, 10, 112, -34 },
 };
 
 pub fn pathDistance(x: f32, z: f32) f32 {
     if (tr.current != .islands) return 1000;
 
+    const wx = x + @sin(z * 0.08) * 1.6;
+    const wz = z + @sin(x * 0.07) * 1.6;
     var best: f32 = 1000;
-    const wx = x + @sin(z * 0.07) * 2.5;
-    const wz = z + @sin(x * 0.06) * 2.5;
 
-    for (isle_paths) |sg| {
-        const dx = sg[2] - sg[0];
-        const dz = sg[3] - sg[1];
-        const l2 = dx * dx + dz * dz;
-        const t = std.math.clamp(((wx - sg[0]) * dx + (wz - sg[1]) * dz) / l2, 0, 1);
-        const px = sg[0] + dx * t - wx;
-        const pz = sg[1] + dz * t - wz;
-
-        best = @min(best, @sqrt(px * px + pz * pz));
-    }
+    for (paths) |s| best = @min(best, segDist(wx, wz, s));
 
     return best;
 }
 
+fn natural(x: f32, z: f32) f32 {
+    const sd = dist(x, z, summit);
+    const hill = 40 * (1 - tr.smooth(0, 170, sd)) + 8 * (1 - tr.smooth(0, 60, dist(x, z, .{ -70, 70 }))) + 6 * (1 - tr.smooth(0, 50, dist(x, z, .{ 100, -10 })));
+    const ridge = (tr.fbm(x * 0.02 + 4, z * 0.02 - 9) - 0.45) * 9;
+    const bumps = (tr.fbm(x * 0.07, z * 0.07) - 0.5) * 1.6;
+
+    return y0 + @max(0, hill + ridge + bumps);
+}
+
+const Grove = struct { x0: f32, z0: f32, x1: f32, z1: f32, along_z: bool };
+
+const grove_rects = [_]Grove{
+    .{ .x0 = -112, .z0 = -104, .x1 = -60, .z1 = -44, .along_z = true },
+    .{ .x0 = 60, .z0 = -104, .x1 = 112, .z1 = -52, .along_z = true },
+    .{ .x0 = -100, .z0 = 112, .x1 = -24, .z1 = 146, .along_z = true },
+    .{ .x0 = -150, .z0 = -30, .x1 = -112, .z1 = 50, .along_z = false },
+    .{ .x0 = 112, .z0 = 20, .x1 = 150, .z1 = 80, .along_z = false },
+    .{ .x0 = 22, .z0 = -50, .x1 = 56, .z1 = -8, .along_z = true },
+    .{ .x0 = -62, .z0 = -50, .x1 = -26, .z1 = -8, .along_z = true },
+    .{ .x0 = -22, .z0 = -48, .x1 = 18, .z1 = -16, .along_z = true },
+    .{ .x0 = -26, .z0 = 52, .x1 = 36, .z1 = 128, .along_z = true },
+    .{ .x0 = -124, .z0 = 56, .x1 = -84, .z1 = 104, .along_z = false },
+};
+
+const band_w: f32 = 6;
+
+fn rectMask(g: Grove, x: f32, z: f32) f32 {
+    const dx = @max(g.x0 - x, x - g.x1, 0);
+    const dz = @max(g.z0 - z, z - g.z1, 0);
+
+    return 1 - tr.smooth(0, 5, @max(dx, dz));
+}
+
+fn groveMask(x: f32, z: f32) f32 {
+    var m: f32 = 0;
+
+    for (grove_rects) |g| m = @max(m, rectMask(g, x, z));
+
+    return m;
+}
+
+fn bandRef(g: Grove, v: f32) f32 {
+    const o = if (g.along_z) g.z0 else g.x0;
+
+    return o + (@floor((v - o) / band_w) + 0.5) * band_w;
+}
+
+fn terracedAt(x: f32, z: f32) f32 {
+    for (grove_rects) |g| {
+        const m = rectMask(g, x, z);
+
+        if (m <= 0) continue;
+
+        const t = if (g.along_z) natural(x, bandRef(g, z)) else natural(bandRef(g, x), z);
+        const keep = m * (1 - tr.smooth(1, -1, pathDistance(x, z) - 2.5));
+
+        return natural(x, z) * (1 - keep) + t * keep;
+    }
+
+    return natural(x, z);
+}
+
+fn quarryDepth(x: f32, z: f32) f32 {
+    const dx = @abs(x - quarry[0]);
+    const dz = @abs(z - quarry[1]);
+    const e = @max(dx / 26, dz / 20);
+
+    if (e > 1.25) return 0;
+
+    const bench = std.math.clamp(@floor((1.05 - e) * 6), 0, 4);
+    const lip = tr.smooth(1.25, 1.0, e);
+    const d = bench * 2.6 + lip * 1.2;
+    const road = 1 - tr.smooth(4, 6, dx);
+
+    if (z > quarry[1] or road <= 0) return d;
+
+    const lim = @max(0, z - (quarry[1] - 26)) * 0.5;
+
+    return d * (1 - road) + @min(d, lim) * road;
+}
+
+fn landHeight(x: f32, z: f32) f32 {
+    var h = terracedAt(x, z);
+
+    const fd = dist(x, z, farm);
+
+    if (fd < 30) h = h * tr.smooth(14, 30, fd) + (natural(farm[0], farm[1]) + 0.2) * (1 - tr.smooth(14, 30, fd));
+
+    const hd = dist(x, z, hamlet);
+
+    if (hd < 30) h = h * tr.smooth(16, 30, hd) + (natural(hamlet[0], hamlet[1])) * (1 - tr.smooth(16, 30, hd));
+
+    for (mills) |m| {
+        const md = dist(x, z, .{ m[0], m[1] });
+
+        if (md < 12) h = h * tr.smooth(5, 12, md) + natural(m[0], m[1]) * (1 - tr.smooth(5, 12, md));
+    }
+
+    const qd = quarryDepth(x, z);
+
+    if (qd > 0) {
+        const rim_h = natural(quarry[0], quarry[1]) + 1;
+
+        h = @min(h, rim_h + 4) - qd;
+    }
+
+    return h;
+}
+
+fn height(x: f32, z: f32) f32 {
+    const cd = coastDistance(x, z);
+
+    if (cd < 0) return sea_y - 0.02;
+
+    const out = villageOut(x, z);
+
+    if (out <= 0) return rowLevel(rowOf(z)) - 0.25;
+
+    const quayside = z < -112 and @abs(x) < 78;
+    var land = landHeight(x, z);
+
+    if (quayside) land = land * tr.smooth(-118, -104, z) + y0 * (1 - tr.smooth(-118, -104, z));
+
+    const vm = 1 - tr.smooth(0, 26, out);
+    const blended = land * (1 - vm) + (villageRamp(z) - 0.25) * vm;
+    const beach = tr.smooth(0, 7, cd);
+    const cliff = tr.smooth(0.5, 0.62, tr.fbm(x * 0.02 + 5, z * 0.02 + 2));
+    const shore = if (quayside) 1 else beach * (1 - cliff) + tr.smooth(0, 1.5, cd) * cliff;
+
+    return sea_y + (blended - sea_y) * shore;
+}
+
+fn waterColor(cd: f32, x: f32, z: f32) api.Rgb {
+    const d = -cd;
+    const wave = tr.fbm(x * 0.05 + 3, z * 0.05 - 4) * 0.12 + 0.94;
+    const shallow = [3]f32{ 118, 214, 206 };
+    const mid = [3]f32{ 42, 168, 182 };
+    const deep = [3]f32{ 34, 112, 150 };
+    const c = if (d < 10) mix3(shallow, mid, tr.smooth(0, 10, d)) else mix3(mid, deep, tr.smooth(10, 45, d));
+
+    return shade(c, wave);
+}
 
 fn groundColor(x: f32, z: f32) api.Rgb {
+    const cd = coastDistance(x, z);
+
+    if (cd < 0) return waterColor(cd, x, z);
+
     const n = tr.normal(x, z);
     const slope = 1 - n.y;
-    const vary = 0.94 + tr.fbm(x * 0.08, z * 0.08) * 0.12;
-    const light = vary + n.x * 0.04 - n.z * 0.03;
-    const dry = tr.fbm(x * 0.025 + 40, z * 0.025 - 12);
-    const fleck = tr.fbm(x * 0.3 - 7, z * 0.3 + 5);
+    const light = api.light(x, z);
     const h = tr.height(x, z);
+    const fleck = tr.fbm(x * 0.3 - 7, z * 0.3 + 5);
 
-    if (h < tr.sea_level - 0.05) return shade(.{ 190, 182, 150 }, light * 0.85);
+    if (villageMask(x, z) > 0.5) return shade(.{ 214, 200, 170 }, light);
 
-    if (tr.runwayMask(x, z) > 0.6 or tr.padMask(x, z) > 0.7) return shade(.{ 196, 186, 160 }, light);
+    if (z < -112 and @abs(x) < 78) return shade(mix3(.{ 214, 196, 160 }, .{ 196, 180, 146 }, fleck), light);
 
-    if (villageMask(x, z) > 0.02) return shade(.{ 214, 200, 170 }, light);
+    if (h < sea_y + 1.4 and cd < 9) return shade(mix3(.{ 230, 214, 172 }, .{ 214, 196, 150 }, fleck), light);
 
-    if (coastDistance(x, z) < 4.5 and h < tr.sea_level + 1.6) return shade(.{ 226, 210, 170 }, light);
+    const qd = quarryDepth(x, z);
 
-    if (slope > 0.26) return shade(mix3(.{ 178, 170, 156 }, .{ 146, 136, 122 }, fleck), light * (0.92 + (1 - n.y) * 0.1));
+    if (qd > 0.3) return shade(mix3(.{ 226, 216, 192 }, .{ 200, 188, 160 }, fleck), light * (0.94 + slope * 0.2));
+
+    const g = groveMask(x, z);
+
+    if (slope > 0.42 and cd < 24) {
+        const band = @sin(h * 2.2 + fleck * 2) * 0.5 + 0.5;
+
+        return shade(mix3(.{ 200, 182, 148 }, .{ 168, 150, 118 }, band * 0.7), light);
+    }
+
+    if (slope > 0.34 and g > 0.4) {
+        const course = @mod(h * 2.6, 1.0);
+        const stone = mix3(.{ 190, 176, 148 }, .{ 158, 146, 122 }, if (course < 0.18) 1 else fleck * 0.6);
+
+        return shade(stone, light);
+    }
 
     const pd = pathDistance(x, z);
 
-    if (pd < 2.2) return shade(.{ 194, 160, 118 }, light);
+    if (pd < 2.0) return shade(mix3(.{ 204, 176, 132 }, .{ 190, 160, 116 }, fleck), light);
 
-    const scrub = tr.smooth(0.52, 0.64, tr.fbm(x * 0.045 - 13, z * 0.045 + 21));
-    const grass = mix3(mix3(.{ 168, 156, 92 }, .{ 190, 168, 108 }, dry * 1.5 - 0.25), .{ 118, 128, 74 }, scrub * 0.85);
-    const earth = mix3(grass, .{ 190, 158, 116 }, std.math.clamp((fleck - 0.58) * 4, 0, 0.7) + (1 - tr.smooth(2.2, 4.5, pd)) * 0.6);
+    const dry = tr.fbm(x * 0.03 + 40, z * 0.03 - 12);
+    const maquis = tr.smooth(0.44, 0.56, tr.fbm(x * 0.09 + 17, z * 0.09 - 3));
+    const scrub = mix3(.{ 140, 140, 78 }, .{ 176, 160, 98 }, std.math.clamp(dry * 1.6 - 0.4, 0, 1));
+    const patchy = mix3(scrub, .{ 82, 100, 52 }, maquis * 0.85);
+    const speck = mix3(patchy, .{ 206, 184, 96 }, std.math.clamp((fleck - 0.66) * 4, 0, 0.5));
+    const furrow = 0.5 + 0.5 * @sin((x * 0.6 + z * 0.35) + fleck);
+    const grove = mix3(mix3(.{ 178, 144, 100 }, .{ 160, 128, 88 }, furrow * 0.5), .{ 142, 140, 82 }, std.math.clamp(fleck * 1.5 - 0.45, 0, 0.8));
+    const base = mix3(speck, grove, g * 0.9);
+    const verge = mix3(base, .{ 194, 168, 126 }, 1 - tr.smooth(2, 4, pd));
 
-    return shade(earth, light);
+    if (slope > 0.3) return shade(mix3(verge, .{ 150, 138, 96 }, (slope - 0.3) * 1.5), light);
+
+    return shade(verge, light);
 }
 
-var village_spawns: std.ArrayList(Vec3) = .empty;
+var occ: [430 * 430]u8 = undefined;
 
+fn occIndex(x: f32, z: f32) ?usize {
+    const ix: i32 = @intFromFloat(@floor(x + 215));
+    const iz: i32 = @intFromFloat(@floor(z + 215));
 
-fn cellX(c: i32) f32 {
-    return village_x0 + (@as(f32, @floatFromInt(c)) + 0.5) * village_cell;
+    if (ix < 0 or iz < 0 or ix >= 430 or iz >= 430) return null;
+
+    return @intCast(iz * 430 + ix);
 }
 
-fn cellZ(r: i32) f32 {
-    return village_z0 + (@as(f32, @floatFromInt(r)) + 0.5) * village_cell;
-}
+fn taken(x: f32, z: f32, r: f32) bool {
+    var dz: f32 = -r;
 
-fn cellInside(c: i32, r: i32) bool {
-    if (terrain.current == .islands) return c >= 0 and r >= 0;
+    while (dz <= r) : (dz += 1) {
+        var dx: f32 = -r;
 
-    const i = islands[0];
-    const hc = village_cell * 0.5 + 2.5;
-
-    for ([_]f32{ -1, 1 }) |sx| {
-        for ([_]f32{ -1, 1 }) |sz| {
-            const x = cellX(c) + sx * hc;
-            const z = cellZ(r) + sz * hc;
-            const d = @sqrt((x - i.x) * (x - i.x) + (z - i.z) * (z - i.z));
-
-            if (d > islandEdge(i, x, z) - 3) return false;
+        while (dx <= r) : (dx += 1) {
+            if (occIndex(x + dx, z + dz)) |i| {
+                if (occ[i] != 0) return true;
+            }
         }
     }
 
-    return true;
+    return false;
+}
+
+fn claim(x: f32, z: f32, r: f32) void {
+    var dz: f32 = -r;
+
+    while (dz <= r) : (dz += 1) {
+        var dx: f32 = -r;
+
+        while (dx <= r) : (dx += 1) {
+            if (occIndex(x + dx, z + dz)) |i| occ[i] = 1;
+        }
+    }
+}
+
+fn claimRect(x0: f32, z0: f32, x1: f32, z1: f32) void {
+    var z = z0;
+
+    while (z <= z1) : (z += 1) {
+        var x = x0;
+
+        while (x <= x1) : (x += 1) {
+            if (occIndex(x, z)) |i| occ[i] = 1;
+        }
+    }
+}
+
+fn of(e: K) Kind {
+    return kit.of(e);
+}
+
+fn rnd(b: *Builder) f32 {
+    return b.rng.next();
+}
+
+fn spin(b: *Builder) f32 {
+    return b.rng.range(0, std.math.tau);
+}
+
+fn quarter(b: *Builder) f32 {
+    return @floor(b.rng.next() * 3.99) * half_pi;
+}
+
+fn cellX(c: i32) f32 {
+    return vx0 + (@as(f32, @floatFromInt(c)) + 0.5) * cell;
+}
+
+fn cellZ(r: i32) f32 {
+    return vz0 + (@as(f32, @floatFromInt(r)) + 0.5) * cell;
+}
+
+fn box(b: *Builder, x0: f32, ya: f32, z0: f32, x1: f32, yb: f32, z1: f32) void {
+    b.solid(.{ .box = .{ .min = vec(x0, ya, z0), .max = vec(x1, yb, z1) } });
+}
+
+var spawn_list: std.ArrayList(Vec3) = .empty;
+var spawn_yaw: std.ArrayList(f32) = .empty;
+var anchor_list: std.ArrayList(Vec3) = .empty;
+var park_list: std.ArrayList(wd.Spot) = .empty;
+
+fn spawnAt(b: *Builder, x: f32, y: f32, z: f32, yaw: f32) void {
+    spawn_list.append(b.gpa, vec(x, y, z)) catch {};
+    spawn_yaw.append(b.gpa, yaw) catch {};
+}
+
+fn loot(b: *Builder, x: f32, y: f32, z: f32) void {
+    wd.kit_loot.append(b.gpa, vec(x, y + 0.1, z)) catch {};
 }
 
 fn villageBlock(b: *Builder, c: i32, r: i32, top: f32) void {
     const x = cellX(c);
     const z = cellZ(r);
-    const h = village_cell * 0.5;
+    const h = cell * 0.5;
 
-    b.putAt(kit.of(.block), vec(x, top, z), 0, 1);
-    b.solid(.{ .box = .{ .min = vec(x - h, top - 17, z - h), .max = vec(x + h, top, z + h) } });
+    b.putAt(of(.block), vec(x, top, z), 0, 1);
+    box(b, x - h, top - 17, z - h, x + h, top, z + h);
 }
 
-fn villageHouse(b: *Builder, kind: Kind, c: i32, r: i32, base: f32, floors: f32, dome: bool) void {
-    const x = cellX(c);
-    const z = cellZ(r);
-    const h = village_cell * 0.5;
-    const top = base + floors * village_tier;
+fn houseKind(b: *Builder, c: i32, k_: i32) struct { kind: Kind, floors: f32, dome: bool } {
+    const roll = rnd(b);
+    const mid = @abs(c - 12) < 6;
 
-    const spin: f32 = if (dome) 0 else @floor(b.rng.next() * 3.99) * half_pi;
+    if (mid and k_ >= 3 and roll < 0.06) return .{ .kind = of(.cube3), .floors = 3, .dome = false };
 
-    b.putAt(kind, vec(x, base, z), spin, 1);
-    b.solid(.{ .box = .{ .min = vec(x - h, base - 0.5, z - h), .max = vec(x + h, top, z + h) } });
+    if (roll < 0.07) return .{ .kind = of(.dome1), .floors = 1, .dome = true };
 
-    if (!dome and kind != kit.of(.cave1) and kind != kit.of(.cave1b)) {
-        const lx: f32 = switch (kind) {
-            kit.of(.cube1b), kit.of(.cube1d), kit.of(.cube2b) => 1.3,
-            else => -1.3,
-        };
-        const ch = rotPoint(x, z, spin, lx, -1.5);
+    if (roll < 0.1 and k_ > 1) return .{ .kind = of(.dome2), .floors = 2, .dome = true };
 
-        b.solid(.{ .box = .{ .min = vec(ch[0] - 0.35, top, ch[1] - 0.35), .max = vec(ch[0] + 0.35, top + 1.2, ch[1] + 0.35) } });
+    if (roll < 0.38) return .{ .kind = b.rng.pick(Kind, &.{ of(.cube2), of(.cube2b), of(.cube2c) }), .floors = 2, .dome = false };
+
+    if (roll < 0.46) return .{ .kind = b.rng.pick(Kind, &.{ of(.cave1), of(.cave1) }), .floors = 1, .dome = false };
+
+    if (roll < 0.54) return .{ .kind = of(.cube1p), .floors = 1, .dome = false };
+
+    return .{ .kind = b.rng.pick(Kind, &.{ of(.cube1), of(.cube1), of(.cube1b), of(.cube1c), of(.cube1b) }), .floors = 1, .dome = false };
+}
+
+fn villageHouse(b: *Builder, kind: Kind, x: f32, z: f32, base: f32, floors: f32, dome: bool) void {
+    const h = cell * 0.5;
+    const top = base + floors * tier;
+    const cave = kind == of(.cave1) or kind == of(.cave1);
+    const yaw: f32 = if (dome or kind == of(.cube1p) or kind == of(.cube3)) 0 else quarter(b);
+
+    b.putAt(kind, vec(x, base, z), yaw, 1);
+    box(b, x - h, base - 0.5, z - h, x + h, top, z + h);
+
+    if (dome) {
+        box(b, x - 1.35, top, z - 1.35, x + 1.35, top + 2.0, z + 1.35);
+
+        return;
     }
 
-    if (floors > 1.5 and !dome and b.rng.next() < 0.4) b.putAt(kit.of(.solar), vec(x + b.rng.range(-0.8, 0.8), top, z + b.rng.range(-0.8, 0.8)), @floor(b.rng.next() * 3.99) * half_pi, 1);
+    if (cave) return;
 
-    if (dome) b.solid(.{ .box = .{ .min = vec(x - 1.35, top, z - 1.35), .max = vec(x + 1.35, top + 2.0, z + 1.35) } });
+    if (kind == of(.cube1p)) {
+        for ([_][2]f32{ .{ -1.9, -1.9 }, .{ 1.9, -1.9 }, .{ -1.9, 0.2 }, .{ 1.9, 0.2 } }) |p| {
+            const q = wd.rotPoint(x, z, yaw, p[0], -p[1]);
+
+            box(b, q[0] - 0.1, top, q[1] - 0.1, q[0] + 0.1, top + 2.3, q[1] + 0.1);
+        }
+
+        return;
+    }
+
+    const right = kind == of(.cube1b) or kind == of(.cube2b) or kind == of(.cube3);
+    const lx: f32 = if (right) 1.3 else -1.3;
+    const ch = wd.rotPoint(x, z, yaw, lx, -1.5);
+
+    box(b, ch[0] - 0.4, top, ch[1] - 0.4, ch[0] + 0.4, top + 1.4, ch[1] + 0.4);
+
+    if (floors > 1.5 and rnd(b) < 0.55) b.putAt(of(.solar), vec(x + 0.6, top, z - 0.4), quarter(b), 1);
 }
 
-fn villageStair(b: *Builder, c: i32, r: i32, base: f32) void {
-    const x = cellX(c);
-    const z0 = cellZ(r) - village_cell * 0.5;
-    const run = village_cell * 2;
-
-    b.putAt(kit.of(.stair), vec(x, base, z0), 0, 1);
-    b.solid(.{ .ramp = .{ .min = vec(x - 1.4, base, z0), .max = vec(x + 1.4, base + village_tier, z0 + run), .rise = .pos_z } });
-    b.solid(.{ .box = .{ .min = vec(x - 2.2, base - 0.5, z0), .max = vec(x - 1.4, base + village_tier + 0.9, z0 + run) } });
-    b.solid(.{ .box = .{ .min = vec(x + 1.4, base - 0.5, z0), .max = vec(x + 2.2, base + village_tier + 0.9, z0 + run) } });
+fn villageStair(b: *Builder, x: f32, z_south: f32, base: f32) void {
+    b.putAt(of(.stair), vec(x, base, z_south), 0, 1);
+    b.solid(.{ .ramp = .{ .min = vec(x - 1.3, base, z_south), .max = vec(x + 1.3, base + tier, z_south + cell), .rise = .pos_z } });
+    box(b, x - 2.2, base - 0.5, z_south, x - 1.3, base + tier + 1.0, z_south + cell);
+    box(b, x + 1.3, base - 0.5, z_south, x + 2.2, base + tier + 1.0, z_south + cell);
 }
 
-fn villageParapet(b: *Builder, x: f32, y: f32, z: f32, yaw: f32) void {
-    const h = village_cell * 0.5;
-    const along_x = @abs(@sin(yaw)) < 0.5;
+fn parapetX(b: *Builder, x: f32, y: f32, z: f32) void {
+    b.putAt(of(.parapet), vec(x, y, z), 0, 1);
+    box(b, x - 2.2, y, z - 0.22, x + 2.2, y + 0.95, z + 0.22);
+}
 
-    b.putAt(kit.of(.parapet), vec(x, y, z), yaw, 1);
+fn parapetZ(b: *Builder, x: f32, y: f32, z: f32) void {
+    b.putAt(of(.parapet), vec(x, y, z), half_pi, 1);
+    box(b, x - 0.22, y, z - 2.2, x + 0.22, y + 0.95, z + 2.2);
+}
 
-    if (along_x) {
-        b.solid(.{ .box = .{ .min = vec(x - h, y, z - 0.22), .max = vec(x + h, y + 0.95, z + 0.22) } });
+fn laneClutter(b: *Builder, x: f32, y: f32, z: f32, c: i32, k_: i32) void {
+    const wall_z = z + cell * 0.5 - 0.45;
+    const roll = rnd(b);
+
+    if (@mod(c + k_, 3) == 0) b.putAt(of(.lamp), vec(x + 1.7, y, wall_z - 0.1), std.math.pi, 1);
+
+    if (roll < 0.3) {
+        b.putAt(of(.geranium), vec(x - 1.4, y, wall_z), 0, 1);
+        b.putAt(of(.basil), vec(x - 0.7, y, wall_z), 0, 1);
+        b.putAt(of(.pot), vec(x + 0.6, y, wall_z), spin(b), 1);
+    } else if (roll < 0.5) {
+        b.putAt(of(.bougain), vec(x, y, wall_z + 0.15), 0, 1);
+        b.putAt(of(.geranium), vec(x + 1.2, y, wall_z - 0.1), 0, 1);
+    } else if (roll < 0.64) {
+        b.putAt(of(.kafe), vec(x, y, z - 0.6), 0, 1);
+        b.putAt(of(.chair), vec(x - 0.8, y, z - 0.6), half_pi, 1);
+        b.putAt(of(.chair), vec(x + 0.8, y, z - 0.6), -half_pi, 1);
+        b.putAt(of(.basil), vec(x - 1.6, y, wall_z), 0, 1);
+    } else if (roll < 0.74) {
+        b.putAt(of(.jar), vec(x - 1.2, y, wall_z), spin(b), 1);
+        b.putAt(of(.jar), vec(x - 0.4, y, wall_z - 0.2), spin(b), 0.8);
+        b.putAt(of(.geranium), vec(x + 1.0, y, wall_z), 0, 1);
+    } else if (roll < 0.8) {
+        b.putAt(of(.pot), vec(x - 0.5, y, wall_z), spin(b), 1.1);
+        b.putAt(of(.jar), vec(x + 0.5, y, wall_z - 0.1), spin(b), 1);
+    } else if (roll < 0.86) {
+        b.putAt(of(.sack), vec(x - 0.8, y, wall_z - 0.2), spin(b), 1);
+        b.putAt(of(.sack), vec(x + 0.4, y, wall_z), spin(b), 1);
+        b.putAt(of(.sack), vec(x + 0.9, y, wall_z - 0.1), spin(b), 1);
+    } else if (roll < 0.93) {
+        b.putAt(of(.agave), vec(x, y, wall_z - 0.4), spin(b), 0.8);
+        b.putAt(of(.pot), vec(x + 1.4, y, wall_z), spin(b), 1.1);
     } else {
-        b.solid(.{ .box = .{ .min = vec(x - 0.22, y, z - h), .max = vec(x + 0.22, y + 0.95, z + h) } });
+        b.putAt(of(.barrel), vec(x + 1.2, y, wall_z - 0.1), spin(b), 1);
+        b.putAt(of(.basil), vec(x + 0.4, y, wall_z), 0, 1);
+    }
+}
+
+fn roofClutter(b: *Builder, x: f32, top: f32, z: f32) void {
+    const roll = rnd(b);
+
+    if (roll < 0.22) {
+        b.putAt(of(.parasol), vec(x - 0.4, top, z - 0.2), 0, 0.9);
+        b.putAt(of(.taverna), vec(x - 0.4, top, z - 0.2), half_pi, 1);
+    } else if (roll < 0.4) {
+        b.putAt(of(.chair), vec(x - 0.8, top, z - 0.8), spin(b), 1);
+        b.putAt(of(.chair), vec(x + 0.6, top, z - 0.9), spin(b), 1);
+        b.putAt(of(.geranium), vec(x + 1.5, top + 0.28, z - 2.0), 0, 1);
+    } else if (roll < 0.55) {
+        b.putAt(of(.laundry), vec(x, top + 0.28, z + 0.6), 0, 1);
+    } else if (roll < 0.68) {
+        b.putAt(of(.pot), vec(x - 1.4, top + 0.28, z - 1.8), spin(b), 1);
+        b.putAt(of(.basil), vec(x + 1.4, top + 0.28, z - 1.9), 0, 1);
     }
 }
 
 fn medVillage(b: *Builder) void {
-    const isl = islands[0];
-    const y0 = isl.h + 0.3;
-    const cell = village_cell;
-    const hc = cell * 0.5;
-    const cols = village_cols;
-    const stair_cols = [4][2]i32{ .{ 4, 10 }, .{ 7, 12 }, .{ 2, 9 }, .{ 5, 11 } };
+    var c: i32 = 0;
 
-    village_spawns = .empty;
+    while (c < cols) : (c += 1) {
+        var r: i32 = 0;
 
-    var c: i32 = 1;
-
-    while (c < cols - 1) : (c += 1) {
-        if (c >= 4 and c <= 10 and cellInside(c, 0)) villageBlock(b, c, 0, y0);
-
-        if (c >= 6 and c <= 8) continue;
-
-        var r: i32 = 1;
-
-        while (r <= 3) : (r += 1) {
-            if (cellInside(c, r)) villageBlock(b, c, r, y0);
-        }
-    }
-
-    b.putAt(kit.of(.water), vec(cellX(7), y0 - 0.9, cellZ(2)), 0, 1);
-    b.putAt(kit.of(.boat), vec(cellX(7) - 2.6, y0 - 0.95, cellZ(2) + 0.4), 0.15, 0.9);
-    b.putAt(kit.of(.boat), vec(cellX(7) + 3.0, y0 - 0.95, cellZ(2) - 1.2), -0.3, 0.8);
-
-    if (cellInside(4, 0)) b.putAt(kit.of(.light), vec(cellX(4), y0, cellZ(0)), 0, 0.7);
-
-    b.putAt(kit.of(.lamp), vec(cellX(5) - 1.6, y0, cellZ(3)), 0, 1);
-    b.putAt(kit.of(.lamp), vec(cellX(9) + 1.6, y0, cellZ(3)), 0, 1);
-
-    c = 1;
-
-    while (c < cols - 1) : (c += 1) {
-        if (cellInside(c, 4)) villageBlock(b, c, 4, y0);
-    }
-
-    for ([_]i32{ 2, 4, 10, 12 }) |k| {
-        if (!cellInside(k, 4)) continue;
-
-        b.putAt(kit.of(.taverna), vec(cellX(k), y0, cellZ(4)), half_pi, 1);
-        b.putAt(kit.of(.chair), vec(cellX(k) - 1.0, y0, cellZ(4)), half_pi, 1);
-        b.putAt(kit.of(.chair), vec(cellX(k) + 1.0, y0, cellZ(4)), -half_pi, 1);
-    }
-
-    if (cellInside(1, 4)) b.putAt(kit.of(.boathouse), vec(cellX(1), y0, cellZ(4) - 1.0), half_pi, 1);
-
-    for ([_][3]f32{ .{ 2, 1, 0 }, .{ 12, 2, 0 }, .{ 3, 3, 1 }, .{ 11, 1, 1 } }) |q| {
-        const qc: i32 = @intFromFloat(q[0]);
-        const qr: i32 = @intFromFloat(q[1]);
-
-        if (!cellInside(qc, qr)) continue;
-
-        const qx = cellX(qc);
-        const qz = cellZ(qr);
-
-        if (q[2] < 0.5) {
-            b.putAt(kit.of(.gwall), vec(qx, y0, qz), 0, 1);
-            b.solid(.{ .box = .{ .min = vec(qx - 2, y0, qz - 0.2), .max = vec(qx + 2, y0 + 1.0, qz + 0.2) } });
-            b.putAt(kit.of(.geranium), vec(qx - 1.4, y0 + 1.0, qz), 0, 1);
-            b.putAt(kit.of(.basil), vec(qx + 1.2, y0 + 1.0, qz), 0, 1);
-        } else {
-            b.putAt(kit.of(.olive), vec(qx, y0, qz), b.rng.range(0, 6.28), 0.75);
-            b.putAt(kit.of(.kafe), vec(qx + 1.8, y0, qz + 1.2), 0, 1);
-            b.putAt(kit.of(.chair), vec(qx + 1.8, y0, qz + 2.0), std.math.pi, 1);
-        }
-    }
-
-    for ([_]i32{ 5, 9 }) |qc| {
-        if (!cellInside(qc, 2)) continue;
-
-        b.putAt(kit.of(.lamp), vec(cellX(qc) + (if (qc == 5) @as(f32, 1.6) else -1.6), y0, cellZ(2) - 1.5), 0, 1);
-        b.putAt(kit.of(.kafe), vec(cellX(qc), y0, cellZ(2) + 1.6), 0, 1);
-    }
-
-    b.putAt(kit.of(.melon), vec(cellX(6), y0, cellZ(4) + 1.0), half_pi, 1);
-    b.putAt(kit.of(.stand), vec(cellX(8) + 1.2, y0, cellZ(4) + 1.4), 0, 1);
-    b.putAt(kit.of(.truck), vec(cellX(11), y0, cellZ(4)), half_pi, 1);
-    village_spawns.append(b.gpa, vec(cellX(3), y0, cellZ(4))) catch {};
-    village_spawns.append(b.gpa, vec(cellX(11), y0, cellZ(3))) catch {};
-
-    var k: i32 = 0;
-
-    while (k < 4) : (k += 1) {
-        const lane = 5 + k * 3;
-        const base = y0 + @as(f32, @floatFromInt(k)) * village_tier;
-        const roof = base + village_tier;
-
-        c = 1;
-
-        while (c < cols - 1) : (c += 1) {
-            if (!cellInside(c, lane)) continue;
-
-            villageBlock(b, c, lane, base);
-
+        while (r < 3) : (r += 1) {
             const x = cellX(c);
-            const lz = cellZ(lane);
+            const z = cellZ(r);
 
-            const roll = b.rng.next();
+            if (r == 0) {
+                b.putAt(of(.quay), vec(x, y0, z), 0, 1);
+                box(b, x - 2.2, y0 - 6, z - 2.2, x + 2.2, y0, z + 2.2);
+            } else villageBlock(b, c, r, y0);
+        }
+    }
 
-            const wz = lz + hc - 0.35;
+    harbourQuay(b);
+    harbourRow(b, 61, 1);
+    harbourRow(b, -61, -1);
 
-            if (@mod(c, 3) == 0) b.putAt(kit.of(.lamp), vec(x + 1.6, base, lz + hc - 0.5), 0, 1);
+    var t: i32 = 1;
 
-            if (roll < 0.4) {
-                b.putAt(kit.of(.geranium), vec(x - 1.0, base, wz), 0, 1.1);
-                b.putAt(kit.of(.basil), vec(x - 0.3, base, wz), 0, 1);
-                b.putAt(kit.of(.geranium), vec(x + 0.5, base, wz), 0.7, 1.2);
-            } else if (roll < 0.75) {
-                b.putAt(kit.of(.geranium), vec(x - 1.4, base, wz), 0, 1);
-                b.putAt(kit.of(.basil), vec(x - 0.8, base, wz), 0, 1);
-                b.putAt(kit.of(.geranium), vec(x + 1.0, base, wz), 1.0, 0.9);
+    while (t <= tiers) : (t += 1) {
+        const hr = 3 + (t - 1) * 2;
+        const lr = hr + 1;
+        const base = y0 + @as(f32, @floatFromInt(t - 1)) * tier;
+        const lane_y = base + tier;
+        const s0: i32 = @intCast(@mod(t * 7 + 3, 6) + 4);
+        const s1: i32 = @intCast(@mod(t * 5 + 1, 5) + 14);
+        const edge: i32 = 2 + @divFloor(t, 2);
+        const n0: i32 = @intCast(@mod((t + 1) * 7 + 3, 6) + 4);
+        const n1: i32 = @intCast(@mod((t + 1) * 5 + 1, 5) + 14);
+        var arch_col: i32 = 11 + @mod(t * 3, 5) - 2;
+
+        while (arch_col == s0 or arch_col == s1 or arch_col == n0 or arch_col == n1) arch_col += 1;
+
+        c = 0;
+
+        while (c < cols) : (c += 1) {
+            const x = cellX(c);
+            const hz = cellZ(hr);
+            const lz = cellZ(lr);
+            const garden = c < edge or c >= cols - edge;
+
+            villageBlock(b, c, hr, base);
+            villageBlock(b, c, lr, lane_y);
+
+            if (garden) {
+                gardenCell(b, x, lane_y, lz);
+                gardenCell(b, x, base, hz);
+
+                if (c == 0 or c == cols - 1) parapetZ(b, if (c < 12) x - 2.0 else x + 2.0, lane_y, lz);
+
+                continue;
             }
 
-            if (b.rng.next() < 0.35) b.putAt(if (b.rng.next() < 0.5) kit.of(.geranium) else kit.of(.basil), vec(x + b.rng.range(-1.8, 1.8), base, wz), b.rng.range(0, 6.28), b.rng.range(0.8, 1.2));
+            if (c == s0 or c == s1) {
+                villageStair(b, x, hz - cell * 0.5, base);
+                b.putAt(of(.geranium), vec(x - 1.6, lane_y, lz - 1.6), 0, 1);
 
-            if (b.rng.next() < 0.22) {
-                b.putAt(kit.of(.kafe), vec(x, base, lz - 1.0), 0, 1);
-                b.putAt(kit.of(.chair), vec(x - 0.75, base, lz - 1.0), half_pi, 1);
-                b.putAt(kit.of(.chair), vec(x + 0.75, base, lz - 1.0), -half_pi, 1);
-            } else if (b.rng.next() < 0.12) {
-                b.putAt(kit.of(.agave), vec(x, base, lz - 1.4), b.rng.range(0, 6.28), 0.8);
+                continue;
             }
 
-            if (@mod(c, 4) == 2 and k > 0) b.putAt(kit.of(.laundry), vec(x, roof + 0.0, cellZ(lane + 2) + 0.4), 0, 1);
-
-            if (@mod(c + k, 4) == 1) {
-                wd.kit_loot.append(b.gpa, vec(x, base + 0.1, lz)) catch {};
+            if (c == arch_col) {
+                b.putAt(of(.arch), vec(x, lane_y, lz), half_pi, 1);
+                box(b, x - 2.2, lane_y - 0.5, lz - 2.2, x + 2.2, lane_y + tier, lz - 1.6);
+                box(b, x - 2.2, lane_y - 0.5, lz + 1.6, x + 2.2, lane_y + tier, lz + 2.2);
+                box(b, x - 2.2, lane_y + 2.9, lz - 2.2, x + 2.2, lane_y + tier, lz + 2.2);
+                loot(b, x, lane_y, lz);
             }
 
-            if (@mod(c + k, 5) == 2) village_spawns.append(b.gpa, vec(x, base + 0.1, lz)) catch {};
+            if (rnd(b) < 0.08) {
+                gardenCell(b, x, base, hz);
+                b.putAt(of(.bougain), vec(x, base, hz + 1.9), std.math.pi, 1);
+                parapetX(b, x, lane_y, hz + 2.0);
+                laneClutter(b, x, lane_y, lz, c, t);
+
+                continue;
+            }
+
+            const hk = houseKind(b, c, t);
+
+            villageHouse(b, hk.kind, x, hz, base, hk.floors, hk.dome);
+
+            if (hk.floors < 1.5 and !hk.dome) {
+                if (rnd(b) < 0.55) parapetX(b, x, lane_y, hz - 2.0);
+
+                if (hk.kind != of(.cube1p)) roofClutter(b, x, lane_y, hz);
+            }
+
+            if (c != arch_col and rnd(b) < 0.75) laneClutter(b, x, lane_y, lz, c, t);
+
+            if (t == 1 and rnd(b) < 0.5) b.putAt(b.rng.pick(Kind, &.{ of(.geranium), of(.basil), of(.pot), of(.jar) }), vec(x + b.rng.range(-1.6, 1.6), base, hz - 2.6), spin(b), 1);
+
+            if (@mod(c + t, 4) == 1) loot(b, x, lane_y, lz);
+
+            if (@mod(c * 3 + t, 11) == 4) spawnAt(b, x, lane_y + 0.1, lz, std.math.pi);
+        }
+    }
+
+    const top_y = y0 + @as(f32, @floatFromInt(tiers)) * tier;
+
+    for ([_]f32{ -30, -12, 12, 30 }) |px| {
+        b.put(of(.cypress), px, vz0 + cell * @as(f32, @floatFromInt(rows)) + 3, 0, b.rng.range(0.9, 1.15));
+    }
+
+    spawnAt(b, -8, top_y, vz0 + cell * @as(f32, @floatFromInt(rows)) + 6, std.math.pi);
+    anchor_list.append(b.gpa, vec(0, top_y + 18, -90)) catch {};
+    anchor_list.append(b.gpa, vec(-30, top_y + 14, -110)) catch {};
+    anchor_list.append(b.gpa, vec(30, top_y + 14, -110)) catch {};
+    claimRect(vx0 - 4, vz0 - 4, vx0 + cell * @as(f32, @floatFromInt(cols)) + 4, vz0 + cell * @as(f32, @floatFromInt(rows)) + 4);
+}
+
+fn gardenCell(b: *Builder, x: f32, y: f32, z: f32) void {
+    const roll = rnd(b);
+
+    if (roll < 0.35) {
+        b.putAt(of(.olive), vec(x + b.rng.range(-0.6, 0.6), y, z + b.rng.range(-0.6, 0.6)), spin(b), b.rng.range(0.7, 0.9));
+    } else if (roll < 0.55) {
+        b.putAt(of(.lemon), vec(x, y, z), spin(b), 0.85);
+    } else if (roll < 0.75) {
+        b.putAt(of(.rbush), vec(x - 0.8, y, z), spin(b), 1);
+        b.putAt(of(.agave), vec(x + 1.1, y, z + 0.6), spin(b), 0.9);
+    } else {
+        b.putAt(of(.cypress), vec(x, y, z), 0, b.rng.range(0.7, 0.9));
+        b.putAt(of(.bush), vec(x + 1.2, y, z - 1.0), spin(b), 0.8);
+    }
+}
+
+fn harbourRow(b: *Builder, x0: f32, dir: f32) void {
+    const kinds = [_]Kind{ of(.cube2), of(.cube1p), of(.cube2c), of(.dome1), of(.cube1b) };
+    const floors = [_]f32{ 2, 1, 2, 1, 1 };
+
+    for (kinds, floors, 0..) |kind, fl, i| {
+        const x = x0 + dir * @as(f32, @floatFromInt(i)) * cell;
+
+        if (@abs(x) > 74) continue;
+
+        const z = vz0 + cell * 2.5;
+
+        b.putAt(of(.block), vec(x, y0, z), 0, 1);
+        villageHouse(b, kind, x, z, y0, fl, kind == of(.dome1));
+        b.putAt(of(.block), vec(x, y0, z - cell), 0, 1);
+
+        if (i % 2 == 0) {
+            b.putAt(of(.taverna), vec(x, y0, z - 3.6), half_pi, 1);
+            b.putAt(of(.parasol), vec(x, y0, z - 3.6), 0, 0.9);
+        } else {
+            b.putAt(of(.pot), vec(x - 1.4, y0, z - 2.7), 0, 1);
+            b.putAt(of(.bougain), vec(x + 0.6, y0, z - 2.35), 0, 1);
+        }
+    }
+
+    claimRect(@min(x0, x0 + dir * 13) - 3, vz0 - 2, @max(x0, x0 + dir * 13) + 3, vz0 + cell * 3 + 3);
+}
+
+fn harbourQuay(b: *Builder) void {
+    const qz = vz0 + cell * 0.5;
+    const front = vz0 - 0.2;
+
+    var x: f32 = vx0 - 2.2;
+
+    while (x > -76) : (x -= cell) {
+        b.putAt(of(.quay), vec(x, y0, qz), 0, 1);
+        box(b, x - 2.2, y0 - 6, qz - 2.2, x + 2.2, y0, qz + 2.2);
+    }
+
+    x = vx0 + cell * @as(f32, @floatFromInt(cols)) + 2.2;
+
+    while (x < 76) : (x += cell) {
+        b.putAt(of(.quay), vec(x, y0, qz), 0, 1);
+        box(b, x - 2.2, y0 - 6, qz - 2.2, x + 2.2, y0, qz + 2.2);
+    }
+
+    var z: f32 = qz - cell;
+
+    while (z > -166) : (z -= cell) {
+        b.putAt(of(.quay), vec(pier_x, y0, z), 0, 1);
+        box(b, pier_x - 2.2, y0 - 6, z - 2.2, pier_x + 2.2, y0, z + 2.2);
+
+        if (@mod(@as(i32, @intFromFloat(@abs(z))), 3) == 0) b.putAt(of(.bollard), vec(pier_x - 1.8, y0, z), half_pi, 1);
+    }
+
+    b.putAt(of(.quay), vec(pier_x, y0, -169.4), 0, 1);
+    box(b, pier_x - 2.2, y0 - 6, -171.6, pier_x + 2.2, y0, -167.2);
+    b.putAt(of(.light), vec(pier_x, y0, -169.4), 0, 0.9);
+    anchor_list.append(b.gpa, vec(pier_x, 22, -160)) catch {};
+
+    var i: i32 = 0;
+
+    while (i < 34) : (i += 1) {
+        const px = -72 + @as(f32, @floatFromInt(i)) * 4.3;
+
+        if (px > 76) continue;
+
+        if (@mod(i, 3) == 0) b.putAt(of(.bollard), vec(px, y0, front + 0.9), 0, 1);
+
+        const roll = rnd(b);
+
+        if (roll < 0.18) {
+            b.putAt(of(.nets), vec(px + 1.5, y0, front + 2.6), spin(b), 1);
+        } else if (roll < 0.3) {
+            b.putAt(of(.nets), vec(px + 1.2, y0, front + 2.2), quarter(b), 1);
+            b.putAt(of(.nets), vec(px + 2.0, y0, front + 2.4), quarter(b), 1);
+            b.putAt(of(.rope), vec(px + 0.4, y0, front + 1.8), spin(b), 1);
+        } else if (roll < 0.4) {
+            b.putAt(of(.barrel), vec(px + 1.5, y0, front + 2.2), spin(b), 1);
+            b.putAt(of(.barrel), vec(px + 2.3, y0, front + 2.5), spin(b), 1);
+        } else if (roll < 0.48) {
+            b.putAt(of(.rope), vec(px + 1.2, y0, front + 1.6), spin(b), 1);
+        }
+    }
+
+    const plaza_z = cellZ(2);
+
+    for ([_]f32{ -40, -24, -6, 14, 30, 42 }, 0..) |px, n| {
+        if (n % 2 == 0) {
+            b.putAt(of(.parasol), vec(px, y0, plaza_z), 0, 1);
+            b.putAt(of(.taverna), vec(px - 0.2, y0, plaza_z), half_pi, 1);
+            b.putAt(of(.taverna), vec(px + 2.4, y0, plaza_z + 0.6), 0.3, 1);
+            b.putAt(of(.chair), vec(px + 1.3, y0, plaza_z - 1.4), 2.6, 1);
+        } else {
+            b.putAt(of(.lamp), vec(px, y0, plaza_z - 2), 0, 1);
+            b.putAt(of(.kafe), vec(px + 1.6, y0, plaza_z + 0.4), 0, 1);
+            b.putAt(of(.chair), vec(px + 2.4, y0, plaza_z + 0.4), -half_pi, 1);
+            b.putAt(of(.chair), vec(px + 0.8, y0, plaza_z + 0.4), half_pi, 1);
+            b.putAt(of(.pot), vec(px - 1.6, y0, plaza_z + 1.4), 0, 1.2);
+        }
+    }
+
+    b.putAt(of(.nets), vec(-31, y0, cellZ(1)), half_pi, 1);
+    b.putAt(of(.barrel), vec(20, y0, cellZ(1) + 0.4), 0, 1);
+    b.putAt(of(.barrel), vec(20.8, y0, cellZ(1) + 0.8), 0.6, 1);
+    b.putAt(of(.jar), vec(-2, y0, cellZ(1)), 0.4, 1.2);
+    b.putAt(of(.pot), vec(-0.8, y0, cellZ(1) + 0.3), 0.5, 1.2);
+    b.putAt(of(.hay), vec(36, y0, cellZ(1)), 1.2, 1);
+    park_list.append(b.gpa, .{ .pos = vec(30, y0, cellZ(1)), .yaw = half_pi }) catch {};
+
+    for ([_]f32{ -70, -60, 64, 72 }) |px| b.putAt(of(.lamp), vec(px, y0, qz + 1.4), 0, 1);
+
+    b.putAt(of(.boathouse), vec(-68, tr.height(-68, -118) + 0.1, -118), 0, 1);
+    b.putAt(of(.nets), vec(-63, y0, -124), 0.4, 1);
+    b.putAt(of(.cypress), vec(-74, y0, -112), 0, 1);
+    b.putAt(of(.pine), vec(-60, y0, -112), spin(b), 1.0);
+    b.putAt(of(.pine), vec(68, y0, -116), spin(b), 0.9);
+    b.putAt(of(.hay), vec(70, y0, -122), 0.3, 1);
+    b.putAt(of(.jar), vec(62, y0, -120), 0, 1);
+
+    spawnAt(b, -56, y0, -126, 0);
+    spawnAt(b, 66, y0, -124, 0);
+    spawnAt(b, pier_x, y0, -152, 0);
+    loot(b, pier_x, y0, -160);
+    loot(b, -58, y0, -128);
+    loot(b, 0, y0, cellZ(1));
+    loot(b, 40, y0, cellZ(1));
+}
+
+fn wallRun(b: *Builder, kind: Kind, x0: f32, z0: f32, x1: f32, z1: f32, gap: u32) void {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const len = @sqrt(dx * dx + dz * dz);
+    const n: u32 = @intFromFloat(@max(1, @round(len / 4)));
+    const yaw = std.math.atan2(-dz, dx);
+    var i: u32 = 0;
+
+    while (i < n) : (i += 1) {
+        if (gap > 0 and i % gap == gap - 1) continue;
+
+        const t = (@as(f32, @floatFromInt(i)) + 0.5) / @as(f32, @floatFromInt(n));
+        const px = x0 + dx * t;
+        const pz = z0 + dz * t;
+
+        if (coastDistance(px, pz) < 4 or villageOut(px, pz) < 2) continue;
+
+        wallPiece(b, kind, px, tr.height(px, pz) - 0.12, pz, yaw);
+        claim(px, pz, 1);
+    }
+}
+
+fn wallPiece(b: *Builder, kind: Kind, x: f32, y: f32, z: f32, yaw: f32) void {
+    const info = api.props.info(kind);
+    const top = y + info.max[1];
+    const half_t = (info.max[2] - info.min[2]) * 0.5;
+    var i: f32 = -1.5;
+
+    b.putAt(kind, vec(x, y, z), yaw, 1);
+
+    while (i <= 1.5) : (i += 1) {
+        const p = wd.rotPoint(x, z, yaw, i, 0);
+        const r = @max(half_t, 0.3);
+
+        box(b, p[0] - r, y - 0.5, p[1] - r, p[0] + r, top, p[1] + r);
+    }
+}
+
+fn windmills(b: *Builder) void {
+    for (mills, 0..) |m, n| {
+        const y = wd.lowest(m[0], m[1], 2.8) + 0.4;
+
+        b.putAt(of(.windmill), vec(m[0], y, m[1]), m[2], 1);
+        b.solid(.{ .cylinder = .{ .base = vec(m[0], y - 0.5, m[1]), .radius = 2.7, .height = 9 } });
+        claim(m[0], m[1], 6);
+
+        const s = @sin(m[2]);
+        const c_ = @cos(m[2]);
+
+        b.put(of(.jar), m[0] + 3.6 * c_, m[1] - 3.6 * s, 0, 1);
+        b.put(of(.sack), m[0] + 4.2 * c_ + 0.6, m[1] - 4.2 * s, 0.3, 1);
+        b.put(of(.agave), m[0] - 4 * c_, m[1] + 4 * s, spin(b), 0.9);
+        b.put(of(.rbush), m[0] - 3 * c_ + 2, m[1] + 3 * s - 3, spin(b), 1);
+        loot(b, m[0] + 4, tr.height(m[0] + 4, m[1] + 4), m[1] + 4);
+
+        if (n == 1) {
+            spawnAt(b, m[0] + 6, tr.height(m[0] + 6, m[1] - 6), m[1] - 6, std.math.pi);
+            anchor_list.append(b.gpa, vec(m[0], y + 24, m[1])) catch {};
+        }
+    }
+
+    wallRun(b, of(.swall), -36, -4, -16, -6, 0);
+    wallRun(b, of(.swall), 2, 4, 24, 4, 3);
+    wallRun(b, of(.swall), -20, 36, 4, 36, 4);
+}
+
+fn farmstead(b: *Builder) void {
+    const fx = farm[0];
+    const fz = farm[1];
+    const y = natural(fx, fz) + 0.2;
+    const lots = [_][4]f32{ .{ -8, -6, 0, 2 }, .{ -3.6, -6, 0, 1 }, .{ 6, -8, half_pi, 1 }, .{ 10, 4, half_pi, 2 } };
+    const kinds = [_]Kind{ of(.cube2b), of(.cube1p), of(.cube1c), of(.cube2c) };
+
+    for (lots, kinds) |l, kind| {
+        const x = fx + l[0];
+        const z = fz + l[1];
+        const base = wd.lowest(x, z, 2.2) + 0.3;
+
+        b.putAt(of(.block), vec(x, base, z), 0, 1);
+        box(b, x - 2.2, base - 17, z - 2.2, x + 2.2, base, z + 2.2);
+        villageHouse(b, kind, x, z, base, l[3], false);
+        claim(x, z, 3);
+    }
+
+    wallRun(b, of(.gwall), fx - 16, fz - 14, fx + 16, fz - 14, 4);
+    wallRun(b, of(.gwall), fx - 16, fz + 14, fx + 16, fz + 14, 0);
+    wallRun(b, of(.gwall), fx - 16, fz - 14, fx - 16, fz + 14, 3);
+    wallRun(b, of(.gwall), fx + 16, fz - 14, fx + 16, fz + 14, 0);
+
+    b.put(of(.haystack), fx + 2, fz + 6, 0.1, 1);
+    b.put(of(.jar), fx - 6, fz + 5, 0.2, 1);
+    b.put(of(.haystack), fx + 11, fz + 10, 0, 1);
+    b.put(of(.haystack), fx + 13.5, fz + 8, 0.6, 0.85);
+    b.put(of(.hay), fx - 12, fz + 10, 0.2, 1);
+    b.put(of(.hay), fx - 11, fz + 11.2, 0.2, 1);
+    b.put(of(.hay), fx - 11.5, fz + 10.6, 1.4, 1);
+    b.put(of(.hay), fx - 2, fz + 10, 1.1, 1);
+    b.put(of(.sack), fx - 3, fz + 9, 0, 1);
+    b.put(of(.sack), fx - 3.6, fz + 9.4, 0.5, 1);
+    b.put(of(.barrel), fx + 4, fz - 2, 0, 1);
+    b.put(of(.barrel), fx + 4.8, fz - 2.4, 0.4, 1);
+    b.put(of(.jar), fx - 1, fz - 1.6, 0, 1);
+    b.put(of(.pot), fx - 0.2, fz - 1.8, 0, 1);
+    b.put(of(.lemon), fx - 12, fz - 9, spin(b), 1);
+    b.put(of(.lemon), fx + 13, fz - 9, spin(b), 0.9);
+    b.put(of(.cypress), fx - 18, fz - 16, 0, 1.1);
+    b.put(of(.cypress), fx + 18, fz - 16, 0, 1.0);
+    b.put(of(.sack), fx + 8, fz - 1, 0, 1);
+    b.put(of(.sack), fx + 8.6, fz - 1.3, 0.4, 1);
+    claimRect(fx - 17, fz - 15, fx + 17, fz + 15);
+
+    loot(b, fx, y, fz);
+    loot(b, fx + 9, y, fz + 9);
+    spawnAt(b, fx + 4, y, fz + 3, std.math.pi);
+    spawnAt(b, fx - 20, tr.height(fx - 20, fz - 20), fz - 20, 2.4);
+    anchor_list.append(b.gpa, vec(fx, y + 18, fz)) catch {};
+    park_list.append(b.gpa, .{ .pos = vec(fx - 8, tr.height(fx - 8, fz - 24), fz - 24), .yaw = 0.3 }) catch {};
+}
+
+fn quarrySite(b: *Builder) void {
+    const qx = quarry[0];
+    const qz = quarry[1];
+    const floor_y = tr.height(qx, qz);
+
+    claimRect(qx - 34, qz - 26, qx + 34, qz + 26);
+
+    var bench: f32 = 1;
+
+    while (bench <= 4) : (bench += 1) {
+        const e = 1.05 - bench / 6;
+        const hx = 26 * e;
+        const hz = 20 * e;
+
+        quarryEdge(b, qx - hx, qz + hz, qx + hx, qz + hz, std.math.pi);
+        quarryEdge(b, qx - hx, qz - hz, qx + hx, qz - hz, 0);
+        quarryEdge(b, qx + hx, qz - hz, qx + hx, qz + hz, -half_pi);
+        quarryEdge(b, qx - hx, qz - hz, qx - hx, qz + hz, half_pi);
+    }
+
+    for ([_][3]f32{ .{ -6, 4, 0.1 }, .{ -3.8, 4.3, 0.05 }, .{ -5, 6, 1.5 }, .{ 6, -2, 0.4 }, .{ 8, -1, 0.5 }, .{ 7, 0.6, 0.45 }, .{ -12, -6, 1.2 }, .{ 12, 8, 0.0 } }) |s| {
+        b.put(of(.sblock), qx + s[0], qz + s[1], s[2], 1);
+    }
+
+    b.putAt(of(.sblock), vec(qx - 3.8, floor_y + 1.14, qz + 4.3), 0.1, 1);
+    b.putAt(of(.sblock), vec(qx + 7, floor_y + 1.14, qz - 1), 0.5, 1);
+
+    for ([_][3]f32{ .{ 0, -4, 0 }, .{ 1.6, -4, 0 }, .{ 3.2, -4.2, 0.1 }, .{ -14, 2, 1.2 }, .{ -14, 3.4, 1.2 }, .{ 14, -6, 0.4 } }) |p| b.put(of(.pallet), qx + p[0], qz + p[1], p[2], 1);
+
+    b.put(of(.pallet), qx - 4, qz - 10, 0.1, 1);
+    b.put(of(.pallet), qx - 2.6, qz - 10, 0.1, 1);
+    b.put(of(.sblock), qx + 10, qz - 12, 0.08, 1);
+    b.put(of(.rock), qx + 16, qz + 4, 0.3, 1.2);
+    b.put(of(.rock), qx - 16, qz + 10, 1.8, 1.2);
+    b.put(of(.rock), qx - 2, qz + 12, 0.8, 1.2);
+    b.put(of(.barrel), qx + 2, qz + 2, 0.4, 1);
+
+    var i: f32 = 0;
+
+    while (i < 5) : (i += 1) {
+        b.put(of(.sblock), qx - 18 + i * 2.2, qz - 2, 0, 1);
+        b.put(of(.sblock), qx - 17 + i * 2.2, qz - 0.6, 0.05, 1);
+
+        if (i < 3) b.putAt(of(.sblock), vec(qx - 17.5 + i * 2.2, tr.height(qx - 17.5 + i * 2.2, qz - 1.3) + 1.1, qz - 1.3), 0, 1);
+
+        b.put(of(.pallet), qx + 14 + i * 1.5, qz + 2, 0, 1);
+    }
+
+    b.put(of(.rock), qx + 6, qz + 6, 2.1, 1.2);
+    b.put(of(.sblock), qx + 15, qz - 5, half_pi + 0.06, 1);
+    b.put(of(.barrel), qx + 9, qz - 8, 0, 1);
+    b.put(of(.barrel), qx + 9.9, qz - 8.3, 0, 1);
+
+    for ([_][2]f32{ .{ -30, -14 }, .{ 30, -20 }, .{ 32, 18 }, .{ -32, 20 }, .{ 0, 26 }, .{ 20, 26 } }) |o| {
+        b.put(of(.outcrop), qx + o[0], qz + o[1], spin(b), b.rng.range(0.9, 1.3));
+    }
+
+    loot(b, qx, floor_y, qz);
+    loot(b, qx + 12, tr.height(qx + 12, qz + 8), qz + 8);
+    loot(b, qx - 12, tr.height(qx - 12, qz - 6), qz - 6);
+    spawnAt(b, qx - 8, floor_y, qz - 2, -half_pi);
+    spawnAt(b, qx + 26, tr.height(qx + 26, qz - 24), qz - 24, 0.8);
+    anchor_list.append(b.gpa, vec(qx, floor_y + 20, qz)) catch {};
+    park_list.append(b.gpa, .{ .pos = vec(qx - 20, tr.height(qx - 20, qz - 30), qz - 30), .yaw = 1.2 }) catch {};
+}
+
+fn quarryEdge(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, yaw: f32) void {
+    const len = @max(@abs(x1 - x0), @abs(z1 - z0));
+    const n: u32 = @intFromFloat(@max(1, @floor(len / 6)));
+    const ix = std.math.sign(x1 - x0);
+    const iz = std.math.sign(z1 - z0);
+    const inx = @sin(yaw);
+    const inz = @cos(yaw);
+    var i: u32 = 0;
+
+    while (i < n) : (i += 1) {
+        const t = (@as(f32, @floatFromInt(i)) + 0.5) * len / @as(f32, @floatFromInt(n));
+        const px = x0 + ix * t;
+        const pz = z0 + iz * t;
+
+        if (yaw == 0 and @abs(px - quarry[0]) < 7) continue;
+
+        const lo_y = tr.height(px + inx * 1.6, pz + inz * 1.6);
+        const hi_y = tr.height(px - inx * 1.6, pz - inz * 1.6);
+
+        if (hi_y - lo_y < 1.2) continue;
+
+        b.putAt(of(.qface), vec(px, lo_y - 0.15, pz), yaw, 1);
+
+        const a = wd.rotBox(px, pz, yaw, -3, -0.8, 3, 0.3);
+
+        box(b, a[0], lo_y - 0.5, a[1], a[2], hi_y, a[3]);
+    }
+}
+
+fn hamletSite(b: *Builder) void {
+    const hx = hamlet[0];
+    const hz = hamlet[1];
+    const lots = [_][4]f32{ .{ -6.6, -5, 0, 1 }, .{ -2.2, -5, 0, 2 }, .{ 4.4, -6, 0, 1 }, .{ -6.6, 7, 0, 1 }, .{ 2.2, 7, 0, 2 }, .{ 8, 6, 0, 1 } };
+    const kinds = [_]Kind{ of(.cube1), of(.cube2), of(.dome1), of(.cave1), of(.cube2b), of(.cube1b) };
+
+    for (lots, kinds) |l, kind| {
+        const x = hx + l[0];
+        const z = hz + l[1];
+        const base = wd.lowest(x, z, 2.2) + 0.3;
+        const floors: f32 = if (kind == of(.cube2) or kind == of(.cube2b)) 2 else 1;
+
+        b.putAt(of(.block), vec(x, base, z), 0, 1);
+        box(b, x - 2.2, base - 17, z - 2.2, x + 2.2, base, z + 2.2);
+        villageHouse(b, kind, x, z, base, floors, kind == of(.dome1));
+        b.putAt(of(.geranium), vec(x - 1.2, tr.height(x - 1.2, z + (if (l[1] < 0) @as(f32, 2.7) else -2.7)), z + (if (l[1] < 0) @as(f32, 2.7) else -2.7)), 0, 1);
+    }
+
+    claimRect(hx - 12, hz - 10, hx + 13, hz + 12);
+    b.put(of(.taverna), hx, hz + 1, half_pi, 1);
+    b.put(of(.parasol), hx, hz + 1, 0, 1);
+    b.put(of(.lamp), hx + 4, hz + 2, 0, 1);
+    b.put(of(.jar), hx - 4, hz + 1.5, 1.2, 1);
+    b.put(of(.taverna), hx + 7, hz + 0.5, half_pi, 1);
+    b.put(of(.bougain), hx - 2.2, hz - 2.4, 0, 1);
+
+    wallRun(b, of(.gwall), hx - 16, hz - 12, hx + 16, hz - 12, 4);
+    wallRun(b, of(.gwall), hx - 16, hz + 14, hx + 16, hz + 14, 3);
+
+    for ([_][2]f32{ .{ -14, 2 }, .{ 15, -2 }, .{ 0, 18 }, .{ -12, 17 }, .{ 13, 17 } }) |o| b.put(if (rnd(b) < 0.5) of(.olive) else of(.cypress), hx + o[0], hz + o[1], spin(b), b.rng.range(0.85, 1.05));
+
+    loot(b, hx + 1, tr.height(hx + 1, hz + 3), hz + 3);
+    loot(b, hx - 9, tr.height(hx - 9, hz + 1), hz + 1);
+    spawnAt(b, hx + 3, tr.height(hx + 3, hz + 1.5), hz + 1.5, -half_pi);
+    anchor_list.append(b.gpa, vec(hx, tr.height(hx, hz) + 16, hz)) catch {};
+    park_list.append(b.gpa, .{ .pos = vec(hx - 18, tr.height(hx - 18, hz - 2), hz - 2), .yaw = half_pi }) catch {};
+}
+
+fn coveSite(b: *Builder) void {
+    const cx = cove[0];
+    const cz = cove[1];
+    const ang = std.math.atan2(cz, cx);
+    const dx = @cos(ang);
+    const dz = @sin(ang);
+    const rr = islandEdge(cx, cz);
+    const hx = dx * (rr - 10);
+    const hz = dz * (rr - 10);
+    const yaw = std.math.atan2(dx, dz);
+
+    b.putAt(of(.boathouse), vec(hx, wd.lowest(hx, hz, 4) + 0.3, hz), yaw, 1);
+    claim(hx, hz, 6);
+
+
+    for ([_][2]f32{ .{ -8, 4 }, .{ 8, 2 }, .{ -4, -8 }, .{ 6, -6 } }) |o| {
+        const px = hx - dz * o[0] - dx * o[1];
+        const pz = hz + dx * o[0] - dz * o[1];
+
+        b.put(if (o[1] > 0) of(.nets) else of(.pine), px, pz, spin(b), 1);
+    }
+
+    b.put(of(.parasol), hx - dz * 12 + dx * 4, hz + dx * 12 + dz * 4, 0, 1);
+    b.put(of(.nets), hx - dz * 4 + dx * 5, hz + dx * 4 + dz * 5, yaw, 1);
+    b.put(of(.rope), hx + dz * 3 + dx * 4, hz - dx * 3 + dz * 4, 0, 1);
+    loot(b, hx - dx * 5, tr.height(hx - dx * 5, hz - dz * 5), hz - dz * 5);
+    spawnAt(b, hx - dx * 12, tr.height(hx - dx * 12, hz - dz * 12), hz - dz * 12, std.math.atan2(dx, dz) + std.math.pi);
+}
+
+fn terraces(b: *Builder) void {
+    for (grove_rects, 0..) |g, gi| {
+        const lo = if (g.along_z) g.z0 else g.x0;
+        const hi = if (g.along_z) g.z1 else g.x1;
+        const a0 = if (g.along_z) g.x0 else g.z0;
+        const a1 = if (g.along_z) g.x1 else g.z1;
+        var v = lo + band_w;
+
+        while (v < hi) : (v += band_w) {
+            var a = a0 + 2;
+
+            while (a < a1 - 1) : (a += 4) {
+                const x = if (g.along_z) a else v;
+                const z = if (g.along_z) v else a;
+
+                if (coastDistance(x, z) < 6 or villageOut(x, z) < 3 or pathDistance(x, z) < 3 or taken(x, z, 0.5)) continue;
+
+                const e: f32 = 1.1;
+                const ha = if (g.along_z) tr.height(x, z - e) else tr.height(x - e, z);
+                const hb = if (g.along_z) tr.height(x, z + e) else tr.height(x + e, z);
+                const upper = @max(ha, hb);
+
+                if (upper - @min(ha, hb) < 0.35) continue;
+
+                wallPiece(b, of(.swall), x, upper + 0.2 - 1.36, z, if (g.along_z) 0 else half_pi);
+            }
         }
 
-        if (k > 0) {
-            for ([_]i32{ 1, cols - 2 }) |edge| {
-                if (!cellInside(edge, lane)) continue;
+        v = lo + band_w * 0.5;
 
-                const ex = cellX(edge) + (if (edge == 1) -hc + 0.25 else hc - 0.25);
+        var row: u32 = 0;
 
-                villageParapet(b, ex, base, cellZ(lane), half_pi);
-            }
-        }
+        while (v < hi) : (v += band_w) {
+            row += 1;
 
-        for ([_]i32{ lane + 1, lane + 2 }) |r| {
-            c = 1;
+            var a = a0 + 3 + @as(f32, @floatFromInt(row % 2)) * 3.5;
 
-            while (c < cols - 1) : (c += 1) {
-                if (!cellInside(c, r)) continue;
+            while (a < a1 - 2) : (a += 7) {
+                const j = b.rng.range(-0.6, 0.6);
+                const x = if (g.along_z) a + j else v + j * 0.3;
+                const z = if (g.along_z) v + j * 0.3 else a + j;
 
-                const x = cellX(c);
-                const z = cellZ(r);
-                const is_stair = c == stair_cols[@intCast(k)][0] or c == stair_cols[@intCast(k)][1];
+                if (coastDistance(x, z) < 7 or villageOut(x, z) < 5 or pathDistance(x, z) < 3.5 or taken(x, z, 1.5)) continue;
 
-                villageBlock(b, c, r, base);
+                const roll = rnd(b);
 
-                if (is_stair) {
-                    if (r == lane + 1) villageStair(b, c, r, base);
-
-                    continue;
-                }
-
-                const roll = b.rng.next();
-                const front = r == lane + 1;
-
-                if (front and roll < 0.14) {
-                    b.putAt(kit.of(.taverna), vec(x, base, z), half_pi, 1);
-                    b.putAt(kit.of(.geranium), vec(x - 1.2, base, z + hc - 0.3), 0, 1.2);
-                    b.putAt(kit.of(.olive), vec(x + 1.2, base, z + 0.6), b.rng.range(0, 6.28), 0.55);
-                    villageParapet(b, x, roof, z + hc - 0.2, 0);
-
-                    continue;
-                }
-
-                if (front and roll < 0.28) {
-                    villageHouse(b, kit.of(.dome1), c, r, base, 1, true);
-                } else if (!front and roll < 0.12) {
-                    villageHouse(b, kit.of(.dome2), c, r, base, 2, true);
-                } else if (!front and roll < 0.32) {
-                    villageHouse(b, if (b.rng.next() < 0.6) kit.of(.cube2) else kit.of(.cube2b), c, r, base, 2, false);
-                } else if (front and roll < 0.42) {
-                    villageHouse(b, if (b.rng.next() < 0.5) kit.of(.cave1) else kit.of(.cave1b), c, r, base, 1, false);
+                if (roll < 0.84) {
+                    b.put(of(.olive), x, z, spin(b), b.rng.range(0.85, 1.15));
+                } else if (roll < 0.92 and gi == 2) {
+                    b.put(of(.lemon), x, z, spin(b), b.rng.range(0.8, 1));
+                } else if (roll < 0.95) {
+                    b.put(of(.haystack), x, z, spin(b), 0.8);
                 } else {
-                    villageHouse(b, b.rng.pick(Kind, &.{ kit.of(.cube1), kit.of(.cube1), kit.of(.cube1b), kit.of(.cube1c), kit.of(.cube1d) }), c, r, base, 1, false);
-
-                    if (!front and b.rng.next() < 0.35) b.putAt(b.rng.pick(Kind, &.{ kit.of(.laundry), kit.of(.geranium), kit.of(.basil), kit.of(.kafe) }), vec(x + b.rng.range(-1, 1), roof, z + b.rng.range(-1, 1)), @floor(b.rng.next() * 3.99) * half_pi, 1);
+                    b.put(of(.hay), x, z, spin(b), 1);
                 }
 
-                if (front and b.rng.next() < 0.45) villageParapet(b, x, roof, z - hc + 0.22, 0);
+                claim(x, z, 1.5);
 
-                if (front and b.rng.next() < 0.5) {
-                    b.putAt(if (b.rng.next() < 0.5) kit.of(.geranium) else kit.of(.basil), vec(x + b.rng.range(-1.7, 1.7), roof + 0.28, z - hc + 0.15), 0, 1);
-                }
-
-                if (!front and b.rng.next() < 0.25) b.putAt(kit.of(.chair), vec(x + b.rng.range(-1, 1), base + village_tier, z + b.rng.range(-1, 0.5)), b.rng.range(0, 6.28), 1);
-
-                if (front and b.rng.next() < 0.2) wd.kit_loot.append(b.gpa, vec(x, roof + 0.1, z)) catch {};
+                if (rnd(b) < 0.3) b.put(of(.rbush), x + b.rng.range(-2.5, 2.5), z + b.rng.range(-2.5, 2.5), spin(b), b.rng.range(0.5, 0.8));
             }
         }
     }
-
-    for ([_]f32{ -1, 1 }) |side| {
-        var r: i32 = 2;
-
-        while (r < village_rows) : (r += 3) {
-            const x = (if (side < 0) village_x0 + cell * 0.5 else village_x0 + cell * (@as(f32, @floatFromInt(cols)) - 0.5)) + side * 1.5;
-            const z = cellZ(r) + b.rng.range(-1.5, 1.5);
-
-            if (b.rng.next() < 0.5) b.put(kit.of(.cypress), x, z, 0, b.rng.range(0.85, 1.15)) else b.put(kit.of(.olive), x, z, b.rng.range(0, 6.28), b.rng.range(0.8, 1.0));
-        }
-    }
 }
 
+fn scrubland(b: *Builder) void {
+    const lim: f32 = 168;
+    var z: f32 = -lim;
 
-var isle_spawns: std.ArrayList(Vec3) = .empty;
-var isle_anchors: std.ArrayList(Vec3) = .empty;
+    while (z < lim) : (z += 3.4) {
+        var x: f32 = -lim;
 
-fn isleOk(x: f32, z: f32, pad: f32) bool {
-    if (coastDistance(x, z) < pad) return false;
+        while (x < lim) : (x += 3.4) {
+            const px = x + b.rng.range(-1.5, 1.5);
+            const pz = z + b.rng.range(-1.5, 1.5);
+            const cd = coastDistance(px, pz);
 
-    if (villageMask(x, z) > 0.05) return false;
+            if (cd < 1.5 or villageOut(px, pz) < 3 or pathDistance(px, pz) < 2.6 or taken(px, pz, 0.6)) continue;
 
-    return terrain.runwayMask(x, z) < 0.05 and terrain.padMask(x, z) < 0.05;
-}
+            if (z < -112 and @abs(px) < 78) continue;
 
-fn isleHouse(b: *Builder, kind: Kind, x: f32, z: f32, spin: f32, floors: f32) void {
-    const h = village_cell * 0.5;
-    var base: f32 = -1e9;
+            const g = groveMask(px, pz);
+            const n = tr.normal(px, pz);
+            const roll = rnd(b);
+            const yaw = spin(b);
 
-    for ([_]f32{ -h, 0, h }) |sx| {
-        for ([_]f32{ -h, 0, h }) |sz| base = @max(base, terrain.height(x + sx, z + sz));
-    }
-
-    base += 0.05;
-
-    const top = base + floors * village_tier;
-    const cave = kind == kit.of(.cave1) or kind == kit.of(.cave1b);
-
-    b.putAt(kit.of(.block), vec(x, base, z), 0, 1);
-    b.solid(.{ .box = .{ .min = vec(x - h, base - 17, z - h), .max = vec(x + h, base, z + h) } });
-    b.putAt(kind, vec(x, base, z), spin, 1);
-    b.solid(.{ .box = .{ .min = vec(x - h, base - 0.5, z - h), .max = vec(x + h, top, z + h) } });
-
-    if (!cave) {
-        const lx: f32 = switch (kind) {
-            kit.of(.cube1b), kit.of(.cube1d), kit.of(.cube2b) => 1.3,
-            else => -1.3,
-        };
-        const ch = rotPoint(x, z, spin, lx, -1.5);
-
-        b.solid(.{ .box = .{ .min = vec(ch[0] - 0.35, top, ch[1] - 0.35), .max = vec(ch[0] + 0.35, top + 1.2, ch[1] + 0.35) } });
-    }
-
-    if (floors > 1.5 and b.rng.next() < 0.5) b.putAt(kit.of(.solar), vec(x + b.rng.range(-0.8, 0.8), top, z + b.rng.range(-0.8, 0.8)), @floor(b.rng.next() * 3.99) * half_pi, 1);
-}
-
-fn gwallRun(b: *Builder, x: f32, z: f32, along_x: bool, n: u32, gap: u32) void {
-    var k: u32 = 0;
-
-    while (k < n) : (k += 1) {
-        if (gap > 0 and k % gap == gap - 1) continue;
-
-        const off = @as(f32, @floatFromInt(k)) * 4;
-        const px = if (along_x) x + off else x;
-        const pz = if (along_x) z else z + off;
-
-        if (!isleOk(px, pz, 5) or covered(b, px, pz, 0.6)) continue;
-
-        b.putAt(kit.of(.gwall), vec(px, terrain.height(px, pz) - 0.1, pz), if (along_x) 0 else half_pi, 1);
-    }
-}
-
-fn hamlet(b: *Builder, hm: [3]f32) void {
-    var cx = hm[0];
-    var cz = hm[1];
-
-    while (coastDistance(cx, cz) < 38) {
-        cx *= 0.95;
-        cz *= 0.95;
-    }
-
-    const kinds = [_]Kind{ kit.of(.cube1), kit.of(.cube1b), kit.of(.cube1c), kit.of(.cube1d), kit.of(.cave1), kit.of(.cave1b), kit.of(.cube2), kit.of(.cube2b) };
-    const lots = [_][2]f32{ .{ -6.6, -4.4 }, .{ -2.2, -4.4 }, .{ 4.4, -4.4 }, .{ 8.8, -4.4 }, .{ -6.6, 6.6 }, .{ 2.2, 6.6 }, .{ 6.6, 6.6 } };
-
-    for (lots, 0..) |lot, i| {
-        if (b.rng.next() < 0.15) continue;
-
-        const x = cx + lot[0];
-        const z = cz + lot[1];
-        const kind = kinds[(i * 3 + @as(usize, @intFromFloat(@abs(hm[0])))) % kinds.len];
-        const floors: f32 = if (kind == kit.of(.cube2) or kind == kit.of(.cube2b)) 2 else 1;
-
-        isleHouse(b, kind, x, z, @floor(b.rng.next() * 3.99) * half_pi, floors);
-
-        if (b.rng.next() < 0.6) b.putAt(if (b.rng.next() < 0.5) kit.of(.geranium) else kit.of(.basil), vec(x + b.rng.range(-1.8, 1.8), terrain.height(x, z + 2.9), z + (if (lot[1] < 0) @as(f32, 2.7) else -2.7)), 0, 1);
-    }
-
-    gwallRun(b, cx - 14, cz - 11, true, 8, 4);
-    gwallRun(b, cx - 14, cz + 13, true, 8, 3);
-    gwallRun(b, cx - 15, cz - 9, false, 6, 3);
-    gwallRun(b, cx + 17, cz - 9, false, 6, 4);
-
-    b.put(kit.of(.taverna), cx - 3, cz + 1.2, half_pi, 1);
-    b.put(kit.of(.chair), cx - 4, cz + 1.2, half_pi, 1);
-    b.put(kit.of(.chair), cx - 2, cz + 1.2, -half_pi, 1);
-    b.put(kit.of(.lamp), cx + 2.5, cz + 2.8, 0, 1);
-    b.put(if (b.rng.next() < 0.5) kit.of(.truck) else kit.of(.melon), cx + 6, cz + 1.0, half_pi, 1);
-    b.put(kit.of(.laundry), cx - 4.4, cz - 1.4, 0, 1);
-
-    for ([_][2]f32{ .{ -11, 2 }, .{ 13, -1 }, .{ 0, 11 }, .{ -9, 12 }, .{ 12, 10 } }) |o| {
-        if (!covered(b, cx + o[0], cz + o[1], 1.5)) b.put(if (b.rng.next() < 0.6) kit.of(.olive) else kit.of(.cypress), cx + o[0], cz + o[1], b.rng.range(0, 6.28), b.rng.range(0.8, 1.05));
-    }
-
-    wd.kit_loot.append(b.gpa, vec(cx + 1, terrain.height(cx + 1, cz + 1) + 0.1, cz + 1)) catch {};
-    wd.kit_loot.append(b.gpa, vec(cx - 8, terrain.height(cx - 8, cz + 1) + 0.1, cz + 1)) catch {};
-    isle_spawns.append(b.gpa, vec(cx + 3, terrain.height(cx + 3, cz + 1.5), cz + 1.5)) catch {};
-    isle_spawns.append(b.gpa, vec(cx - 12, terrain.height(cx - 12, cz - 15), cz - 15)) catch {};
-    isle_anchors.append(b.gpa, vec(cx, terrain.height(cx, cz) + 16, cz)) catch {};
-}
-
-fn summitRuin(b: *Builder) void {
-    const cx = isle_summit[0];
-    const cz = isle_summit[1];
-    const y = lowest(cx, cz, 2.6) + 0.3;
-
-    b.putAt(kit.of(.light), vec(cx, y, cz), 0.3, 1.1);
-
-    for ([_][3]f32{ .{ -9, -9, 1 }, .{ -9, 7, 0 }, .{ 7, -9, 1 }, .{ 7, 9, 0 } }) |w| gwallRun(b, cx + w[0], cz + w[1], w[2] > 0.5, 3, 0);
-
-    for ([_][2]f32{ .{ -13, 2 }, .{ 12, -3 }, .{ 3, 14 }, .{ -4, -14 } }) |o| {
-        isleRocks(b, cx + o[0], cz + o[1]);
-        wd.kit_loot.append(b.gpa, vec(cx + o[0] * 0.7, terrain.height(cx + o[0] * 0.7, cz + o[1] * 0.7) + 0.1, cz + o[1] * 0.7)) catch {};
-    }
-
-    for ([_][2]f32{ .{ -18, -10 }, .{ 18, 12 }, .{ -16, 16 }, .{ 15, -16 } }) |o| b.put(kit.of(.cypress), cx + o[0], cz + o[1], 0, b.rng.range(0.9, 1.2));
-
-    for ([_][2]f32{ .{ 22, 3 }, .{ -24, -4 }, .{ 2, -24 }, .{ -3, 23 } }) |o| isleRocks(b, cx + o[0], cz + o[1]);
-
-    isle_spawns.append(b.gpa, vec(cx + 26, terrain.height(cx + 26, cz + 8), cz + 8)) catch {};
-    isle_anchors.append(b.gpa, vec(cx, y + 22, cz)) catch {};
-}
-
-fn isleCoves(b: *Builder) void {
-    const isl = islands[0];
-
-    for ([_]f32{ 3.0, 0.15, 2.1, 0.95, 3.75, 5.5 }, 0..) |ang, n| {
-        const dx = @cos(ang);
-        const dz = @sin(ang);
-        const rr = islandEdge(isl, isl.x + dx * isl.r, isl.z + dz * isl.r);
-        const hx = isl.x + dx * (rr - 12);
-        const hz = isl.z + dz * (rr - 12);
-        const yaw = std.math.atan2(dx, dz);
-
-        if (terrain.runwayMask(hx, hz) > 0.05 or terrain.padMask(hx, hz) > 0.05) continue;
-
-        b.putAt(kit.of(.boathouse), vec(hx, lowest(hx, hz, 4) + 0.3, hz), yaw, 1);
-
-        const bx = isl.x + dx * (rr + 6);
-        const bz = isl.z + dz * (rr + 6);
-
-        b.putAt(kit.of(.boat), vec(bx, terrain.sea_level - 0.45, bz), yaw + 0.4, 0.9);
-
-        const lx = hx - dz * 6;
-        const lz = hz + dx * 6;
-
-        b.put(kit.of(.lamp), lx, lz, 0, 1);
-        b.put(if (n % 2 == 0) kit.of(.agave) else kit.of(.pear), hx + dz * 6, hz - dx * 6, 0, 1);
-
-        if (n % 2 == 1) b.put(kit.of(.truck), lx - dx * 4, lz - dz * 4, yaw, 1);
-
-        wd.kit_loot.append(b.gpa, vec(lx - dx * 2, terrain.height(lx - dx * 2, lz - dz * 2) + 0.1, lz - dz * 2)) catch {};
-        isle_spawns.append(b.gpa, vec(hx - dx * 8, terrain.height(hx - dx * 8, hz - dz * 8), hz - dz * 8)) catch {};
-    }
-}
-
-fn harbourFront(b: *Builder) void {
-    const z = village_z0 - 9;
-
-    b.putAt(kit.of(.boat), vec(-22, terrain.sea_level - 0.45, z), 0.2, 1);
-    b.putAt(kit.of(.boat), vec(17, terrain.sea_level - 0.45, z - 4), -0.35, 0.9);
-    b.putAt(kit.of(.boat), vec(42, terrain.sea_level - 0.45, z + 3), 1.2, 0.8);
-}
-
-fn fieldWalls(b: *Builder) void {
-    for ([_][4]f32{
-        .{ -80, -110, 1, 10 },
-        .{ 60, -120, 1, 9 },
-        .{ -70, 20, 0, 9 },
-        .{ 70, 10, 0, 8 },
-        .{ -40, 40, 1, 12 },
-        .{ 30, 60, 1, 8 },
-        .{ -150, 10, 0, 8 },
-        .{ 150, -10, 0, 7 },
-        .{ -60, -150, 0, 6 },
-        .{ 64, -160, 0, 5 },
-    }) |w| gwallRun(b, w[0], w[1], w[2] > 0.5, @intFromFloat(w[3]), 4);
-}
-
-fn isleScatter(b: *Builder) void {
-    const lim = terrain.play - 6;
-    var x: f32 = -lim;
-
-    while (x < lim) : (x += 6) {
-        var z: f32 = -lim;
-
-        while (z < lim) : (z += 6) {
-            const px = x + b.rng.range(-2.2, 2.2);
-            const pz = z + b.rng.range(-2.2, 2.2);
-
-            if (!isleOk(px, pz, 5) or terrain.height(px, pz) < terrain.sea_level + 0.8) continue;
-
-            if (pathDistance(px, pz) < 3.2 or covered(b, px, pz, 2)) continue;
-
-            const n = terrain.normal(px, pz);
-            const roll = b.rng.next();
-            const yaw = b.rng.range(0, 6.28);
-            const grove = terrain.fbm(px * 0.02 + 9, pz * 0.02 - 3);
-
-            if (n.y < 0.86) {
-                if (roll < 0.2) isleRocks(b, px, pz) else if (roll < 0.36) isleScrub(b, px, pz) else if (roll < 0.4) b.put(kit.of(.agave), px, pz, yaw, b.rng.range(0.8, 1.1));
+            if (cd < 9 and tr.height(px, pz) < sea_y + 1.6) {
+                if (roll < 0.06) b.put(of(.pine), px, pz, yaw, b.rng.range(0.8, 1.1)) else if (roll < 0.2) b.put(of(.rbush), px, pz, yaw, b.rng.range(0.6, 0.9));
 
                 continue;
             }
 
-            if (grove > 0.56) {
-                if (roll < 0.42) b.put(kit.of(.olive), px, pz, yaw, b.rng.range(0.85, 1.15));
+            if (n.y < 0.8) {
+                if (roll < 0.22) b.put(of(.rock), px, pz, yaw, b.rng.range(0.8, 1.6)) else if (roll < 0.4) b.put(of(.bush), px, pz, yaw, b.rng.range(0.8, 1.2)) else if (roll < 0.5) b.put(of(.shrub), px, pz, yaw, 1) else if (roll < 0.53) b.put(of(.outcrop), px, pz, yaw, b.rng.range(0.7, 1.1));
 
                 continue;
             }
 
-            const scrubby = terrain.smooth(0.52, 0.64, terrain.fbm(px * 0.045 - 13, pz * 0.045 + 21));
+            if (g > 0.55) {
+                if (roll < 0.08) b.put(of(.rbush), px, pz, yaw, 0.7);
 
-            if (roll < 0.03) {
-                b.put(kit.of(.cypress), px, pz, yaw, b.rng.range(0.85, 1.2));
-            } else if (roll < 0.07) {
-                b.put(if (b.rng.next() < 0.5) kit.of(.agave) else kit.of(.pear), px, pz, yaw, b.rng.range(0.7, 1.0));
-            } else if (roll < 0.11) {
-                isleRocks(b, px, pz);
-            } else if (roll < 0.2 + scrubby * 0.3) {
-                isleScrub(b, px, pz);
-            } else if (roll < 0.23 + scrubby * 0.3) {
-                b.put(kit.of(.olive), px, pz, yaw, b.rng.range(0.7, 1.0));
+                continue;
+            }
+
+            if (roll < 0.2) {
+                b.put(of(.bush), px, pz, yaw, b.rng.range(0.8, 1.3));
+            } else if (roll < 0.32) {
+                b.put(of(.rbush), px, pz, yaw, b.rng.range(0.8, 1.2));
+            } else if (roll < 0.42) {
+                b.put(of(.shrub), px, pz, yaw, b.rng.range(0.6, 0.9));
+            } else if (roll < 0.47) {
+                b.put(of(.shrub), px, pz, yaw, b.rng.range(0.8, 1.1));
+            } else if (roll < 0.51) {
+                b.put(of(.shrub), px, pz, yaw, b.rng.range(0.8, 1.2));
+            } else if (roll < 0.54) {
+                b.put(of(.agave), px, pz, yaw, b.rng.range(0.7, 1.0));
+            } else if (roll < 0.57) {
+                b.put(of(.agave), px, pz, yaw, b.rng.range(0.8, 1.1));
+            } else if (roll < 0.6) {
+                b.put(of(.rock), px, pz, yaw, b.rng.range(0.6, 1.2));
+            } else if (roll < 0.615) {
+                b.put(of(.olive), px, pz, yaw, b.rng.range(0.8, 1.0));
+            } else if (roll < 0.625) {
+                b.put(of(.cypress), px, pz, 0, b.rng.range(0.8, 1.1));
             }
         }
     }
 }
 
-fn isleScrub(b: *Builder, x: f32, z: f32) void {
-    const n: u32 = 2 + @as(u32, @intFromFloat(b.rng.next() * 4));
-    var k: u32 = 0;
+fn pathEdges(b: *Builder) void {
+    for (paths, 0..) |s, n| {
+        const dx = s[2] - s[0];
+        const dz = s[3] - s[1];
+        const len = @sqrt(dx * dx + dz * dz);
+        const nx = -dz / len;
+        const nz = dx / len;
+        var t: f32 = 6;
 
-    while (k < n) : (k += 1) {
-        const px = x + b.rng.range(-2.2, 2.2);
-        const pz = z + b.rng.range(-2.2, 2.2);
+        while (t < len - 4) : (t += 9) {
+            const px = s[0] + dx / len * t;
+            const pz = s[1] + dz / len * t;
+            const side: f32 = if ((@as(u32, @intFromFloat(t)) + n) % 2 == 0) 1 else -1;
+            const qx = px + nx * 3.6 * side;
+            const qz = pz + nz * 3.6 * side;
 
-        b.put(.kd_scrub, px, pz, b.rng.range(0, 6.28), b.rng.range(0.9, 1.4));
+            if (coastDistance(qx, qz) < 5 or villageOut(qx, qz) < 3 or taken(qx, qz, 0.5)) continue;
+
+            const roll = rnd(b);
+
+            if (roll < 0.3) {
+                b.put(of(.cypress), qx, qz, 0, b.rng.range(0.85, 1.1));
+                claim(qx, qz, 1);
+            } else if (roll < 0.55) {
+                wallPiece(b, of(.swall), qx, tr.height(qx, qz) - 0.15, qz, std.math.atan2(-dz, dx));
+                claim(qx, qz, 1.5);
+            } else if (roll < 0.7) {
+                b.put(of(.agave), qx, qz, spin(b), 0.9);
+            } else if (roll < 0.8) {
+                b.put(of(.pot), qx, qz, spin(b), 1.2);
+            }
+        }
     }
 }
 
-fn isleRocks(b: *Builder, x: f32, z: f32) void {
-    const kinds = [_]Kind{ .kd_rock_0, .kd_rock_1, .kd_rock_2, .kd_rock_4 };
-    const n: u32 = 1 + @as(u32, @intFromFloat(b.rng.next() * 3));
-    var k: u32 = 0;
+fn shoreFoam(b: *Builder) void {
+    var a: f32 = 0;
 
-    while (k < n) : (k += 1) {
-        const px = x + b.rng.range(-2.5, 2.5);
-        const pz = z + b.rng.range(-2.5, 2.5);
+    while (a < std.math.tau) : (a += 0.035) {
+        const dx = @cos(a);
+        const dz = @sin(a);
+        const rr = islandEdge(dx * 150, dz * 150);
+        const yaw = std.math.atan2(-dx, -dz);
+        const quay_front = dz * rr < -125 and @abs(dx * rr) < 76;
+        const off: f32 = if (quay_front) 0.6 else 1.6;
 
-        b.putAt(b.rng.pick(Kind, &kinds), vec(px, lowest(px, pz, 0.8) + 0.3, pz), b.rng.range(0, 6.28), b.rng.range(0.9, 1.6));
+        b.putAt(of(.foam), vec(dx * (rr + off), sea_y + 0.01, dz * (rr + off)), yaw + b.rng.range(-0.1, 0.1), b.rng.range(0.85, 1.15));
+
+        if (@mod(@as(u32, @intFromFloat(a * 100)), 2) == 0) b.putAt(of(.ripple), vec(dx * (rr + 6 + b.rng.range(0, 4)), sea_y + 0.008, dz * (rr + 6 + b.rng.range(0, 4))), yaw, b.rng.range(0.8, 1.2));
     }
 
-    if (b.rng.next() < 0.5) isleScrub(b, x + 3, z - 2);
+    var z: f32 = -134;
+
+    while (z > -168) : (z -= 6) {
+        b.putAt(of(.foam), vec(pier_x - 2.6, sea_y + 0.01, z), half_pi, 0.9);
+        b.putAt(of(.foam), vec(pier_x + 2.6, sea_y + 0.01, z - 3), half_pi, 0.9);
+    }
 }
 
-fn islandNature(b: *Builder) void {
+fn build(b: *Builder) void {
+    @memset(&occ, 0);
     wd.kit_loot = .empty;
-    isle_spawns = .empty;
-    isle_anchors = .empty;
-    runway(b);
-
-    for (terrain.helipads) |p| helipad(b, p[0], p[1]);
-
-    cHangar(b, 34, 90);
-    tent(b, -40, 92);
-    fuelTank(b, -58, 86);
+    spawn_list = .empty;
+    spawn_yaw = .empty;
+    anchor_list = .empty;
+    park_list = .empty;
 
     medVillage(b);
-    harbourFront(b);
+    windmills(b);
+    farmstead(b);
+    quarrySite(b);
+    hamletSite(b);
+    coveSite(b);
+    pathEdges(b);
+    terraces(b);
+    scrubland(b);
+    shoreFoam(b);
 
-    for (isle_hamlets) |hm| hamlet(b, hm);
-
-    summitRuin(b);
-    isleCoves(b);
-    fieldWalls(b);
-    isleScatter(b);
+    for ([_][2]f32{ .{ -90, 10 }, .{ 100, 10 }, .{ -100, -60 }, .{ 90, -40 }, .{ -40, 64 }, .{ 48, 56 } }) |p| {
+        spawnAt(b, p[0], tr.height(p[0], p[1]), p[1], std.math.atan2(-p[0], -p[1]));
+        loot(b, p[0] + 3, tr.height(p[0] + 3, p[1] + 3), p[1] + 3);
+    }
 }
 
-fn islandSpots(gpa: std.mem.Allocator) void {
-    var spawn_list: std.ArrayList(Vec3) = .empty;
-    var yaw_list: std.ArrayList(f32) = .empty;
+fn setSpots(gpa: std.mem.Allocator) void {
+    var spawns: std.ArrayList(Vec3) = .empty;
+    var yaws: std.ArrayList(f32) = .empty;
     var spots: std.ArrayList(Vec3) = .empty;
     var anchors: std.ArrayList(Vec3) = .empty;
-    var parked: std.ArrayList(Spot) = .empty;
+    var parked: std.ArrayList(wd.Spot) = .empty;
 
     for (wd.kit_loot.items) |p| spots.append(gpa, p) catch {};
 
-    for (village_spawns.items) |p| {
-        spawn_list.append(gpa, p) catch {};
-        yaw_list.append(gpa, std.math.pi) catch {};
+    for (spawn_list.items, spawn_yaw.items) |p, y| {
+        spawns.append(gpa, p) catch {};
+        yaws.append(gpa, y) catch {};
     }
 
-    for (isle_spawns.items) |p| {
-        if (clearance(p) < 2) continue;
+    for (anchor_list.items) |p| anchors.append(gpa, p) catch {};
 
-        spawn_list.append(gpa, p) catch {};
-        yaw_list.append(gpa, std.math.atan2(-p.x, -p.z)) catch {};
-    }
+    for (park_list.items) |p| parked.append(gpa, p) catch {};
 
-    for (isle_anchors.items) |p| anchors.append(gpa, p) catch {};
-
-    anchors.append(gpa, vec(0, 30, -150)) catch {};
-
-    for ([_][2]f32{ .{ -30, 146 }, .{ -18, 146 }, .{ -6, 146 }, .{ 6, 146 }, .{ 18, 146 } }) |p| parked.append(gpa, .{ .pos = vec(p[0], terrain.height(p[0], p[1]), p[1]), .yaw = half_pi }) catch {};
-
-    for (isle_hamlets) |hm| {
-        const px = hm[0] * 0.9 + 14;
-        const pz = hm[1] * 0.9 + 16;
-
-        if (levelGround(px, pz) and villageMask(px, pz) < 0.01) parked.append(gpa, .{ .pos = vec(px, terrain.height(px, pz), pz), .yaw = hm[2] }) catch {};
-    }
-
-    wd.spawns = spawn_list.toOwnedSlice(gpa) catch &.{};
-    wd.spawn_yaws = yaw_list.toOwnedSlice(gpa) catch &.{};
+    wd.spawns = spawns.toOwnedSlice(gpa) catch &.{};
+    wd.spawn_yaws = yaws.toOwnedSlice(gpa) catch &.{};
     wd.weapon_spots = spots.toOwnedSlice(gpa) catch &.{};
     wd.drone_anchors = anchors.toOwnedSlice(gpa) catch &.{};
     wd.vehicle_spots = parked.toOwnedSlice(gpa) catch &.{};
+    wd.parkClear(gpa);
 }
