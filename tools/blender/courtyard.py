@@ -22,7 +22,7 @@ def rgb(r, g, b):
 
 SAND = rgb(232, 192, 148)
 SAND_DEEP = rgb(214, 170, 126)
-SAGE = rgb(146, 182, 152)
+SAGE = rgb(150, 184, 138)
 TERRA = rgb(204, 112, 88)
 TERRA_FLOOR = rgb(208, 128, 104)
 FLOOR = rgb(228, 228, 224)
@@ -30,8 +30,8 @@ WOOD = rgb(206, 164, 108)
 SOIL = rgb(120, 104, 74)
 OUTER = rgb(226, 204, 168)
 
-SUN = Vector((0.45, 0.68, -0.58)).normalized()
-SHADE = (0.66, 0.71, 0.84)
+SUN = Vector((0.7, 0.62, 0.35)).normalized()
+SHADE = (0.6, 0.65, 0.8)
 TILE = 37.5
 HALF = 75.0
 STEP = 0.6
@@ -376,6 +376,7 @@ def build():
     patches = [(-8, -8, 8, 8), (-62, -6, -44, 6), (44, -6, 62, 6), (-12, 52, 12, 66), (-12, -66, 12, -52)]
     solids_flat = [b for b in boxes if b[1] <= 0.01 and b[4] > 0.5]
     n = int(2 * HALF / 0.5)
+    floor_ids = {}
 
     for i in range(n):
         for j in range(n):
@@ -391,8 +392,18 @@ def build():
             if any(p[0] <= cx <= p[2] and p[1] <= cz <= p[3] for p in patches):
                 col = TERRA_FLOOR
 
-            faces.append((len(verts), len(verts) + 1, len(verts) + 2, len(verts) + 3))
-            verts.extend([Vector((x0, 0, z0)), Vector((x0, 0, z0 + 0.5)), Vector((x0 + 0.5, 0, z0 + 0.5)), Vector((x0 + 0.5, 0, z0))])
+            ids = []
+
+            for px, pz in ((x0, z0), (x0, z0 + 0.5), (x0 + 0.5, z0 + 0.5), (x0 + 0.5, z0)):
+                key = (round(px, 2), round(pz, 2), col)
+
+                if key not in floor_ids:
+                    floor_ids[key] = len(verts)
+                    verts.append(Vector((px, 0, pz)))
+
+                ids.append(floor_ids[key])
+
+            faces.append(tuple(ids))
             face_col.append(col)
 
     for lo, hi in (((-100, -100), (100, -HALF)), ((-100, HALF), (100, 100)), ((-100, -HALF), (-HALF, HALF)), ((HALF, -HALF), (100, HALF))):
@@ -511,16 +522,22 @@ def export(colours):
         polys = []
         loop_cols = []
 
+        local = {}
+
         for fi in fl:
             f = faces[fi]
-            start = len(pts)
+            poly = []
 
             for k, vi in enumerate(f):
-                p = verts[vi]
-                pts.append((p.x - cx, -(p.z - cz), p.y))
+                if vi not in local:
+                    p = verts[vi]
+                    local[vi] = len(pts)
+                    pts.append((p.x - cx, -(p.z - cz), p.y))
+
+                poly.append(local[vi])
                 loop_cols.append(colours[fi][k])
 
-            polys.append(tuple(range(start, start + len(f))))
+            polys.append(tuple(poly))
 
         me.from_pydata(pts, [], polys)
         me.update()
@@ -534,10 +551,6 @@ def export(colours):
         bpy.context.scene.collection.objects.link(ob)
         bpy.context.view_layer.objects.active = ob
         ob.select_set(True)
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="SELECT")
-        bpy.ops.mesh.remove_doubles(threshold=0.0005)
-        bpy.ops.object.mode_set(mode="OBJECT")
         mat = bpy.data.materials.new("courtyard")
         mat.use_nodes = True
         bsdf = mat.node_tree.nodes["Principled BSDF"]

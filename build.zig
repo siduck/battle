@@ -198,16 +198,28 @@ fn buildAndroid(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
     raylib_dep.artifact("raylib").setLibCFile(libc_txt);
 
     const manifest = b.addWriteFiles().add("AndroidManifest.xml", manifest_xml);
-    const pack = b.addSystemCommand(&.{"python3"});
+    const staged = b.addWriteFiles();
 
-    pack.addFileArg(b.path("tools/apkpack.py"));
+    for ([_][]const u8{ "guns", "sky", "props", "cars", "characters" }) |name| {
+        _ = staged.addCopyDirectory(b.path(b.fmt("src/client/assets/{s}", .{name})), b.fmt("assets/{s}", .{name}), .{});
+    }
+
+    const tool = b.addExecutable(.{
+        .name = "apk",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/apk.zig"),
+            .target = b.graph.host,
+            .optimize = .ReleaseSafe,
+        }),
+    });
+    const pack = b.addRunArtifact(tool);
+
     pack.addArg(sdk);
     pack.addFileArg(manifest);
     pack.addArtifactArg(lib);
-    pack.addDirectoryArg(b.path("src/client/assets"));
+    pack.addDirectoryArg(staged.getDirectory().path(b, "assets"));
 
     const apk = pack.addOutputFileArg("dronefire.apk");
 
-    pack.addFileInput(b.path("tools/apksign.py"));
     b.getInstallStep().dependOn(&b.addInstallFile(apk, "dronefire.apk").step);
 }
