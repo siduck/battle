@@ -1,0 +1,21 @@
+#!/sbin/openrc-run
+
+name="battle-server"
+description="Dronefire battle multiplayer server"
+supervisor="supervise-daemon"
+command="/usr/local/bin/battle-server"
+command_args="${BATTLE_ARGS:---port 27015}"
+command_user="battle:battle"
+output_log="/var/log/battle-server.log"
+error_log="/var/log/battle-server.log"
+respawn_delay=2
+respawn_max=0
+
+depend() {
+	need net
+	after firewall
+}
+
+start_pre() {
+	checkpath --file --owner battle:battle --mode 0644 /var/log/battle-server.log
+}

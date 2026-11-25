@@ -23,6 +23,8 @@ const ui = @import("ui.zig");
 const settings = @import("settings.zig");
 const menu_mod = @import("menu.zig");
 const loadout_mod = @import("loadout.zig");
+const lobby = @import("lobby.zig");
+const net = @import("net.zig");
 
 const Game = game_mod.Game;
 const Controls = game_mod.Controls;
@@ -649,6 +651,7 @@ fn loadTick() void {
 fn loadStep(label: [:0]const u8, progress: f32) void {
     const f = load_font orelse return;
 
+    net.pump();
     tick_label = label;
     tick_progress = @max(tick_progress, progress);
     mapselect.loading(f, label, tick_progress);
@@ -699,7 +702,7 @@ pub fn main() void {
         var ui_buf: [1024]u8 = undefined;
         const ui_dir = if (assets.mobile) assets.dir(&ui_buf, "ui") else std.fmt.bufPrint(&ui_buf, "{s}../share/dronefire/ui", .{std.mem.span(rl.GetApplicationDirectory())}) catch "share/dronefire/ui";
 
-        shared.terrain.current = mapselect.pick(pick_font, ui_dir) orelse return;
+        shared.terrain.current = lobby.run(pick_font, ui_dir) orelse return;
         load_font = pick_font;
     }
 
@@ -849,6 +852,14 @@ pub fn main() void {
     var touch: touch_mod.Touch = .{};
 
     game.parkVehicles();
+
+    if (net.active) {
+        game_mod.online = true;
+        game_mod.net_hit = &net.hit;
+        game.wave_break = 1e9;
+    }
+
+    defer net.leave();
 
     if (std.c.getenv("DF_SHOWCASE") != null) game.showcase(0);
 
@@ -1090,11 +1101,13 @@ pub fn main() void {
 
         if (std.c.getenv("DF_RIDE") != null) rideTest(&game);
 
+        net.drive(&game, &controls);
         game.simulate(frame_dt, controls);
 
         const view = game.view();
 
         game.update(frame_dt, controls, view);
+        net.frame(&game, frame_dt);
 
         if (std.c.getenv("DF_HOLDCAM") != null) {
             if (std.c.getenv("DF_CAM")) |spec| placeCamera(&game, std.mem.sliceTo(spec, 0));
@@ -1172,6 +1185,7 @@ pub fn main() void {
             hud.draw(game, font, &icons, playing, pad.active and pad.id != null);
             hud.vehicleStatus(game, font);
             air.hud(game, font, cam);
+            net.draw(game, font, pad.id);
         }
 
         if (touch_mod.active() and playing and !(pad.id != null and pad.active)) touch.draw(font, @floatFromInt(rl.GetScreenWidth()), @floatFromInt(rl.GetScreenHeight()));

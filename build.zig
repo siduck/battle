@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
+    addServer(b, if (optimize == .debug) .debug else .safe);
+
     if (b.option(bool, "android", "Build a signed arm64 Android APK into zig-out/dronefire.apk") orelse false) {
         buildAndroid(b, optimize);
 
@@ -94,10 +96,48 @@ pub fn build(b: *std.Build) void {
     b.step("run", "Run the game").dependOn(&run.step);
 }
 
+fn serverExe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+    const shared = b.createModule(.{
+        .root_source_file = b.path("src/shared/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    return b.addExecutable(.{
+        .name = "battle-server",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/server/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .strip = optimize != .debug,
+            .link_libc = true,
+            .imports = &.{.{ .name = "shared", .module = shared }},
+        }),
+        .linkage = .static,
+    });
+}
+
+fn addServer(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
+    const arm = serverExe(b, b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .linux, .abi = .musl }), optimize);
+    const local = serverExe(b, b.resolveTargetQuery(.{ .abi = .musl }), optimize);
+
+    b.step("server", "Build the static aarch64 battle-server into zig-out/server/").dependOn(&b.addInstallArtifact(arm, .{ .dest_dir = .{ .override = .{ .custom = "server" } } }).step);
+    b.step("server-local", "Build battle-server for this machine into zig-out/bin/").dependOn(&b.addInstallArtifact(local, .{}).step);
+
+    const shared_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/shared/net.zig"),
+        .target = b.graph.host,
+        .optimize = .debug,
+    }) });
+
+    b.step("test-net", "Run netcode tests").dependOn(&b.addRunArtifact(shared_tests).step);
+}
+
 const manifest_xml =
     \\<?xml version="1.0" encoding="utf-8"?>
     \\<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.dronefire.game" android:versionCode="1" android:versionName="0.1">
     \\    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35"/>
+    \\    <uses-permission android:name="android.permission.INTERNET"/>
     \\    <uses-feature android:glEsVersion="0x00030000" android:required="true"/>
     \\    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     \\    <uses-feature android:name="android.hardware.gamepad" android:required="false"/>
