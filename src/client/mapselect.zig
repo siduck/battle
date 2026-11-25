@@ -12,15 +12,39 @@ const Entry = struct {
     tint: rl.Color,
 };
 
-const entries = [_]Entry{
+const legacy = [_]Entry{
     .{ .map = .facility, .name = "Facility", .note = "Industrial hangar, close combat", .tint = .{ .r = 96, .g = 170, .b = 150, .a = 255 } },
-    .{ .map = .desert, .name = "Desert Town", .note = "Adobe streets, market, oasis", .tint = .{ .r = 232, .g = 168, .b = 90, .a = 255 } },
     .{ .map = .conquest, .name = "Conquest", .note = "Military base, vehicles, aircraft", .tint = .{ .r = 210, .g = 120, .b = 70, .a = 255 } },
-    .{ .map = .islands, .name = "Islands", .note = "Floating islands, fireball jumps", .tint = .{ .r = 110, .g = 180, .b = 90, .a = 255 } },
     .{ .map = .valley, .name = "Valley", .note = "Mountain pass and compounds", .tint = .{ .r = 150, .g = 130, .b = 110, .a = 255 } },
     .{ .map = .prism, .name = "Prism", .note = "Glass arena", .tint = .{ .r = 96, .g = 196, .b = 200, .a = 255 } },
     .{ .map = .courtyard, .name = "Courtyard", .note = "Desert arena", .tint = .{ .r = 226, .g = 176, .b = 132, .a = 255 } },
 };
+
+const max_entries = 32;
+
+var entry_buf: [max_entries]Entry = undefined;
+
+fn collect() []const Entry {
+    var n: usize = 0;
+
+    inline for (@typeInfo(Map).@"enum".field_names) |tag| {
+        const m = @field(Map, tag);
+
+        if (shared.maps.get(m)) |d| {
+            if (d.ready and n < max_entries) {
+                entry_buf[n] = .{ .map = m, .name = d.name, .note = d.note, .tint = .{ .r = d.tint[0], .g = d.tint[1], .b = d.tint[2], .a = 255 } };
+                n += 1;
+            }
+        }
+    }
+
+    for (legacy) |e| {
+        entry_buf[n] = e;
+        n += 1;
+    }
+
+    return entry_buf[0..n];
+}
 
 fn padId() ?c_int {
     var i: c_int = 0;
@@ -33,7 +57,8 @@ fn padId() ?c_int {
 }
 
 pub fn pick(font: rl.Font, dir: []const u8) ?Map {
-    var shots: [entries.len]?rl.Texture2D = @splat(null);
+    const entries = collect();
+    var shots: [max_entries]?rl.Texture2D = @splat(null);
 
     for (entries, 0..) |e, i| {
         var buf: [512]u8 = undefined;
@@ -47,7 +72,7 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
         shots[i] = tex;
     }
 
-    defer for (shots) |s| {
+    defer for (shots[0..entries.len]) |s| {
         if (s) |t| rl.UnloadTexture(t);
     };
 
@@ -64,7 +89,10 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
         const u = h / 900;
         const cols: usize = 4;
         const gap = 22 * u;
-        const cw = @min(300 * u, (w - 160 * u - gap * 3) / 4);
+        const rows: f32 = @floatFromInt((entries.len + cols - 1) / cols);
+        const room = h * 0.7;
+        const fit = (room - gap * (rows - 1)) / rows / 0.56;
+        const cw = @min(@min(300 * u, (w - 160 * u - gap * 3) / 4), fit);
         const ch = cw * 0.56;
         const gx = (w - (cw * 4 + gap * 3)) / 2;
         const gy = h * 0.27;
@@ -97,7 +125,7 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
             }
         }
 
-        const n: i32 = entries.len;
+        const n: i32 = @intCast(entries.len);
         var s: i32 = @intCast(sel);
 
         s += dx + dy * @as(i32, @intCast(cols));
@@ -165,11 +193,11 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
 
             rl.DrawRectangleGradientV(@intFromFloat(card.x), @intFromFloat(card.y + img_h * 0.55), @intFromFloat(card.width), @intFromFloat(img_h * 0.45 + 1), ui.fade(ui.ink, 0), ui.fade(.{ .r = 22, .g = 26, .b = 38, .a = 255 }, 1));
 
-            const ns = 26 * u;
+            const ns = @min(26 * u, cw * 0.087);
             const name_y = card.y + img_h + 8 * u;
 
             ui.caps(font, e.name, card.x + 18 * u, name_y, ns, ui.white);
-            ui.text(font, e.note, card.x + 18 * u, name_y + ns + 6 * u, 15 * u, ui.fade(ui.white, 0.55));
+            ui.text(font, e.note, card.x + 18 * u, name_y + ns + 6 * u, @min(15 * u, cw * 0.05), ui.fade(ui.white, 0.55));
             rl.DrawRectangleRec(.{ .x = card.x + 18 * u, .y = name_y - 6 * u, .width = 22 * u, .height = 2 * u }, ui.fade(e.tint, 0.9));
 
             rl.DrawRectangleRoundedLinesEx(card, round, 8, if (on) 2 * u else 1, if (on) ui.fade(ui.white, 0.85) else ui.edge);

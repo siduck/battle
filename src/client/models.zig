@@ -52,7 +52,7 @@ pub const Models = struct {
 
         buildBlobs();
 
-        if (shared.terrain.current == .conquest or shared.terrain.current == .desert or shared.terrain.current == .valley or shared.terrain.current == .islands or shared.terrain.current == .facility) buildChunks();
+        if (shared.maps.current() != null or shared.terrain.current == .conquest or shared.terrain.current == .valley or shared.terrain.current == .facility) buildChunks();
 
         models.world = buildWorld();
         models.backdrop = buildBackdrop();
@@ -174,7 +174,7 @@ fn buildBlobs() void {
     @memset(blob, 0);
 
     for (shared.world.placements) |pl| {
-        const name = @tagName(pl.kind);
+        const name = shared.props.name(pl.kind);
 
         if (std.mem.startsWith(u8, name, "iv_ridge") or std.mem.startsWith(u8, name, "iv_range") or std.mem.startsWith(u8, name, "iv_under") or std.mem.startsWith(u8, name, "iv_cloud") or std.mem.startsWith(u8, name, "iv_waterfall") or std.mem.startsWith(u8, name, "grass")) continue;
 
@@ -226,6 +226,8 @@ fn smoothCorner(x: f32, z: f32) palette.Rgb {
 }
 
 fn smoothTerrain() bool {
+    if (shared.maps.current() != null) return true;
+
     return switch (shared.terrain.current) {
         .desert, .valley, .islands, .conquest, .facility => true,
         else => false,
@@ -520,71 +522,6 @@ fn facilityColor(x: f32, z: f32) palette.Rgb {
     return shade(.{ 166, 150, 116 }, light);
 }
 
-fn desertColor(x: f32, z: f32) palette.Rgb {
-    const t = shared.terrain;
-    const n = t.normal(x, z);
-    const slope = 1 - n.y;
-    const h = t.height(x, z);
-    const vary = 0.93 + t.fbm(x * 0.09, z * 0.09) * 0.14;
-    const od = t.oasisDistance(x, z);
-    const light = vary + n.x * 0.05 - n.z * 0.03;
-
-    const town = t.townMask(x, z);
-    const md = @sqrt((x - t.market[0]) * (x - t.market[0]) + (z - t.market[1]) * (z - t.market[1]));
-
-    if (town > 0.5 and md < t.market[2]) {
-        const cell = @mod(@floor(x / t.facet) + @floor(z / t.facet), 2);
-
-        return shade(if (cell < 1) .{ 214, 186, 132 } else .{ 194, 164, 112 }, vary);
-    }
-
-    if (town > 0.5 and t.roadDistance(x, z) < t.road_half - 0.5) return shade(.{ 172, 146, 108 }, vary);
-
-    const rd = t.roadDistance(x, z);
-
-    if (rd < t.road_half + 2) {
-        const k = t.smooth(t.road_half - 3, t.road_half + 2, rd);
-        const dirt = [3]f32{ 172, 150, 112 };
-        const sand = [3]f32{ 206, 186, 146 };
-
-        return shade(.{ dirt[0] + (sand[0] - dirt[0]) * k, dirt[1] + (sand[1] - dirt[1]) * k, dirt[2] + (sand[2] - dirt[2]) * k }, vary);
-    }
-
-    const sand = [3]f32{ 206, 186, 146 };
-    const lane = @min(@min(@abs(z - -36), @abs(z - 22)), @min(@abs(x - -30), @abs(x - 46)));
-    const town_k = t.smooth(0.3, 0.7, town);
-
-    if (town_k > 0) {
-        const street = mix3(.{ 200, 180, 140 }, .{ 196, 160, 108 }, t.smooth(4.5, 2.0, lane));
-
-        if (town_k >= 1) return shade(sandPatches(street, x, z, 0.6), light);
-
-        return shade(sandPatches(mix3(sand, street, town_k), x, z, 0.8), light);
-    }
-
-    if (od < 13 and h > water_level - 0.2) return shade(.{ 150, 156, 104 }, light);
-
-    const strata = [_][3]f32{ .{ 142, 110, 85 }, .{ 158, 124, 96 }, .{ 176, 142, 110 }, .{ 192, 162, 126 }, .{ 206, 182, 144 } };
-    const level: usize = @intFromFloat(std.math.clamp(@floor(@max(h, 0) / 4.5), 0, @as(f32, @floatFromInt(strata.len - 1))));
-    const rock = strata[level];
-    const ground = mix3(sand, rock, t.smooth(0.4, 0.62, slope));
-
-    return shade(sandPatches(mix3(.{ 206, 150, 92 }, ground, t.smooth(13, 24, od)), x, z, 1 - t.smooth(0.3, 0.55, slope)), light);
-}
-
-fn sandPatches(c: [3]f32, x: f32, z: f32, amount: f32) [3]f32 {
-    const t = shared.terrain;
-    const p = t.fbm(x * 0.028 + 17, z * 0.028 - 5);
-    const q = t.fbm(x * 0.11 - 3, z * 0.11 + 9);
-    const warm = t.smooth(0.5, 0.64, p) * amount;
-    const pale = t.smooth(0.46, 0.34, p) * amount;
-    const a = mix3(c, .{ 186, 150, 106 }, warm * 0.9);
-    const b2 = mix3(a, .{ 230, 216, 182 }, pale * 0.8);
-    const k = 0.94 + q * 0.12;
-
-    return .{ b2[0] * k, b2[1] * k, b2[2] * k };
-}
-
 var water_level: f32 = 0;
 
 fn mix3(a: [3]f32, c: [3]f32, k: f32) [3]f32 {
@@ -636,80 +573,10 @@ fn valleyColor(x: f32, z: f32) palette.Rgb {
     return shade(mix3(.{ 158, 138, 108 }, verge, t.smooth(t.road_half - 1.5, t.road_half + 1.0, d)), light);
 }
 
-fn islandColor(x: f32, z: f32) palette.Rgb {
-    const t = shared.terrain;
-    const n = t.normal(x, z);
-    const slope = 1 - n.y;
-    const vary = 0.94 + t.fbm(x * 0.08, z * 0.08) * 0.12;
-    const light = vary + n.x * 0.05 - n.z * 0.03;
-    const lush = t.fbm(x * 0.03 + 40, z * 0.03 - 12);
-
-    if (t.runwayMask(x, z) > 0.6 or t.padMask(x, z) > 0.7) return shade(.{ 169, 156, 126 }, light);
-
-    if (t.islandAt(x, z)) |k| {
-        const i = t.islands[k];
-        const d = @sqrt((x - i.x) * (x - i.x) + (z - i.z) * (z - i.z));
-
-        if (d > t.islandEdge(i, x, z) - 3.2) return shade(.{ 214, 203, 170 }, light);
-    }
-
-    if (slope > 0.32) return shade(.{ 128, 112, 92 }, light);
-
-    return shade(mix3(.{ 96, 124, 70 }, .{ 128, 150, 84 }, lush * 1.6 - 0.3), light);
-}
-
-fn islandSkirt(b: *Builder, i: shared.terrain.Island) void {
-    const t = shared.terrain;
-    const sides: usize = @intFromFloat(std.math.clamp(i.r * 1.4, 16, 96));
-    const rim_y = i.h - 1.5;
-    const rings = [_][2]f32{ .{ 1.0, 0 }, .{ 0.98, -0.8 }, .{ 0.94, -2.2 }, .{ 0.9, -3.6 } };
-    const tones = [_][3]f32{ .{ 111, 138, 78 }, .{ 142, 110, 85 }, .{ 122, 104, 88 } };
-    var pts: [rings.len][96]Vec3 = undefined;
-
-    for (0..sides) |k| {
-        const ang = @as(f32, @floatFromInt(k)) / @as(f32, @floatFromInt(sides)) * 6.2832;
-        const rr = t.islandEdge(i, i.x + @cos(ang) * i.r, i.z + @sin(ang) * i.r);
-
-        for (rings, 0..) |ring, j| {
-            const rad = rr * ring[0] + 0.3;
-
-            pts[j][k] = vec(i.x + @cos(ang) * rad, rim_y + ring[1], i.z + @sin(ang) * rad);
-        }
-    }
-
-    for (0..rings.len - 1) |j| {
-        for (0..sides) |k| {
-            const k2 = (k + 1) % sides;
-            const out = pts[j][k].sub(vec(i.x, pts[j][k].y, i.z));
-
-            b.style = .{ .color = shade(tones[j], 0.92 + @as(f32, @floatFromInt(k % 3)) * 0.05) };
-            b.flat(pts[j][k], pts[j + 1][k], pts[j + 1][k2], out);
-            b.flat(pts[j][k], pts[j + 1][k2], pts[j][k2], out);
-        }
-    }
-
-    for (0..sides) |k| {
-        const k2 = (k + 1) % sides;
-        const inner_a = vec(i.x, rim_y, i.z).add(pts[0][k].sub(vec(i.x, rim_y, i.z)).scale(0.68)).add(.{ .y = -1.6 });
-        const inner_b = vec(i.x, rim_y, i.z).add(pts[0][k2].sub(vec(i.x, rim_y, i.z)).scale(0.68)).add(.{ .y = -1.6 });
-
-        b.style = .{ .color = shade(.{ 111, 138, 78 }, 0.95) };
-        b.flat(pts[0][k], pts[0][k2], inner_b, .{ .y = 1 });
-        b.flat(pts[0][k], inner_b, inner_a, .{ .y = 1 });
-    }
-}
-
 fn ivWorld(b: *Builder) void {
     const t = shared.terrain;
 
-    if (t.current == .islands) {
-        for (t.islands) |i| {
-            islandSkirt(b, i);
-            flush(b);
-        }
-
-        return;
-    }
+    if (t.current == .islands) return;
 
     var z: f32 = -190;
     var k: u32 = 0;
@@ -755,15 +622,16 @@ fn ivWorld(b: *Builder) void {
 pub fn groundColor(x: f32, z: f32) palette.Rgb {
     const t = shared.terrain;
 
+    if (shared.maps.current()) |d| return d.ground(x, z);
+
     switch (t.current) {
         .town => {},
-        .desert => return desertColor(x, z),
         .valley => return valleyColor(x, z),
-        .islands => return islandColor(x, z),
         .facility => return facilityColor(x, z),
         .conquest => return conquestColor(x, z),
         .prism => return prismColor(x, z),
         .courtyard => return .{ 228, 228, 224 },
+        else => {},
     }
 
     const n = t.normal(x, z);
@@ -817,6 +685,13 @@ fn buildWorld() rl.Mesh {
 
         return b.finish();
     }
+
+    if (shared.maps.current() != null) {
+        structures(&b);
+
+        return b.finish();
+    }
+
     const faceted = t.current != .town;
     const cell: f32 = if (faceted) t.facet else 2;
 
@@ -1120,19 +995,19 @@ fn buildBackdrop() rl.Mesh {
     const hill_paints = [_]Paint{ .green, .mint, .teal, .lavender, .grass };
     var i: u32 = 0;
 
-    b.style = .{ .color = switch (shared.terrain.current) {
+    const def = shared.maps.current();
+
+    b.style = .{ .color = if (def) |d| d.backdrop else switch (shared.terrain.current) {
         .town => .{ 120, 196, 110 },
-        .desert => .{ 206, 186, 146 },
         .valley => .{ 150, 128, 100 },
-        .islands => .{ 58, 128, 168 },
         .facility => .{ 150, 148, 120 },
         .conquest => .{ 214, 168, 112 },
         .prism => .{ 120, 190, 196 },
         .courtyard => .{ 226, 204, 168 },
+        else => .{ 150, 140, 120 },
     } };
 
-    const floor_y: f32 = switch (shared.terrain.current) {
-        .islands => -120,
+    const floor_y: f32 = if (def) |d| d.floor_y else switch (shared.terrain.current) {
         .valley => -8,
         else => -0.2,
     };

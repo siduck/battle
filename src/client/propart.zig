@@ -9,7 +9,7 @@ const props = shared.props;
 const world = shared.world;
 const Vec3 = shared.math.Vec3;
 
-const kind_count = @typeInfo(props.Kind).@"enum".field_names.len;
+const kind_count = props.kind_capacity;
 
 const Slot = struct {
     model: ?rl.Model = null,
@@ -32,12 +32,12 @@ pub const Props = struct {
             if (counts[i] == 0) continue;
 
             var buf: [512]u8 = undefined;
-            const path = std.fmt.bufPrintSentinel(&buf, "{s}/{s}", .{ dir, props.infos[i].file }, 0) catch continue;
+            const path = std.fmt.bufPrintSentinel(&buf, "{s}/{s}", .{ dir, props.info(@enumFromInt(i)).file }, 0) catch continue;
             const model = rl.LoadModel(path.ptr);
 
             if (model.meshCount == 0) continue;
 
-            tint(model, std.mem.sliceTo(props.infos[i].file, 0));
+            tint(model, std.mem.sliceTo(props.info(@enumFromInt(i)).file, 0));
             mesh.dropCpu(model);
             slot.model = model;
             slot.all = gpa.alloc(rl.Matrix, counts[i]) catch continue;
@@ -72,7 +72,7 @@ pub const Props = struct {
     }
 
     fn glassy(i: usize) bool {
-        return std.mem.startsWith(u8, props.infos[i].file, "prism/glass_pane");
+        return std.mem.startsWith(u8, props.info(@enumFromInt(i)).file, "prism/glass_pane");
     }
 
     pub fn drawGlass(p: *Props, r: *gfx.Renderer, eye: Vec3, forward: Vec3) void {
@@ -92,7 +92,7 @@ pub const Props = struct {
 
         for (&p.slots, 0..) |*slot, i| {
             const model = slot.model orelse continue;
-            const info = props.infos[i];
+            const info = props.info(@enumFromInt(i));
 
             if (glassy(i) != glass) continue;
             const limit = reach(info.group, shadow) * (if (shadow) @min(settings.view_dist, 1) else settings.view_dist);
@@ -197,6 +197,8 @@ const kit_mats = [_]KitMat{
 };
 
 fn kitMaterial(i: usize) f32 {
+    if (i >= props.named_kinds) return -1;
+
     const name = @tagName(@as(props.Kind, @enumFromInt(i)));
 
     for (kit_mats) |k| {

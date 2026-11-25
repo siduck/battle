@@ -787,7 +787,7 @@ fn plain(name: []const u8) bool {
 
 pub fn park(g: *Game) void {
     const spots = world.vehicle_spots;
-    const tank_map = terrain.current == .desert or terrain.current == .valley or terrain.current == .conquest or terrain.current == .facility;
+    const tank_map = if (shared.maps.current()) |d| d.tanks else terrain.current == .valley or terrain.current == .conquest or terrain.current == .facility;
     var used: [256]bool = @splat(false);
     var order: [vehicle.count]usize = undefined;
     var n: usize = 0;
@@ -926,7 +926,7 @@ fn clearOfProps(v: vehicle.Vehicle) bool {
     const reach = s.length * 0.5 + 0.4;
 
     for (world.placements) |p| {
-        const info = shared.props.infos[@intFromEnum(p.kind)];
+        const info = shared.props.info(p.kind);
 
         if (info.group == .ground or info.group == .road) continue;
 

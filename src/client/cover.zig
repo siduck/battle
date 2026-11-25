@@ -148,7 +148,7 @@ fn buildMask() void {
     }
 
     for (world.placements) |pl| {
-        const info = shared.props.infos[@intFromEnum(pl.kind)];
+        const info = shared.props.info(pl.kind);
 
         if (info.group == .ground) continue;
 
@@ -240,7 +240,9 @@ fn rebuild(eye: Vec3) void {
 
             if (cls == .none) continue;
 
-            if (cls == .grass and roll > 0.85) continue;
+            if (cls == .grass and roll > (if (shared.maps.current()) |d| d.tufts else @as(f32, 0.85))) continue;
+
+            if (terrain.villageMask(x, z) > 0.05) continue;
 
             if (cls == .sand and roll > 0.05) continue;
 

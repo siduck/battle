@@ -234,8 +234,10 @@ const lit_fs_body =
     \\    if (texel.a * colDiffuse.a < 0.45) discard;
     \\    vec3 n = normalize(worldNormal);
     \\    if (!gl_FrontFacing) n = -n;
-    \\    float tone = 0.86 + 0.14 * n.y + 0.05 * n.x - 0.03 * n.z;
-    \\    vec3 col = tint.rgb * colDiffuse.rgb * texel.rgb * tone;
+    \\    float ndl = max(dot(n, normalize(sunDir)), 0.0);
+    \\    vec3 fill = mix(vec3(0.56, 0.59, 0.66), vec3(0.7, 0.73, 0.8), n.y * 0.5 + 0.5);
+    \\    vec3 light = fill + vec3(0.5, 0.48, 0.44) * ndl + 0.06 * max(n.y, 0.0);
+    \\    vec3 col = tint.rgb * colDiffuse.rgb * texel.rgb * min(light, vec3(1.12));
     \\    float dist = length(viewPos - worldPos);
     \\    float fog = min(1.0 - exp(-max(dist - 60.0, 0.0) * fogDensity * 0.55), 0.85);
     \\    col = mix(col, fogColor, fog);

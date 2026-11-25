@@ -262,6 +262,8 @@ fn contact(pieces: []const map.Piece, v: Vehicle, base: Vec3) Contact {
 fn surfaceGrip(paved: bool) f32 {
     if (paved) return 1;
 
+    if (@import("maps/registry.zig").current()) |d| return d.grip;
+
     return switch (terrain.current) {
         .desert => 0.72,
         .valley, .islands, .conquest => 0.84,

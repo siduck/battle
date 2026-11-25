@@ -8,7 +8,12 @@ pub var play: f32 = 98;
 pub const town: f32 = 54;
 pub const road_half: f32 = 7;
 
-pub const Map = enum { town, desert, valley, islands, facility, conquest, prism, courtyard };
+pub const Map = enum { town, desert, valley, islands, facility, conquest, prism, courtyard, airport, alpine, coast, construction, japan, forest, nyc, pirate, prehistoric, racing, lab, salvage, stadium, warehouse };
+
+const registry = @import("maps/registry.zig");
+const islands_map = @import("maps/islands.zig");
+
+pub const villageMask = islands_map.villageMask;
 
 pub var current: Map = .facility;
 
@@ -68,11 +73,13 @@ pub fn roadLine(z: f32) f32 {
         .town => 0,
         .desert => 8 * @sin(z * 0.022),
         .valley => 40 * @sin(z * 0.011) + 12 * @sin(z * 0.03 + 1),
-        .islands, .facility, .conquest, .prism, .courtyard => 0,
+        else => 0,
     };
 }
 
 pub fn roadDistance(x: f32, z: f32) f32 {
+    if (registry.current()) |d| return if (d.road) |road| road(x, z) else 1000;
+
     if (current == .islands or current == .prism or current == .courtyard) return 1000;
 
     if (current == .valley) return valleyRoad(x, z);
@@ -80,8 +87,6 @@ pub fn roadDistance(x: f32, z: f32) f32 {
     if (current == .facility) return facilityRoad(x, z);
 
     if (current == .conquest) return conquestRoad(x, z);
-
-    if (current == .desert) return @min(@abs(x - roadLine(z)), @min(@abs(z - (150 + 10 * @sin(x * 0.013))), @abs(z - (-140 + 5 * @sin(x * 0.017)))));
 
     if (current != .town) return @abs(x - roadLine(z));
 
@@ -95,6 +100,8 @@ pub fn roadDistance(x: f32, z: f32) f32 {
 }
 
 pub fn flatness(x: f32, z: f32) f32 {
+    if (registry.current()) |d| return if (d.flat) |flat| flat(x, z) else 0;
+
     if (current == .islands or current == .facility or current == .prism or current == .courtyard) return 0;
 
     if (current == .conquest) return @max(@max(1 - smooth(road_half + 1, road_half + 14, conquestRoad(x, z)), districtMask(x, z)), runwayMask(x, z));
@@ -202,6 +209,22 @@ fn facilityHeight(x: f32, z: f32) f32 {
 }
 
 pub fn configure() void {
+    registry.activate();
+
+    if (registry.current()) |d| {
+        half = d.half;
+        play = d.play;
+        facet = d.facet;
+
+        if (d.runway) |r| runway = r;
+
+        if (d.helipads) |h| helipads = h;
+
+        if (d.configure) |f| f();
+
+        return;
+    }
+
     if (current == .prism) {
         half = 140;
         play = 125;
@@ -226,32 +249,11 @@ pub fn configure() void {
         return;
     }
 
-    if (current == .islands) {
-        half = 275;
-        play = 250;
-        facet = 2.2;
-        runway = .{ 0, -150, 62, 12 };
-        helipads = .{ .{ 140, 90 }, .{ 160, 90 }, .{ 180, 90 } };
-        buildIslands();
-
-        return;
-    }
-
     if (current == .facility) {
         half = 270;
         play = 250;
         runway = .{ 0, -212, 150, 13 };
         helipads = .{ .{ -108, -97 }, .{ -84, -97 }, .{ -60, -97 } };
-
-        return;
-    }
-
-    if (current == .desert) {
-        half = 280;
-        play = 250;
-        facet = 2.5;
-        runway = .{ 150, -200, 80, 15 };
-        helipads = .{ .{ 90, -168 }, .{ 115, -168 }, .{ 140, -168 } };
 
         return;
     }
@@ -396,25 +398,6 @@ fn strata(h: f32) f32 {
     return (lo + smooth(0.72, 1, f - lo)) * step;
 }
 
-fn desert(x: f32, z: f32) f32 {
-    const flat = flatness(x, z);
-    const box = @max(@abs(x), @abs(z));
-    const wave = (z * 0.026 + x * 0.008 + fbm(x * 0.01, z * 0.01) * 2.6) / (2 * std.math.pi);
-    const u = wave - @floor(wave);
-    const profile = if (u < 0.78) smooth(0, 0.78, u) else 1 - smooth(0.78, 1, u);
-    const dunes = profile * 6.5 * (0.5 + fbm(x * 0.014 + 5, z * 0.014));
-    const rolling = (fbm(x * 0.01, z * 0.01) - 0.4) * 7;
-    const ridge = smooth(play - 10, half, box) * 10;
-    const od = oasisDistance(x, z);
-    const pool = (1 - smooth(6, 15, od)) * 2.6;
-    const open = smooth(8, 18, od);
-
-    const inside = townMask(x, z);
-    const strip = @max(@max(runwayMask(x, z), padMask(x, z)), pocketMask(x, z));
-
-    return (dunes + @max(rolling, -1)) * (1 - flat) * open * (1 - inside) * (1 - strip) + ridge - pool;
-}
-
 pub const valley_base = [4]f32{ -10, -212, 95, 30 };
 
 pub const Branch = struct {
@@ -526,139 +509,19 @@ fn valley(x: f32, z: f32) f32 {
 pub var facet: f32 = 3.5;
 
 pub fn rawHeight(x: f32, z: f32) f32 {
+    if (registry.current()) |d| return d.height(x, z);
+
     return switch (current) {
         .town => townHeight(x, z),
-        .desert => desert(x, z),
         .valley => valley(x, z),
-        .islands => islandHeight(x, z),
         .facility => facilityHeight(x, z),
         .conquest => conquest(x, z),
-        .prism, .courtyard => 0,
+        else => 0,
     };
 }
 
-pub const Island = struct {
-    x: f32,
-    z: f32,
-    r: f32,
-    h: f32,
-    seed: f32,
-};
-
 pub const void_floor: f32 = -60;
-
-const fixed_islands = [_]Island{
-    .{ .x = 0, .z = -150, .r = 85, .h = 6, .seed = 1 },
-    .{ .x = 0, .z = 40, .r = 48, .h = 10, .seed = 2 },
-    .{ .x = 160, .z = 90, .r = 40, .h = 14, .seed = 3 },
-    .{ .x = -160, .z = 120, .r = 38, .h = 8, .seed = 4 },
-    .{ .x = -170, .z = -100, .r = 34, .h = 12, .seed = 5 },
-    .{ .x = 170, .z = -90, .r = 30, .h = 16, .seed = 6 },
-    .{ .x = 60, .z = 190, .r = 30, .h = 18, .seed = 7 },
-    .{ .x = -60, .z = 200, .r = 26, .h = 10, .seed = 8 },
-};
-
-var island_buf: [72]Island = undefined;
-
-pub var islands: []Island = island_buf[0..0];
-
-fn edgeGap(a: Island, b: Island) f32 {
-    const d = @sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
-
-    return d - (a.r + b.r) * 1.16;
-}
-
-fn buildIslands() void {
-    var n: usize = 0;
-    var seed: u32 = 0x1515;
-
-    for (fixed_islands) |f| {
-        island_buf[n] = f;
-        n += 1;
-    }
-
-    var tries: u32 = 0;
-
-    while (n < island_buf.len and tries < 20000) : (tries += 1) {
-        seed = seed *% 1664525 +% 1013904223;
-        const u = @as(f32, @floatFromInt(seed >> 8)) / 16777216.0;
-        seed = seed *% 1664525 +% 1013904223;
-        const v = @as(f32, @floatFromInt(seed >> 8)) / 16777216.0;
-        seed = seed *% 1664525 +% 1013904223;
-        const w = @as(f32, @floatFromInt(seed >> 8)) / 16777216.0;
-        const r = 5 + w * w * 20;
-        const c: Island = .{ .x = (u * 2 - 1) * 240, .z = (v * 2 - 1) * 240, .r = r, .h = 0, .seed = @floatFromInt(n + 1) };
-
-        if (@abs(c.x) + r * 1.16 > play - 8 or @abs(c.z) + r * 1.16 > play - 8) continue;
-
-        var nearest: f32 = 1e9;
-        var near_h: f32 = 8;
-        var ok = true;
-
-        for (island_buf[0..n]) |o| {
-            const g = edgeGap(c, o);
-
-            if (g < 5) {
-                ok = false;
-                break;
-            }
-
-            if (g < nearest) {
-                nearest = g;
-                near_h = o.h;
-            }
-        }
-
-        if (!ok or nearest > 16) continue;
-
-        island_buf[n] = c;
-        island_buf[n].h = std.math.clamp(near_h + (w - 0.5) * 9 + (u - 0.5) * 4, -2, 24);
-        n += 1;
-    }
-
-    islands = island_buf[0..n];
-}
-
-pub fn islandEdge(i: Island, x: f32, z: f32) f32 {
-    const ang = std.math.atan2(z - i.z, x - i.x);
-
-    return i.r * (0.84 + 0.32 * fbm(@cos(ang) * 1.4 + i.seed * 7.3, @sin(ang) * 1.4 + i.seed * 3.1));
-}
-
-pub fn islandAt(x: f32, z: f32) ?usize {
-    for (islands, 0..) |i, k| {
-        const d = @sqrt((x - i.x) * (x - i.x) + (z - i.z) * (z - i.z));
-
-        if (d < islandEdge(i, x, z)) return k;
-    }
-
-    return null;
-}
-
-fn islandHeight(x: f32, z: f32) f32 {
-    var best = void_floor;
-
-    for (islands) |i| {
-        const d2 = (x - i.x) * (x - i.x) + (z - i.z) * (z - i.z);
-
-        if (d2 > i.r * i.r * 1.36) continue;
-
-        const d = @sqrt(d2);
-        const rr = islandEdge(i, x, z);
-
-        if (d > rr) continue;
-
-        const edge = smooth(rr - 4 - i.r * 0.04, rr, d);
-        const flat = @max(runwayMask(x, z), padMask(x, z));
-        const relief = @min(9, 2.5 + i.r * 0.09) * smooth(4, 12, i.r);
-        const hills = (fbm(x * 0.035 + i.seed * 11, z * 0.035 - i.seed * 5) - 0.42) * relief;
-        const knoll = (1 - smooth(0, i.r * 0.55, d)) * @min(6, i.r * 0.12);
-
-        best = @max(best, i.h + (hills + knoll) * (1 - edge) * (1 - flat) - edge * 1.6);
-    }
-
-    return best;
-}
+pub const sea_level: f32 = 0.4;
 
 pub fn height(x: f32, z: f32) f32 {
     if (current == .town) return townHeight(x, z);

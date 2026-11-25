@@ -368,7 +368,9 @@ pub fn park(g: *Game) void {
 
     for (&crafts) |*c| c.active = false;
 
-    if (terrain.current != .conquest and terrain.current != .desert and terrain.current != .facility and terrain.current != .valley and terrain.current != .islands) return;
+    const flies = if (shared.maps.current()) |d| d.aircraft else terrain.current == .conquest or terrain.current == .facility or terrain.current == .valley;
+
+    if (!flies) return;
 
     const r = terrain.runway;
     const level = groundAt(r[0], r[1]);

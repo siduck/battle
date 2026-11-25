@@ -744,21 +744,6 @@ pub fn main() void {
         renderer.zenith = .{ 0.05, 0.24, 0.62 };
     }
 
-    if (shared.terrain.current == .islands) {
-        const mag = (renderer.sun_color[0] + renderer.sun_color[1] + renderer.sun_color[2]) / 3;
-
-        renderer.sun_dir = (shared.math.Vec3{ .x = 0.58, .y = 0.65, .z = -0.49 }).normalize();
-        renderer.sun_color = .{ mag * 1.15, mag * 1.02, mag * 0.86 };
-        renderer.grade_tint = .{ 1.03, 1, 0.96 };
-        renderer.grade_sat = 1.14;
-        renderer.fog = 0.0024;
-        renderer.fog_color = .{ 0.66, 0.82, 0.96 };
-        renderer.amb_sky = .{ 0.92, 1, 1.18 };
-        renderer.amb_ground = .{ 0.76, 0.74, 0.58 };
-        renderer.shade_tint = .{ 0.9, 0.94, 1.05 };
-        renderer.zenith = .{ 0.04, 0.26, 0.66 };
-    }
-
     if (shared.terrain.current == .prism) {
         renderer.sun_dir = (shared.math.Vec3{ .x = 0.35, .y = 0.85, .z = 0.4 }).normalize();
         renderer.sun_color = .{ 1.0, 0.98, 0.94 };
@@ -784,19 +769,20 @@ pub fn main() void {
         renderer.zenith = .{ 0.08, 0.32, 0.74 };
     }
 
-    if (shared.terrain.current == .desert) {
+    if (shared.maps.current()) |d| {
         const mag = (renderer.sun_color[0] + renderer.sun_color[1] + renderer.sun_color[2]) / 3;
+        const p = d.palette;
 
-        renderer.sun_dir = (shared.math.Vec3{ .x = 0.55, .y = 0.64, .z = 0.53 }).normalize();
-        renderer.sun_color = .{ mag * 1.18, mag * 0.98, mag * 0.78 };
-        renderer.grade_tint = .{ 1.05, 1, 0.92 };
-        renderer.grade_sat = 1.18;
-        renderer.fog = 0.0042;
-        renderer.fog_color = .{ 0.86, 0.84, 0.78 };
-        renderer.amb_sky = .{ 0.95, 1, 1.18 };
-        renderer.amb_ground = .{ 0.88, 0.7, 0.52 };
-        renderer.shade_tint = .{ 0.9, 0.92, 1.05 };
-        renderer.zenith = .{ 0.05, 0.2, 0.58 };
+        renderer.sun_dir = (shared.math.Vec3{ .x = p.sun_dir[0], .y = p.sun_dir[1], .z = p.sun_dir[2] }).normalize();
+        renderer.sun_color = .{ mag * p.sun_tint[0], mag * p.sun_tint[1], mag * p.sun_tint[2] };
+        renderer.grade_tint = p.grade_tint;
+        renderer.grade_sat = p.grade_sat;
+        renderer.fog = p.fog;
+        renderer.fog_color = p.fog_color;
+        renderer.amb_sky = p.amb_sky;
+        renderer.amb_ground = p.amb_ground;
+        renderer.shade_tint = p.shade_tint;
+        renderer.zenith = p.zenith;
     }
     var props_buf: [1024]u8 = undefined;
     const props_dir = assets.dir(&props_buf, "props");

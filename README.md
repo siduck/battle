@@ -50,6 +50,7 @@ Models used under CC BY 4.0 and modified for the game, by:
 - FlukierJupiter
 - yudhamfr
 - junglebird
+- Polyfork
 
 CC0 assets by:
 - Quaternius

@@ -7,3 +7,4 @@ pub const terrain = @import("terrain.zig");
 pub const props = @import("props.zig");
 pub const world = @import("world.zig");
 pub const vehicle = @import("vehicle.zig");
+pub const maps = @import("maps/registry.zig");
