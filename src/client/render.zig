@@ -733,7 +733,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
                 body = rotateBasis(body, basis.y, -turn * 0.7 * k2);
             }
 
-            soldier.drawRider(r, rig, kit, models, arts, seat_at, body, drop, g.arsenal.current().weapon, if (aiming) v.forward else null, dt);
+            soldier.drawRider(r, rig, kit, models, arts, seat_at, body, drop, g.arsenal.current().weapon, if (aiming) v.forward else null, g.arsenal.flash / 0.05, dt);
         }
     }
 

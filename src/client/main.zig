@@ -535,6 +535,36 @@ fn adaptScale(dt: f32) void {
     }
 }
 
+fn rideTest(game: *Game) void {
+    if (!driving.driving()) {
+        for (game.vehicles, 0..) |v, i| {
+            if (v.alive() and v.spec().class == .bike) {
+                driving.start(game, i);
+                break;
+            }
+        }
+    }
+
+    const v = driving.current(game) orelse return;
+
+    if (std.c.getenv("DF_RYAW")) |t| game.yaw = v.yaw + (std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0);
+    if (std.c.getenv("DF_RPITCH")) |t| game.pitch = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch game.pitch;
+}
+
+fn rideCamera(game: *Game, base: rl.Camera3D, spec: []const u8) rl.Camera3D {
+    const v = driving.current(game) orelse return base;
+    const side = std.fmt.parseFloat(f32, spec) catch 3;
+    const at = v.pos.add(.{ .y = 1.2 });
+    const eye = at.add(v.right().scale(side)).add(v.forward().scale(1.2)).add(.{ .y = 0.6 });
+    var cam = base;
+
+    cam.position = .{ .x = eye.x, .y = eye.y, .z = eye.z };
+    cam.target = .{ .x = at.x, .y = at.y, .z = at.z };
+    cam.up = .{ .x = 0, .y = 1, .z = 0 };
+
+    return cam;
+}
+
 fn sceneTarget() ?rl.RenderTexture2D {
     if (sceneScale() >= 0.99 and shared.terrain.current != .prism) return null;
 
@@ -1058,6 +1088,8 @@ pub fn main() void {
             game.look(tap.look_x, tap.look_y * flip, mouse_sensitivity * 1.4 * 720 / screen_h * settings.touch_look * aim_sens);
         }
 
+        if (std.c.getenv("DF_RIDE") != null) rideTest(&game);
+
         game.simulate(frame_dt, controls);
 
         const view = game.view();
@@ -1081,7 +1113,7 @@ pub fn main() void {
         rumble.update(frame_dt);
 
         const now = if (air.flying()) air.smooth(game.view(), frame_dt) else if (driving.driving()) driving.smooth(game.view(), frame_dt) else game.view();
-        const cam = render.camera(game, now);
+        const cam = if (std.c.getenv("DF_RCAM")) |spec| rideCamera(&game, render.camera(game, now), std.mem.sliceTo(spec, 0)) else render.camera(game, now);
 
         renderer.shadows_on = settings.shadows > 0 and shared.terrain.current != .prism and shared.terrain.current != .courtyard and shared.terrain.current != .facility;
 
