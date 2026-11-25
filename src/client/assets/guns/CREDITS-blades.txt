@@ -1,0 +1,12 @@
+Sword models (converted: grip at origin, blade forward, textures 256 px).
+
+Blade_Longsword.glb  "Long Sword" by FlukierJupiter, CC BY 4.0
+                     https://sketchfab.com/3d-models/43ef6dfb74f74fcca79b203c829d8033
+Blade_Scimitar.glb   "Scimitar" by yudhamfr, CC BY 4.0
+                     https://sketchfab.com/3d-models/e5708384238340c9a21b21c9de99d3e7
+Blade_Machete.glb    "Classic Machete" by junglebird, CC BY 4.0
+                     https://sketchfab.com/3d-models/175bb0580dee4890800ce56a6c83b831
+Blade_Katana.obj     "katana 2" from OpenGameArt, CC0
+                     https://opengameart.org/content/katana-2
+Blade_Vampire.obj    "Claymore" from Quaternius Medieval Weapons Pack (Sept 2018), CC0
+                     https://opengameart.org/content/lowpoly-medieval-weapons

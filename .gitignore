@@ -1,0 +1,14 @@
+zig-out/
+.zig-cache/
+zig-cache/
+zig-pkg/
+.dev-stamp
+*.apk
+*.idsig
+*.keystore
+*.jks
+*.blend1
+__pycache__/
+*.pyc
+node_modules/
+.DS_Store

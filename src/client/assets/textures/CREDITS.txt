@@ -1,0 +1,21 @@
+Material detail maps derived from ambientCG textures (CC0 1.0, https://ambientcg.com):
+plaster: Concrete034 https://ambientcg.com/view?id=Concrete034
+plaster2: Plaster001 https://ambientcg.com/view?id=Plaster001
+adobe: Ground109 https://ambientcg.com/view?id=Ground109
+brick: Bricks113A https://ambientcg.com/view?id=Bricks113A
+stonewall: Tiles143 https://ambientcg.com/view?id=Tiles143
+paving: PavingStones153 https://ambientcg.com/view?id=PavingStones153
+cobble: PavingStones151 https://ambientcg.com/view?id=PavingStones151
+tiles: RoofingTiles013A https://ambientcg.com/view?id=RoofingTiles013A
+planks: WoodFloor064 https://ambientcg.com/view?id=WoodFloor064
+paintwood: PaintedWood008C https://ambientcg.com/view?id=PaintedWood008C
+metal: MetalPlates006 https://ambientcg.com/view?id=MetalPlates006
+corrugated: CorrugatedSteel009 https://ambientcg.com/view?id=CorrugatedSteel009
+concrete: Concrete049 https://ambientcg.com/view?id=Concrete049
+asphalt: Asphalt033 https://ambientcg.com/view?id=Asphalt033
+sand: Ground054 https://ambientcg.com/view?id=Ground054
+grass: Grass005 https://ambientcg.com/view?id=Grass005
+dirt: Ground111 https://ambientcg.com/view?id=Ground111
+rock: Rock064 https://ambientcg.com/view?id=Rock064
+snow: Snow015 https://ambientcg.com/view?id=Snow015
+thatch: ThatchedRoof001A https://ambientcg.com/view?id=ThatchedRoof001A

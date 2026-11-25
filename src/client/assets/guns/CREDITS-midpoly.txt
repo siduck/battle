@@ -1,0 +1,78 @@
+Midpoly guns, all licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+Converted to glb, re-oriented, materials recoloured with multi-tone skins on some models.
+
+Pocket: "Low-Poly G17" by TastyTony, https://sketchfab.com/3d-models/60efc54ac59e47d18bdff94b2f5144ff
+Nine: "Low-Poly M1911" by TastyTony, https://sketchfab.com/3d-models/117f542d21954ae0a59afaedadcff338
+Hand Cannon: "Low-Poly Desert Eagle" by TastyTony, https://sketchfab.com/3d-models/b81da261345f4462b2c4412352162287
+Twin Tap: "Low-Poly Mauser M712 Schnellfeuer" by TastyTony, https://sketchfab.com/3d-models/37a52bf911c546f7938eb866d7bf50d5
+Buzzer: "Low-Poly Vz.61 Skorpion" by TastyTony, https://sketchfab.com/3d-models/a3c248a2c8b64a7592e50fe98021739c
+Six Shooter: "Low Poly Colt Single-Action Army" by TastyTony, https://sketchfab.com/3d-models/84c4960b259e4ac9afadccd187d388ed
+Buzz: "Low-Poly UMP 45" by TastyTony, https://sketchfab.com/3d-models/4e8e3535e9d74c06b82066129ec18769
+Hornet: "Low-Poly AKS-74U" by TastyTony, https://sketchfab.com/3d-models/4fc741a30b20477ea748f5d2837ac0b4
+Whip: "Low-Poly KGP-9" by TastyTony, https://sketchfab.com/3d-models/72b0c155ef9d46109fe8770e4a6817f2
+Stinger: "Low-Poly HK SMG II" by TastyTony, https://sketchfab.com/3d-models/1ae4b8365c0047cf9a4ff8e2610768ce
+Drum Kid: "Low-Poly Sterling SMG" by TastyTony, https://sketchfab.com/3d-models/a16c9825800442848300cf29638a3a02
+Burst Box: "Low-Poly Magpul PDR" by TastyTony, https://sketchfab.com/3d-models/45a9bf0068134653ababef2147dd2363
+Liner: "Low-Poly M4a1" by TastyTony, https://sketchfab.com/3d-models/8cab1cbeb82c4396a154f9fc8771417b
+Ranger: "Low-Poly HK416" by TastyTony, https://sketchfab.com/3d-models/059e968f6f764357880807c62c117ab7
+Brick: "Low-Poly IMI Galil" by TastyTony, https://sketchfab.com/3d-models/4bc3146c48d34171ab0ea879757000b7
+Tri-Shot: "Low-Poly FN FNC" by TastyTony, https://sketchfab.com/3d-models/d913cb4dd2044c909e42a1926155c2e6
+Bullpup: "Low-Poly Tavor Tar-21" by TastyTony, https://sketchfab.com/3d-models/42ce28f1f3594cc58c80ae276e337eb5
+Scout Carbine: "Low-Poly AAC Honey Badger" by TastyTony, https://sketchfab.com/3d-models/cb2f959d048944c7bc5bde2f2be8bae4
+Thunder: "Low-Poly OTs-14 Groza 1" by TastyTony, https://sketchfab.com/3d-models/c739f3eae18d4659a1efefb1e21199ab
+Bruiser: "Low-Poly FN SCAR H" by TastyTony, https://sketchfab.com/3d-models/c52bc2a8ddaa47caa34e94d69ff72d96
+Marksman: "Low-Poly HK417" by TastyTony, https://sketchfab.com/3d-models/36acd0c829574d72a42faff85e2e9944
+Tapper: "Low-Poly AR-10" by TastyTony, https://sketchfab.com/3d-models/698a49774c794221b6e8a9f70a7d380b
+Pierce: "Low-Poly PSL Rifle" by TastyTony, https://sketchfab.com/3d-models/231345d3fe1b401fa409bbb9e6db6ff6
+Hunter: "Low-Poly M1A" by TastyTony, https://sketchfab.com/3d-models/bc6c4e2fd889498dbafe1c213289ea33
+Needle: "Low-Poly VSS Vintorez" by TastyTony, https://sketchfab.com/3d-models/f017de0b530b40bc8a8bbf70a3549685
+Longshot, Whisper: "Low-Poly DT SRS" by TastyTony, https://sketchfab.com/3d-models/afded97c64a741eab92e604bf64191eb
+Elephant: "Low-Poly PGM Hecate II" by TastyTony, https://sketchfab.com/3d-models/d575acc6c9c54240b6aa486bd9398b47
+Hailstone: "Low-Poly Walther WA2000" by TastyTony, https://sketchfab.com/3d-models/e9ed15c437d04e37bb7e0d61eea8625d
+Scatter: "Low-Poly Mossberg 590" by TastyTony, https://sketchfab.com/3d-models/c0551a6b841145f7a8e59e9304728f1f
+Twins: "Low-Poly Toz 106" by TastyTony, https://sketchfab.com/3d-models/28bec55009194d2785e315bf4d2e0216
+Rattler: "Low-Poly Pancor Jackhammer Mk3a1" by TastyTony, https://sketchfab.com/3d-models/a194ff7118af407c92736b78f01006a5
+Thumper: "Low-Poly Winchester Model 1897" by TastyTony, https://sketchfab.com/3d-models/555cc635573743e596f70414a31f298f
+Barrel Roll: "Low-Poly HK CAWS" by TastyTony, https://sketchfab.com/3d-models/ae7db3f3ae5943309c697ef84a7a2a8e
+Chatter: "Low-Poly M249 SAW" by TastyTony, https://sketchfab.com/3d-models/76011c365636451c90a8e3a46c2d8ca5
+Drum Line: "Low-Poly RPK" by TastyTony, https://sketchfab.com/3d-models/acdc6fe399514c41aa4130f8044875fb
+Anchor: "Low-Poly PKM" by TastyTony, https://sketchfab.com/3d-models/626082c669c740efa06e03c63b7bc2d9
+Spinner: "Low-Poly M134 Minigun" by TastyTony, https://sketchfab.com/3d-models/eed0c95de51b4895a48c5729582732cc
+Boomer: "Low-Poly RPG-7" by TastyTony, https://sketchfab.com/3d-models/5243ac034391491f9a47f797ea212afe
+Lobber: "Low-Poly Milkor MGL Mk 1s" by TastyTony, https://sketchfab.com/3d-models/f62f582eada147b8aeb3c08773379d29
+Rail: "Sci-fi rifle M13-Gaus" by irons, https://sketchfab.com/3d-models/648847589fec4ecc9b91d7cdcc9c4d84
+Buzz: "Halo 2 anniversary - SMG" by joshuawatt811, CC BY 4.0, https://sketchfab.com/3d-models/b750ee3892c1427ab9e768313ba38f6d
+Brick: "AK-47S" by Frostoise, CC BY 4.0, https://sketchfab.com/3d-models/07065c43bdb2459ca8faf7a99b075b9b
+Bullpup: "AR-H470" by Frostoise, CC BY 4.0, https://sketchfab.com/3d-models/4b38c160243743d681d6fdaf3bd77ddb
+Stinger: "SMG-M32" by Frostoise, CC BY 4.0, https://sketchfab.com/3d-models/3a5f98f75e804e5888379cbe640cc883
+Pocket: "SciFi Pistol" by bumstrum, CC Attribution, https://sketchfab.com/3d-models/ad563e0f84734e9890a69869e39ec4bc
+Nine: "Cyber Makarov pistol" by Mince, CC Attribution, https://sketchfab.com/3d-models/d040fa81de974709b4c1a3c37a7b9cf2
+HandCannon: "Absolute 357" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/0bada928716d44a08fd70ea8323013f2
+TwinTap: "Sci-Fi Pistol" by milinam2002, CC Attribution, https://sketchfab.com/3d-models/fab28aeb14894752b49149ef00926aff
+SixShooter: "Sci-Fi Style Pneumatic Revolver RX-ZCS" by valterjherson1, CC Attribution, https://sketchfab.com/3d-models/a454d9835c7344f59676b76d8f2dfdf7
+Hornet: "SMG-211" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/e876d4fa86cf4ab3add0e551ea1b4d28
+Whip: "VECTOR-P22" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/6b2015ec3bbd4e959487135493769190
+DrumKid: "Apec Tactical SMG - Game Ready Gun (Remastered)" by Rohit3Dasset, CC Attribution, https://sketchfab.com/3d-models/2e9bf758703847c88d854fa204384203
+BurstBox: "HUNG JURY SR4" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/6b87a867f034447db12e55d3fcd85289
+Liner: "AR-727" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/1a712a00eb3c4247b4d49697f2e1445f
+TriShot: "AR-181" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/f32fe06215434fb2a159d29343079a1e
+ScoutCarbine: "M4 Sopmod" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/ca5066f44f6a4ec98f68f84c65706932
+Thunder: "AR77-90" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/dafa264a92344b8e98277267b532ba79
+Bruiser: "AK 103" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/863dbd7b0aa54a839ccdfe43d98c778a
+Marksman: "Halo Reach - DMR" by joshuawatt811, CC Attribution, https://sketchfab.com/3d-models/45d9947bd2a54105a81aa3e2d5ae0ca4
+Tapper: "M16" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/147ac478e4714c0a9ba3e10eabf0bd75
+Pierce: "SSR-56" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/5f7c2c15212242ccb9640aac9924ae1b
+Hunter: "FAMAS" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/7d35e14ad8874d148ce9cc46e5765a6b
+Needle: "Sci Fi Assault rifle laser blaster" by Artem.Goyko, CC Attribution, https://sketchfab.com/3d-models/f730872e1ee843e9a3934e9e3f6719c0
+Longshot: "Sci fi Sniper Rifle" by pasquill, CC Attribution, https://sketchfab.com/3d-models/bf19b2ff1cf54f1a8038040c4aa5d913
+Elephant: "AKE-15 Energy Sniper Rifle" by valterjherson1, CC Attribution, https://sketchfab.com/3d-models/5b7781905ce140f4b8577fc38b71ccd3
+Whisper: "RL0N-25" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/c54ce41b7b854834a13ef1ed42aed6ba
+Hailstone: "PSR-13" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/8d3db25145904a818e081f010328e3d0
+Scatter: "Sci-fi Super Shotgun" by tnnv, CC Attribution, https://sketchfab.com/3d-models/5929e6949d1e421e927116e117248f07
+BarrelRoll: "Quad Barrel Shotgun" by soidev, CC Attribution, https://sketchfab.com/3d-models/a564c7b0d4194577baf49e6c5066635d
+Rattler: "SM-237" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/de66c5d5ebe5479f986f72fb5c3c3d2f
+Chatter: "HMG-379" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/533204d3a9f240f78b65973b323cba7c
+Rail: "Plasma Rifle (DOOM 2016)" by Frostoise, CC Attribution, https://sketchfab.com/3d-models/4fdfc53fc1ee492e88b425b77976800b
+
+Bow_Recurve.glb, Bow_Longbow.glb, Bow_Crossbow.glb, Bow_Rapid.glb, Bow_Arrow.glb, Bow_Bolt.glb, Mid_Torch.glb:
+      modelled in Blender for dronefire (tools/blender/bows.py), same licence as the game

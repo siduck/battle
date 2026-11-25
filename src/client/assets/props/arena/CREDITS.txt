@@ -1,0 +1,3 @@
+"Desert - Low Poly Toon Battle Arena / Tower Defense Pack" by AurynSky
+https://opengameart.org/content/desert-low-poly-toon-battle-arena-tower-defense-pack
+License: CC0. Converted from FBX to glb, palette texture re-attached, pivots moved to the base.
