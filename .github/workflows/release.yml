@@ -19,15 +19,32 @@ jobs:
         with:
           version: 0.17.1
 
-      - name: System libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev libxext-dev
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxi-dev libxcursor-dev libxext-dev
+          version: 1
+
+      - uses: actions/cache@v4
+        id: android
+        with:
+          path: |
+            /usr/local/lib/android/sdk/ndk/27.3.13750724
+            /usr/local/lib/android/sdk/build-tools/35.0.1
+            /usr/local/lib/android/sdk/platforms/android-35
+          key: android-ndk27.3.13750724-bt35.0.1-api35
+
+      - uses: actions/cache@v4
+        with:
+          path: .zig-cache
+          key: zig-cache-${{ hashFiles('build.zig', 'build.zig.zon') }}-${{ github.sha }}
+          restore-keys: zig-cache-${{ hashFiles('build.zig', 'build.zig.zon') }}-
 
       - name: Android SDK layout
         run: |
           sdk="$ANDROID_HOME"
-          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "build-tools;35.0.1" "platforms;android-35" > /dev/null
+          if [ "${{ steps.android.outputs.cache-hit }}" != "true" ]; then
+            yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" "ndk;27.3.13750724" "build-tools;35.0.1" "platforms;android-35" > /dev/null
+          fi
           out="$RUNNER_TEMP/android"
           mkdir -p "$out"
           ln -s "$sdk/ndk/27.3.13750724" "$out/ndk"
