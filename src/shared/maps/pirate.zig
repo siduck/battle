@@ -422,10 +422,6 @@ fn docks(b: *Builder) void {
     putAt(b, .capstan, 0, dock_top, -22, 0);
     putAt(b, .anchor, 52, dock_top, -30, half_pi);
     putAt(b, .wheel, -88, dock_top, -32, 0);
-    putAt(b, .barge, 26, sea_y - 0.4, -36, half_pi);
-    putAt(b, .longboat, -24, sea_y - 0.5, -44, half_pi + 0.1);
-    putAt(b, .rowboat, -58, sea_y - 0.2, -50, 0.3);
-    putAt(b, .rowboat, 62, sea_y - 0.2, -58, -0.4);
 
     lootY(b, 0, dock_top, -26);
     lootY(b, -52, dock_top, -28);
@@ -656,7 +652,7 @@ fn sandbar(b: *Builder) void {
         put(b, .barrel, sx + c[0] + 1, sz + c[1] + 0.4, spin(b));
     }
 
-    put(b, .rowboat, sx - 12, sz - 6, 1.2);
+    put(b, .driftwood, sx - 12, sz - 6, 1.2);
     put(b, .anchor, sx + 2, sz - 2, 0.3);
     claimRect(sx - 14, sz - 18, sx + 14, sz + 22);
     loot(b, sx, sz);
