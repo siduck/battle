@@ -550,9 +550,10 @@ fn laneClutter(b: *Builder, x: f32, y: f32, z: f32, c: i32, k_: i32) void {
         b.putAt(of(.jar), vec(x - 0.4, y, wall_z - 0.2), spin(b), 0.8);
         b.putAt(of(.geranium), vec(x + 1.0, y, wall_z), 0, 1);
     } else if (roll < 0.8) {
-        b.putAt(of(.moped), vec(x, y, wall_z - 0.5), half_pi + b.rng.range(-0.2, 0.2), 1);
+        b.putAt(of(.pot), vec(x - 0.5, y, wall_z), spin(b), 1.1);
+        b.putAt(of(.jar), vec(x + 0.5, y, wall_z - 0.1), spin(b), 1);
     } else if (roll < 0.86) {
-        b.putAt(of(.barrow), vec(x - 0.8, y, wall_z - 0.4), half_pi, 1);
+        b.putAt(of(.sack), vec(x - 0.8, y, wall_z - 0.2), spin(b), 1);
         b.putAt(of(.sack), vec(x + 0.4, y, wall_z), spin(b), 1);
         b.putAt(of(.sack), vec(x + 0.9, y, wall_z - 0.1), spin(b), 1);
     } else if (roll < 0.93) {
@@ -771,10 +772,6 @@ fn harbourQuay(b: *Builder) void {
     b.putAt(of(.light), vec(pier_x, y0, -169.4), 0, 0.9);
     anchor_list.append(b.gpa, vec(pier_x, 22, -160)) catch {};
 
-    for ([_][4]f32{ .{ -36, -141, 0.12, 1 }, .{ -16, -139, -0.08, 0.95 }, .{ 8, -142, 0.05, 1 }, .{ 30, -140, -0.15, 0.9 }, .{ 56, -152, 1.45, 0.85 }, .{ 73, -146, 1.6, 0.9 }, .{ -62, -142, 0.3, 0.85 } }) |bt| {
-        b.putAt(of(.boat), vec(bt[0], sea_y - 0.55, bt[1]), bt[2], bt[3]);
-    }
-
     var i: i32 = 0;
 
     while (i < 34) : (i += 1) {
@@ -817,11 +814,13 @@ fn harbourQuay(b: *Builder) void {
         }
     }
 
-    b.putAt(of(.melon), vec(-31, y0, cellZ(1)), half_pi, 1);
-    b.putAt(of(.truck), vec(20, y0, cellZ(1) + 0.4), -half_pi + 0.1, 1);
-    b.putAt(of(.moped), vec(-2, y0, cellZ(1)), 0.4, 1);
-    b.putAt(of(.moped), vec(-0.8, y0, cellZ(1) + 0.3), 0.5, 1);
-    b.putAt(of(.barrow), vec(36, y0, cellZ(1)), 1.2, 1);
+    b.putAt(of(.nets), vec(-31, y0, cellZ(1)), half_pi, 1);
+    b.putAt(of(.barrel), vec(20, y0, cellZ(1) + 0.4), 0, 1);
+    b.putAt(of(.barrel), vec(20.8, y0, cellZ(1) + 0.8), 0.6, 1);
+    b.putAt(of(.jar), vec(-2, y0, cellZ(1)), 0.4, 1.2);
+    b.putAt(of(.pot), vec(-0.8, y0, cellZ(1) + 0.3), 0.5, 1.2);
+    b.putAt(of(.hay), vec(36, y0, cellZ(1)), 1.2, 1);
+    park_list.append(b.gpa, .{ .pos = vec(30, y0, cellZ(1)), .yaw = half_pi }) catch {};
 
     for ([_]f32{ -70, -60, 64, 72 }) |px| b.putAt(of(.lamp), vec(px, y0, qz + 1.4), 0, 1);
 
@@ -931,14 +930,14 @@ fn farmstead(b: *Builder) void {
     wallRun(b, of(.gwall), fx - 16, fz - 14, fx - 16, fz + 14, 3);
     wallRun(b, of(.gwall), fx + 16, fz - 14, fx + 16, fz + 14, 0);
 
-    b.put(of(.tractor), fx + 2, fz + 6, 0.1, 1);
+    b.put(of(.haystack), fx + 2, fz + 6, 0.1, 1);
     b.put(of(.jar), fx - 6, fz + 5, 0.2, 1);
     b.put(of(.haystack), fx + 11, fz + 10, 0, 1);
     b.put(of(.haystack), fx + 13.5, fz + 8, 0.6, 0.85);
     b.put(of(.hay), fx - 12, fz + 10, 0.2, 1);
     b.put(of(.hay), fx - 11, fz + 11.2, 0.2, 1);
     b.put(of(.hay), fx - 11.5, fz + 10.6, 1.4, 1);
-    b.put(of(.barrow), fx - 2, fz + 10, 1.1, 1);
+    b.put(of(.hay), fx - 2, fz + 10, 1.1, 1);
     b.put(of(.sack), fx - 3, fz + 9, 0, 1);
     b.put(of(.sack), fx - 3.6, fz + 9.4, 0.5, 1);
     b.put(of(.barrel), fx + 4, fz - 2, 0, 1);
@@ -949,7 +948,8 @@ fn farmstead(b: *Builder) void {
     b.put(of(.lemon), fx + 13, fz - 9, spin(b), 0.9);
     b.put(of(.cypress), fx - 18, fz - 16, 0, 1.1);
     b.put(of(.cypress), fx + 18, fz - 16, 0, 1.0);
-    b.put(of(.truck), fx + 8, fz - 1, std.math.pi - 0.1, 1);
+    b.put(of(.sack), fx + 8, fz - 1, 0, 1);
+    b.put(of(.sack), fx + 8.6, fz - 1.3, 0.4, 1);
     claimRect(fx - 17, fz - 15, fx + 17, fz + 15);
 
     loot(b, fx, y, fz);
@@ -989,12 +989,13 @@ fn quarrySite(b: *Builder) void {
 
     for ([_][3]f32{ .{ 0, -4, 0 }, .{ 1.6, -4, 0 }, .{ 3.2, -4.2, 0.1 }, .{ -14, 2, 1.2 }, .{ -14, 3.4, 1.2 }, .{ 14, -6, 0.4 } }) |p| b.put(of(.pallet), qx + p[0], qz + p[1], p[2], 1);
 
-    b.put(of(.digger), qx - 4, qz - 10, std.math.pi + 0.1, 1);
-    b.put(of(.truck), qx + 10, qz - 12, -half_pi + 0.08, 1);
+    b.put(of(.pallet), qx - 4, qz - 10, 0.1, 1);
+    b.put(of(.pallet), qx - 2.6, qz - 10, 0.1, 1);
+    b.put(of(.sblock), qx + 10, qz - 12, 0.08, 1);
     b.put(of(.rock), qx + 16, qz + 4, 0.3, 1.2);
     b.put(of(.rock), qx - 16, qz + 10, 1.8, 1.2);
     b.put(of(.rock), qx - 2, qz + 12, 0.8, 1.2);
-    b.put(of(.barrow), qx + 2, qz + 2, 0.4, 1);
+    b.put(of(.barrel), qx + 2, qz + 2, 0.4, 1);
 
     var i: f32 = 0;
 
@@ -1008,7 +1009,7 @@ fn quarrySite(b: *Builder) void {
     }
 
     b.put(of(.rock), qx + 6, qz + 6, 2.1, 1.2);
-    b.put(of(.digger), qx + 15, qz - 5, half_pi + 0.06, 1);
+    b.put(of(.sblock), qx + 15, qz - 5, half_pi + 0.06, 1);
     b.put(of(.barrel), qx + 9, qz - 8, 0, 1);
     b.put(of(.barrel), qx + 9.9, qz - 8.3, 0, 1);
 
@@ -1076,8 +1077,8 @@ fn hamletSite(b: *Builder) void {
     b.put(of(.taverna), hx, hz + 1, half_pi, 1);
     b.put(of(.parasol), hx, hz + 1, 0, 1);
     b.put(of(.lamp), hx + 4, hz + 2, 0, 1);
-    b.put(of(.moped), hx - 4, hz + 1.5, 1.2, 1);
-    b.put(of(.melon), hx + 7, hz + 0.5, half_pi, 1);
+    b.put(of(.jar), hx - 4, hz + 1.5, 1.2, 1);
+    b.put(of(.taverna), hx + 7, hz + 0.5, half_pi, 1);
     b.put(of(.bougain), hx - 2.2, hz - 2.4, 0, 1);
 
     wallRun(b, of(.gwall), hx - 16, hz - 12, hx + 16, hz - 12, 4);
@@ -1105,8 +1106,7 @@ fn coveSite(b: *Builder) void {
 
     b.putAt(of(.boathouse), vec(hx, wd.lowest(hx, hz, 4) + 0.3, hz), yaw, 1);
     claim(hx, hz, 6);
-    b.putAt(of(.boat), vec(dx * (rr + 8), sea_y - 0.55, dz * (rr + 8)), yaw + 0.4, 0.9);
-    b.putAt(of(.boat), vec(dx * (rr + 14) - dz * 9, sea_y - 0.55, dz * (rr + 14) + dx * 9), yaw - 0.8, 0.8);
+
 
     for ([_][2]f32{ .{ -8, 4 }, .{ 8, 2 }, .{ -4, -8 }, .{ 6, -6 } }) |o| {
         const px = hx - dz * o[0] - dx * o[1];
@@ -1175,7 +1175,7 @@ fn terraces(b: *Builder) void {
                 } else if (roll < 0.95) {
                     b.put(of(.haystack), x, z, spin(b), 0.8);
                 } else {
-                    b.put(of(.barrow), x, z, spin(b), 1);
+                    b.put(of(.hay), x, z, spin(b), 1);
                 }
 
                 claim(x, z, 1.5);
