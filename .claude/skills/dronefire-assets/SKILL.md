@@ -119,11 +119,31 @@ too low") and fix them in the recipe.
 - **The model viewer (`DF_VIEW`)** uses raylib's default shader, not the game's lighting. Verify
   with `DF_ASSET` instead.
 
+## Lessons from studying good stylized assets
+
+Polyfork kits, measured with `tools/blender/study/analyze.py`, and POLYGON Military screenshots:
+- **Whole buildings are cheap:** 800 to 2,900 tris (family house 1,027, corner shop 2,887). Richness
+  comes from colour and silhouette, not part count. My first outpost was 7,092 and looked plainer.
+- **8 to 22 colours per asset,** not 3 to 5. Bright trim against a darker wall, navy glass,
+  accent colours (striped awnings, painted doors).
+- **Bevel everything, once:** 40 to 60% of their triangles are thin single-segment chamfer strips.
+- **Cheap richness tricks:** a few protruding bricks scattered on walls, keystones on lintels,
+  cornice brackets, alternating face colours for stripes, dormers.
+- **POLYGON-level density comes from clutter:** rooftop AC units, water tanks, dishes, antennas,
+  laundry lines, cables between buildings, awnings, balconies, external stairs, parapets with
+  coping, deep window recesses. Grime and wear are colour (darker faces low down and in corners).
+- **Props and weapons are blocky, simplified silhouettes** with exact proportions: an AK is about
+  15 to 25 tapered, chamfered prisms; small props are 100 to 600 tris with 2 to 3 colours. A scene
+  looks rich from quantity and variety, not from per-prop detail.
+- **Pressed or embossed surfaces** (jerry can X): model the raised panels as extruded outlines;
+  thin bars for grooves read as wire.
+
 ## Reference examples
 
 | Recipe | Result |
 |---|---|
 | `tools/blender/assets/outpost.py` | 2-storey outpost: plinth, shuttered windows, door with canopy and steps, pilasters, floor band, cornice, seamed gable roof, chimney, AC units, downpipes. 7,092 tris, 9.2 × 7.6 × 9.7 m |
+| `tools/blender/assets/jerrycan.py` | WWII jerry can rebuilt from a real photo (Wikimedia): rounded body, pressed X panels, seam, 3 handles, spout with lever cap. 892 tris, 0.35 × 0.19 × 0.54 m. Three passes |
 | `tools/blender/assets/supplies.py` | supply crate (612 tris, 1.19 × 0.83 × 0.75 m) and fuel drum (488 tris, Ø 0.62 × 0.9 m) |
 
 Related skills: `blender-lpm` (builders and low-poly rules), `blender-hardsurface-modeling`

@@ -53,6 +53,8 @@ PALETTE = [
     ("leaf", "#5d7a3a"),
     ("leaf_dark", "#425a2a"),
     ("bark", "#5a4330"),
+    ("sand_paint", "#c9bb98"),
+    ("sand_dark", "#9c8e6d"),
 ]
 
 _INDEX = {n: i for i, (n, _) in enumerate(PALETTE)}
