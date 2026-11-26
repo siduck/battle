@@ -328,6 +328,50 @@ const AndroidApp = extern struct {
 extern fn GetAndroidApp() ?*AndroidApp;
 extern fn ANativeActivity_setWindowFlags(activity: ?*anyopaque, add: u32, remove: u32) void;
 
+const JValue = extern union { l: ?*anyopaque, i: i32 };
+const NativeActivity = extern struct {
+    callbacks: ?*anyopaque,
+    vm: *const *const [8]?*const anyopaque,
+    env: ?*anyopaque,
+    clazz: ?*anyopaque,
+};
+
+fn jni(env: *const *const [240]?*const anyopaque, comptime index: usize, comptime T: type) T {
+    return @ptrCast(@alignCast(env.*[index].?));
+}
+
+fn relaunchAndroid() void {
+    const app = GetAndroidApp() orelse return;
+    const act: *NativeActivity = @ptrCast(@alignCast(app.activity orelse return));
+    const attach: *const fn (*const anyopaque, *?*anyopaque, ?*anyopaque) callconv(.c) c_int = @ptrCast(@alignCast(act.vm.*[4].?));
+    var raw: ?*anyopaque = null;
+
+    if (attach(@ptrCast(act.vm), &raw, null) != 0) return;
+
+    const env: *const *const [240]?*const anyopaque = @ptrCast(@alignCast(raw orelse return));
+    const getClass = jni(env, 31, *const fn (*const anyopaque, ?*anyopaque) callconv(.c) ?*anyopaque);
+    const getMethod = jni(env, 33, *const fn (*const anyopaque, ?*anyopaque, [*:0]const u8, [*:0]const u8) callconv(.c) ?*anyopaque);
+    const callObject = jni(env, 36, *const fn (*const anyopaque, ?*anyopaque, ?*anyopaque, ?[*]const JValue) callconv(.c) ?*anyopaque);
+    const callVoid = jni(env, 63, *const fn (*const anyopaque, ?*anyopaque, ?*anyopaque, ?[*]const JValue) callconv(.c) void);
+    const e: *const anyopaque = @ptrCast(env);
+    const cls = getClass(e, act.clazz);
+    const intent = callObject(e, act.clazz, getMethod(e, cls, "getIntent", "()Landroid/content/Intent;"), null) orelse return;
+    const icls = getClass(e, intent);
+    const flags = [_]JValue{.{ .i = 0x10008000 }};
+    const args = [_]JValue{.{ .l = intent }};
+
+    _ = callObject(e, intent, getMethod(e, icls, "addFlags", "(I)Landroid/content/Intent;"), &flags);
+    callVoid(e, act.clazz, getMethod(e, cls, "startActivity", "(Landroid/content/Intent;)V"), &args);
+    logLine("relaunch to menu", .{});
+    std.c._exit(0);
+}
+
+fn backToMenu(app_dir: []const u8) void {
+    net.leave();
+
+    if (assets.mobile) relaunchAndroid() else restart(app_dir);
+}
+
 fn keepScreenOn() void {
     const app = GetAndroidApp() orelse return;
 
@@ -356,7 +400,7 @@ fn restart(app_dir: []const u8) void {
     const path = std.fmt.bufPrintSentinel(&buf, "{s}dronefire", .{app_dir}, 0) catch return;
     const argv = [_:null]?[*:0]const u8{path.ptr};
 
-    logLine("restart (F5)", .{});
+    logLine("restart", .{});
 
     const rc = std.c.execve(path.ptr, &argv, @ptrCast(std.c.environ));
 
@@ -1012,6 +1056,8 @@ pub fn main() void {
             loadout.show(&game, from_game);
         } else if (!loadout_busy and !menu_was_open and !menu.open and !playing and menu_mod.wantsQuit(pad.id)) {
             break;
+        } else if (!loadout_busy and !menu_was_open and !menu.open and !playing and menu_mod.wantsHome(pad.id)) {
+            backToMenu(app_dir);
         } else if (!loadout_busy and !menu_was_open and !playing and menu.wantsOpen(pad.id)) {
             menu.show();
         } else if (!loadout_busy and !menu_was_open and !menu.open and (rl.IsKeyPressed(rl.KEY_ESCAPE) or rl.IsKeyPressed(rl.KEY_BACK) or pad.pressed(rl.GAMEPAD_BUTTON_MIDDLE_RIGHT))) {

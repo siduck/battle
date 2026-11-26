@@ -12,14 +12,6 @@ const Entry = struct {
     tint: rl.Color,
 };
 
-const legacy = [_]Entry{
-    .{ .map = .facility, .name = "Facility", .note = "Industrial hangar, close combat", .tint = .{ .r = 96, .g = 170, .b = 150, .a = 255 } },
-    .{ .map = .conquest, .name = "Conquest", .note = "Military base, vehicles, aircraft", .tint = .{ .r = 210, .g = 120, .b = 70, .a = 255 } },
-    .{ .map = .valley, .name = "Valley", .note = "Mountain pass and compounds", .tint = .{ .r = 150, .g = 130, .b = 110, .a = 255 } },
-    .{ .map = .prism, .name = "Prism", .note = "Glass arena", .tint = .{ .r = 96, .g = 196, .b = 200, .a = 255 } },
-    .{ .map = .courtyard, .name = "Courtyard", .note = "Desert arena", .tint = .{ .r = 226, .g = 176, .b = 132, .a = 255 } },
-};
-
 const max_entries = 32;
 
 var entry_buf: [max_entries]Entry = undefined;
@@ -36,11 +28,6 @@ fn collect() []const Entry {
                 n += 1;
             }
         }
-    }
-
-    for (legacy) |e| {
-        entry_buf[n] = e;
-        n += 1;
     }
 
     return entry_buf[0..n];
@@ -64,9 +51,9 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
         var buf: [512]u8 = undefined;
         const path = std.fmt.bufPrintSentinel(&buf, "{s}/maps/{s}.png", .{ dir, @tagName(e.map) }, 0) catch continue;
 
-        if (!rl.FileExists(path.ptr)) continue;
-
         const tex = rl.LoadTexture(path.ptr);
+
+        if (tex.id == 0) continue;
 
         rl.SetTextureFilter(tex, rl.TEXTURE_FILTER_BILINEAR);
         shots[i] = tex;
@@ -87,15 +74,31 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
         const w: f32 = @floatFromInt(rl.GetScreenWidth());
         const h: f32 = @floatFromInt(rl.GetScreenHeight());
         const u = h / 900;
-        const cols: usize = 4;
-        const gap = 22 * u;
-        const rows: f32 = @floatFromInt((entries.len + cols - 1) / cols);
-        const room = h * 0.7;
-        const fit = (room - gap * (rows - 1)) / rows / 0.56;
-        const cw = @min(@min(300 * u, (w - 160 * u - gap * 3) / 4), fit);
-        const ch = cw * 0.56;
-        const gx = (w - (cw * 4 + gap * 3)) / 2;
-        const gy = h * 0.27;
+        const margin = 56 * u;
+        const gap = 18 * u;
+        const gy = h * 0.1 + 128 * u;
+        const avail_w = w - margin * 2;
+        const avail_h = h - gy - 40 * u;
+        var cols: usize = 3;
+        var cw: f32 = 0;
+        var try_cols: usize = 3;
+
+        while (try_cols <= 8) : (try_cols += 1) {
+            const tc: f32 = @floatFromInt(try_cols);
+            const tr: f32 = @floatFromInt((entries.len + try_cols - 1) / try_cols);
+            const by_w = (avail_w - gap * (tc - 1)) / tc;
+            const by_h = (avail_h - gap * (tr - 1)) / tr / 0.62;
+            const size = @min(by_w, by_h);
+
+            if (size > cw) {
+                cw = size;
+                cols = try_cols;
+            }
+        }
+
+        const ch = cw * 0.62;
+        const fc: f32 = @floatFromInt(cols);
+        const gx = (w - (cw * fc + gap * (fc - 1))) / 2;
         const pad = padId();
         var choose = false;
 
@@ -173,7 +176,7 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
             const on = i == sel;
             const lift: f32 = if (on) -4 * u else 0;
             const card: rl.Rectangle = .{ .x = r.x, .y = r.y + lift, .width = r.width, .height = r.height };
-            const img_h = card.height * 0.64;
+            const img_h = card.height * 0.7;
             const round: f32 = 0.06;
 
             rl.DrawRectangleRounded(card, round, 8, .{ .r = 22, .g = 26, .b = 38, .a = 255 });
@@ -195,11 +198,11 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
 
             rl.DrawRectangleGradientV(@intFromFloat(card.x), @intFromFloat(card.y + img_h * 0.55), @intFromFloat(card.width), @intFromFloat(img_h * 0.45 + 1), ui.fade(ui.ink, 0), ui.fade(.{ .r = 22, .g = 26, .b = 38, .a = 255 }, 1));
 
-            const ns = @min(26 * u, cw * 0.087);
-            const name_y = card.y + img_h + 8 * u;
+            const ns = @min(24 * u, cw * 0.075);
+            const name_y = card.y + img_h + 6 * u;
 
             ui.caps(font, e.name, card.x + 18 * u, name_y, ns, ui.white);
-            ui.text(font, e.note, card.x + 18 * u, name_y + ns + 6 * u, @min(15 * u, cw * 0.05), ui.fade(ui.white, 0.55));
+            ui.text(font, e.note, card.x + 18 * u, name_y + ns + 6 * u, @min(15 * u, cw * 0.045), ui.fade(ui.white, 0.55));
             rl.DrawRectangleRec(.{ .x = card.x + 18 * u, .y = name_y - 6 * u, .width = 22 * u, .height = 2 * u }, ui.fade(e.tint, 0.9));
 
             rl.DrawRectangleRoundedLinesEx(card, round, 8, if (on) 2 * u else 1, if (on) ui.fade(ui.white, 0.85) else ui.edge);

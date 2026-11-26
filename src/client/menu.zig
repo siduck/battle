@@ -736,11 +736,29 @@ fn sliderTrack(l: Layout, i: usize) rl.Rectangle {
     return .{ .x = c.x + 10 * u, .y = cy - 4 * u, .width = c.width - 100 * u, .height = 8 * u };
 }
 
-pub fn quitRect() rl.Rectangle {
+fn slotRect(slot: f32) rl.Rectangle {
     const g = gearRect();
     const u = unit();
 
-    return .{ .x = g.x, .y = g.y + (g.height + 14 * u) * 2, .width = g.width, .height = g.height };
+    return .{ .x = g.x, .y = g.y + (g.height + 14 * u) * slot, .width = g.width, .height = g.height };
+}
+
+pub fn homeRect() rl.Rectangle {
+    return slotRect(2);
+}
+
+pub fn quitRect() rl.Rectangle {
+    return slotRect(3);
+}
+
+pub fn wantsHome(pad: ?c_int) bool {
+    if (rl.IsKeyPressed(rl.KEY_M)) return true;
+
+    if (pad) |id| {
+        if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_TRIGGER_1)) return true;
+    }
+
+    return rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT) and rl.CheckCollisionPointRec(rl.GetMousePosition(), homeRect());
 }
 
 pub fn wantsQuit(pad: ?c_int) bool {
@@ -754,11 +772,13 @@ pub fn wantsQuit(pad: ?c_int) bool {
 }
 
 pub fn drawQuit(font: rl.Font, pad: bool, fade: f32) void {
-    const r = quitRect();
+    pauseButton(font, homeRect(), "MAIN MENU", if (pad) "R1" else "M", fade);
+    pauseButton(font, quitRect(), "EXIT GAME", if (pad) "X" else "F10", fade);
+}
+
+fn pauseButton(font: rl.Font, r: rl.Rectangle, label: [:0]const u8, hint: [:0]const u8, fade: f32) void {
     const u = unit();
     const hot = rl.CheckCollisionPointRec(rl.GetMousePosition(), r);
-    const label: [:0]const u8 = "EXIT GAME";
-    const hint: [:0]const u8 = if (pad) "X" else "F10";
     const size = 22 * u;
     const a = 1 - fade;
 
@@ -779,5 +799,5 @@ pub fn gearRect() rl.Rectangle {
     const u = unit();
     const bw = 250 * u;
 
-    return .{ .x = w / 2 - bw / 2, .y = h / 2 + 175 * u, .width = bw, .height = 54 * u };
+    return .{ .x = w / 2 - bw / 2, .y = h / 2 + 120 * u, .width = bw, .height = 54 * u };
 }

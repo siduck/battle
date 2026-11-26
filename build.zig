@@ -240,7 +240,7 @@ fn buildAndroid(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
     const manifest = b.addWriteFiles().add("AndroidManifest.xml", manifest_xml);
     const staged = b.addWriteFiles();
 
-    for ([_][]const u8{ "guns", "sky", "props", "cars", "characters" }) |name| {
+    for ([_][]const u8{ "guns", "sky", "props", "cars", "characters", "sounds", "ui", "textures", "air" }) |name| {
         _ = staged.addCopyDirectory(b.path(b.fmt("src/client/assets/{s}", .{name})), b.fmt("assets/{s}", .{name}), .{});
     }
 

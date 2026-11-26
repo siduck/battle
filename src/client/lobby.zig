@@ -287,7 +287,7 @@ pub fn run(font: rl.Font, ui_dir: []const u8) ?Map {
         const u = h / 900;
         const in = readInput(dt);
 
-        rl.EnableCursor();
+        if (rl.IsCursorHidden()) rl.EnableCursor();
         net.pump();
         rl.BeginDrawing();
         background(w, h);

@@ -880,5 +880,5 @@ pub fn buttonRect() rl.Rectangle {
     const u = unit();
     const bw = 250 * u;
 
-    return .{ .x = w / 2 - bw / 2, .y = h / 2 + 175 * u + 66 * u, .width = bw, .height = 54 * u };
+    return .{ .x = w / 2 - bw / 2, .y = h / 2 + 120 * u + 68 * u, .width = bw, .height = 54 * u };
 }
