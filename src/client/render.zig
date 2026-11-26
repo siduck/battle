@@ -1,4 +1,5 @@
 const std = @import("std");
+const pvs = @import("pvs.zig");
 const rl = @import("raylib");
 const shared = @import("shared");
 const gfx = @import("gfx.zig");
@@ -606,6 +607,8 @@ fn drawChunks(r: *gfx.Renderer, v: View) void {
 
         if (!shadow and !gfx.sphereVisible(.{ .x = c.cx, .y = 20, .z = c.cz }, c.r + 45)) continue;
 
+        if (!shadow and !pvs.visible(v.eye, .{ .x = c.cx, .z = c.cz }, c.r)) continue;
+
         const near = dist < 230 + c.r;
 
         r.setSurface(.{ .roughness = 1, .metallic = 0 });
@@ -720,7 +723,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
 
         if (dist > limit) continue;
 
-        if (dist > 6 and r.phase != .shadow and !gfx.sphereVisible(car.pos, 6)) continue;
+        if (dist > 6 and r.phase != .shadow and (!gfx.sphereVisible(car.pos, 6) or !pvs.visible(v.eye, car.pos, 4))) continue;
 
         vehicleart.draw(r, cars, car, g.accumulator / movement.dt);
     }

@@ -24,6 +24,7 @@ const settings = @import("settings.zig");
 const menu_mod = @import("menu.zig");
 const loadout_mod = @import("loadout.zig");
 const lobby = @import("lobby.zig");
+const pvs = @import("pvs.zig");
 const net = @import("net.zig");
 
 const Game = game_mod.Game;
@@ -828,6 +829,13 @@ pub fn main() void {
     loadStep("Building map", 0.1);
     shared.terrain.configure();
     buildWorldAnimated();
+    if (std.c.getenv("DF_PVSGEN")) |out| {
+        pvs.generate(std.mem.sliceTo(out, 0), @tagName(shared.terrain.current));
+
+        return;
+    }
+
+    pvs.load(@tagName(shared.terrain.current));
     loadStep("Loading models", 0.35);
 
     if (std.c.getenv("DF_PHYSTEST") != null) {

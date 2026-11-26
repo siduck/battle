@@ -34,6 +34,7 @@ extern fn glDeleteRenderbuffers(n: c_int, ids: *const c_uint) callconv(.c) void;
 extern fn glBindRenderbuffer(target: c_uint, id: c_uint) callconv(.c) void;
 extern fn glRenderbufferStorageMultisample(target: c_uint, samples: c_int, format: c_uint, w: c_int, h: c_int) callconv(.c) void;
 extern fn glFramebufferRenderbuffer(target: c_uint, attachment: c_uint, rb_target: c_uint, rb: c_uint) callconv(.c) void;
+extern fn glUniformMatrix4fv(location: c_int, count: c_int, transpose: u8, value: [*]const f32) callconv(.c) void;
 extern fn glBlitFramebuffer(sx0: c_int, sy0: c_int, sx1: c_int, sy1: c_int, dx0: c_int, dy0: c_int, dx1: c_int, dy1: c_int, mask: c_uint, filt: c_uint) callconv(.c) void;
 extern fn glCheckFramebufferStatus(target: c_uint) callconv(.c) c_uint;
 extern fn glGetError() callconv(.c) c_uint;
@@ -1178,8 +1179,13 @@ pub const Renderer = struct {
         if (skin) {
             const on: f32 = 1;
 
+            const count: usize = @intCast(model.skeleton.boneCount);
+            var flat: [56][16]f32 = undefined;
+
+            for (0..count) |b| flat[b] = flatMatrix(model.boneMatrices[b]);
+
             rlgl.rlEnableShader(r.lit.id);
-            rlgl.rlSetUniformMatrices(bones_loc, @ptrCast(model.boneMatrices), @intCast(model.skeleton.boneCount));
+            glUniformMatrix4fv(bones_loc, @intCast(count), 0, @ptrCast(&flat));
             rl.SetShaderValue(r.lit, skinned_loc, &on, rl.SHADER_UNIFORM_FLOAT);
         }
 

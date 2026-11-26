@@ -8,6 +8,7 @@ const mesh = @import("mesh.zig");
 const props = shared.props;
 const world = shared.world;
 const Vec3 = shared.math.Vec3;
+const pvs = @import("pvs.zig");
 
 const kind_count = props.kind_capacity;
 
@@ -222,7 +223,7 @@ pub const Props = struct {
                 for (slot.cells) |c| {
                     const d = c.center.sub(eye);
                     const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
-                    const show = flat < limit and gfx.sphereVisible(c.center, c.radius);
+                    const show = flat < limit and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius);
 
                     if (show and run_len > 0 and run_start + run_len == c.start) {
                         run_len += c.count;

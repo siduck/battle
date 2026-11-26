@@ -75,6 +75,11 @@ pub fn build(b: *std.Build) void {
         .install_subdir = "share/dronefire/cars",
     });
     b.installDirectory(.{
+        .source_dir = b.path("src/client/assets/pvs"),
+        .install_dir = .prefix,
+        .install_subdir = "share/dronefire/pvs",
+    });
+    b.installDirectory(.{
         .source_dir = b.path("src/client/assets/sounds"),
         .install_dir = .prefix,
         .install_subdir = "share/dronefire/sounds",
@@ -241,7 +246,7 @@ fn buildAndroid(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
     const manifest = b.addWriteFiles().add("AndroidManifest.xml", manifest_xml);
     const staged = b.addWriteFiles();
 
-    for ([_][]const u8{ "guns", "sky", "props", "cars", "characters", "sounds", "ui", "textures", "air" }) |name| {
+    for ([_][]const u8{ "guns", "sky", "props", "cars", "characters", "sounds", "ui", "textures", "air", "pvs" }) |name| {
         _ = staged.addCopyDirectory(b.path(b.fmt("src/client/assets/{s}", .{name})), b.fmt("assets/{s}", .{name}), .{});
     }
 

@@ -2,6 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const shared = @import("shared");
 const gfx = @import("gfx.zig");
+const pvs = @import("pvs.zig");
 const mesh = @import("mesh.zig");
 const game_mod = @import("game.zig");
 const render = @import("render.zig");
@@ -329,8 +330,16 @@ fn pick(b: game_mod.Bot) Clip {
 pub fn draw(r: *gfx.Renderer, rig: *Rig, kit: Kit, models: *const models_mod.Models, arts: *const [shared.weapons.count]gunart.Art, g: game_mod.Game, alpha: f32, dt: f32) void {
     if (!rig.ok) return;
 
+    const eye = g.view().eye;
+
     for (g.bots.items, 0..) |b, i| {
         if (!b.active or b.riding) continue;
+
+        if (r.phase == .main and b.body.pos.sub(eye).length() > 4) {
+            const mid = b.body.pos.add(.{ .y = 1 });
+
+            if (!gfx.sphereVisible(mid, 1.5) or !pvs.visible(eye, mid, 1)) continue;
+        }
 
         const track = &rig.tracks[i % rig.tracks.len];
 

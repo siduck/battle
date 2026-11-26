@@ -9,3 +9,4 @@ pub const world = @import("world.zig");
 pub const vehicle = @import("vehicle.zig");
 pub const maps = @import("maps/registry.zig");
 pub const net = @import("net.zig");
+pub const grid = @import("grid.zig");
