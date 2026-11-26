@@ -138,12 +138,32 @@ Polyfork kits, measured with `tools/blender/study/analyze.py`, and POLYGON Milit
 - **Pressed or embossed surfaces** (jerry can X): model the raised panels as extruded outlines;
   thin bars for grooves read as wire.
 
+## Measured reference comparison (how to do it right)
+
+```
+k.preview([ob], "x.png", views=("elevation",), res=960, ortho=True, transparent=True)
+~/.cache/battle/venv/bin/python .claude/skills/blender-image-to-3d/scripts/compose_review.py \
+    --ref ref.png --render x_elevation.png --out cmp.png --measure
+```
+- **The camera must match the reference.** An elevation drawing needs a level orthographic
+  `elevation` view. My tilted `front` view made the house look 25% too narrow.
+- **The render needs a real alpha channel** (`transparent=True` saves RGBA), or the whole frame
+  counts as the object and the score is meaningless (I got 0.41 from that bug).
+- **Crop the reference to the object:** ground lines, labels and frames count as silhouette.
+- **Read the band widths, not just the score:** they say where the error is (roof bands narrow,
+  walls fine), and that tells you which constant to change.
+- **Chimneys and other parts that sit on a sloped roof** must start from the slope's height at
+  their position. Placing them at the ridge end made them float.
+- **A slab added "around" a window covered the glass.** Surrounds are frames (4 strips), never a
+  solid plate in front.
+
 ## Reference examples
 
 | Recipe | Result |
 |---|---|
 | `tools/blender/assets/outpost.py` | 2-storey outpost: plinth, shuttered windows, door with canopy and steps, pilasters, floor band, cornice, seamed gable roof, chimney, AC units, downpipes. 7,092 tris, 9.2 × 7.6 × 9.7 m |
 | `tools/blender/assets/jerrycan.py` | WWII jerry can rebuilt from a real photo (Wikimedia): rounded body, pressed X panels, seam, 3 handles, spout with lever cap. 892 tris, 0.35 × 0.19 × 0.54 m. Three passes |
+| `tools/blender/assets/rowhouse.py` | two-storey house from an architectural elevation (Wikimedia): hip roof, chimneys on the hips, 16 framed windows with pediments, pilasters, quoins, diamond panels. Outline overlap 0.73 after 5 passes (target 0.85 not reached: missing side wing, stepped chimney bases, carved ornament). 4,452 tris |
 | `tools/blender/assets/supplies.py` | supply crate (612 tris, 1.19 × 0.83 × 0.75 m) and fuel drum (488 tris, Ø 0.62 × 0.9 m) |
 
 Related skills: `blender-lpm` (builders and low-poly rules), `blender-hardsurface-modeling`

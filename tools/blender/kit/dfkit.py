@@ -255,6 +255,24 @@ def gable_roof(name, width, depth, rise, at, overhang=0.35, thickness=0.14, colo
     return parts
 
 
+def hip_roof(name, width, depth, rise, at, overhang=0.4, thickness=0.18, color="roof"):
+    x, y, z = at
+    w = width / 2 + overhang
+    d = depth / 2 + overhang
+    ridge = max(width - depth, 0.01) / 2
+    drop = overhang * rise / (depth / 2)
+    pts = [(-w, -d, -drop), (w, -d, -drop), (w, d, -drop), (-w, d, -drop), (-w, -d, -drop - thickness), (w, -d, -drop - thickness), (w, d, -drop - thickness), (-w, d, -drop - thickness), (-ridge, 0, rise), (ridge, 0, rise)]
+    bm = bmesh.new()
+    verts = [bm.verts.new(Vector(p)) for p in pts]
+    bmesh.ops.convex_hull(bm, input=verts)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    ob = lpm._object(name, bm, c(color))
+    chamfer(ob, 0.03)
+    move(ob, x, y, z)
+
+    return [ob]
+
+
 def pilaster(name, width, height, depth, at, color="trim", capital=True):
     x, y, z = at
     parts = [beveled_box(name, (width, depth, height), (x, y, z), c(color), 0.015)]
@@ -428,10 +446,10 @@ def export(ob, path):
     return os.path.abspath(path)
 
 
-VIEWS = {"front": (0, -1, 0.25), "right": (1, 0, 0.25), "back": (0, 1, 0.25), "three_quarter": (1, -1, 0.6)}
+VIEWS = {"elevation": (0, -1, 0.0), "front": (0, -1, 0.25), "right": (1, 0, 0.25), "back": (0, 1, 0.25), "three_quarter": (1, -1, 0.6)}
 
 
-def preview(obs, out, views=("front", "right", "three_quarter", "back"), res=640):
+def preview(obs, out, views=("front", "right", "three_quarter", "back"), res=640, ortho=False, transparent=False):
     import numpy as np
 
     sc = bpy.context.scene
@@ -456,6 +474,13 @@ def preview(obs, out, views=("front", "right", "three_quarter", "back"), res=640
     radius = max((hi - lo).length / 2, 0.01)
     cam_data = bpy.data.cameras.new("df_cam")
     cam_data.lens = 50
+
+    if ortho:
+        cam_data.type = "ORTHO"
+        cam_data.ortho_scale = max(hi.x - lo.x, hi.y - lo.y, hi.z - lo.z) * 1.08
+
+    r.film_transparent = transparent
+    r.image_settings.color_mode = "RGBA" if transparent else "RGB"
     cam = bpy.data.objects.new("df_cam", cam_data)
     sc.collection.objects.link(cam)
     sc.camera = cam
