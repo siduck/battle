@@ -662,6 +662,7 @@ fn placeTestAssets(g: *Game, list: []const u8) void {
     }
 
     const dist = if (std.c.getenv("DF_ASSET_DIST")) |t| std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 4 else 4;
+    const turn = if (std.c.getenv("DF_ASSET_YAW")) |t| std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0 else 0;
     const fwd = shared.math.flatDir(g.yaw);
     const side = fwd.cross(shared.math.up);
     var offset: f32 = -(row - 1.5) / 2;
@@ -673,7 +674,7 @@ fn placeTestAssets(g: *Game, list: []const u8) void {
         const ground = shared.terrain.height(at.x, at.z);
 
         offset += half * 2 + 1.5;
-        render.test_spots[i] = mesh_mod.transform(.{ .x = at.x, .y = ground, .z = at.z }, mesh_mod.Basis.yawed(g.yaw + std.math.pi), 1);
+        render.test_spots[i] = mesh_mod.transform(.{ .x = at.x, .y = ground, .z = at.z }, mesh_mod.Basis.yawed(g.yaw + std.math.pi + turn), 1);
     }
 
     g.wave_break = 1e9;

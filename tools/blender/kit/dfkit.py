@@ -105,7 +105,7 @@ MIN_BEVEL_SIZE = 0.12
 def beveled_box(name, size, at=(0, 0, 0), color=0, bevel=0.02, taper_top=(1.0, 1.0)):
     b = box(name, size, at, color, taper_top)
 
-    if min(size) < MIN_BEVEL_SIZE:
+    if bevel <= 0 or min(size) < MIN_BEVEL_SIZE:
         return b
 
     return chamfer(b, bevel)
