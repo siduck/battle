@@ -163,6 +163,24 @@ building, vehicle, prop, road and nature asset follows it. A box with flat colou
 - Wood dark and warm, metal neutral, voids near black. No pure white, no pure black on surfaces.
 - Wear: brick patches in the wall's dark step with a few bricks, plus base grime and baked AO.
 
+**Colour theory (how a palette blends)**
+- Value first: plan light, mid and dark before hue. An accent must differ clearly in value from
+  what it sits on (darker shutters on light plaster). Same-value complements vibrate and look wrong.
+- Harmony: analogous base (plaster, wood, brick, clay all warm) plus one complementary accent.
+  The complement is measured, not guessed: terracotta (about 20 degrees) takes a blue around
+  200 to 215 degrees. Green-cyan (185 degrees) against pink is the gaudy pink-and-teal clash.
+- Complements only at lower saturation and a different value (dusty cobalt `#3f5f88` on
+  terracotta, not cyan).
+- 60-30-10: main material about 60%, secondary (wood, shade steps) 30%, accent 10% or less.
+- Temperature: warm light and warm surfaces come forward, cool darks recede. Shade inherits the
+  sky or ground colour, never neutral grey.
+- Key colour: pull every colour 15 to 20% toward the scene's main colour (`k.harmonize`), accents
+  less (they must still read). war_13: everything is blue-grey, only tiny spots are saturated.
+- No shadows in the game, so anything covered (porches, arcades, under balconies and awnings)
+  gets baked shade (`k.shade_volume`) and arch insides the dark step (`arcade(inner=)`). Never
+  leave an opening that shows a sunlit wall of the same colour behind it; the opening disappears.
+- Openings must make sense: no arch onto a staircase flank.
+
 **Quality check before an asset is done**
 1. Silhouette reads at 30 m in the game (screenshot with `DF_ASSET`, `DF_ASSET_DIST`, `DF_ASSET_YAW`).
 2. Palette: body, dark step, light step, one accent, wood. Nothing else fighting.

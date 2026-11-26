@@ -21,6 +21,13 @@ FRONT = -D / 2
 rng = random.Random(11)
 
 k.reset()
+
+if os.environ.get("SHUTTER"):
+    main, dark = os.environ["SHUTTER"].split(",")
+    k.PALETTE[k.c("shutter")] = ("shutter", main)
+    k.PALETTE[k.c("shutter_dark")] = ("shutter_dark", dark)
+
+k.harmonize(os.environ.get("KEY", "#cdb48a"), 0.2, accents=("shutter", "shutter_dark", "clay"), accent_amount=0.15)
 parts = []
 soft = []
 
@@ -42,10 +49,10 @@ def window(w, h, sill_z, shutters=True, bars=False):
     ]
 
     for fx in (-w / 2 + 0.04, w / 2 - 0.04):
-        items.append(k.box("frame", (0.07, 0.07, h), (fx, 0.16, sill_z), k.c("beam_light")))
+        items.append(k.box("frame", (0.07, 0.07, h), (fx, 0.16, sill_z), k.c("shutter")))
 
-    items.append(k.box("frameT", (w, 0.07, 0.07), (0, 0.16, sill_z + h - 0.07), k.c("beam_light")))
-    items.append(k.box("mull", (0.05, 0.05, h), (0, 0.17, sill_z), k.c("beam_light")))
+    items.append(k.box("frameT", (w, 0.07, 0.07), (0, 0.16, sill_z + h - 0.07), k.c("shutter")))
+    items.append(k.box("mull", (0.05, 0.05, h), (0, 0.17, sill_z), k.c("shutter")))
 
     if bars:
         for i in range(4):
@@ -180,15 +187,15 @@ for side in (-1, 1):
 
 parts.append(k.beveled_box("brail", (2.2, 0.08, 0.08), (0, by - 0.47, ZU + 0.88), k.c("beam_light"), 0.01))
 
-front_arc = k.arcade("arcade", W, H1, T, 3, 0.55, 1.75, k.c("adobe"))
+front_arc = k.arcade("arcade", W, H1, T, 3, 0.55, 1.75, k.c("adobe"), inner=k.c("adobe_dark"))
 k.move(front_arc, 0, FRONT + T / 2, Z0)
 parts.append(front_arc)
 
-for side, facing in ((-1, -90), (1, 90)):
-    sa = k.arcade("sidearc", PORCH, H1, T, 1, 0.45, 1.6, k.c("adobe"))
-    k.rotate(sa, facing)
-    k.move(sa, side * (W / 2 - T / 2), FRONT + PORCH / 2, Z0)
-    parts.append(sa)
+sa = k.arcade("sidearc", PORCH, H1, T, 1, 0.45, 1.6, k.c("adobe"), inner=k.c("adobe_dark"))
+k.rotate(sa, -90)
+k.move(sa, -(W / 2 - T / 2), FRONT + PORCH / 2, Z0)
+parts.append(sa)
+place(wall(PORCH, H1, []), W / 2, FRONT + PORCH / 2, Z0, 90)
 
 for i, (bx, by, bw, bd) in enumerate(((0, FRONT + PORCH / 2 + 0.1, W - 0.1, PORCH - 0.2),)):
     parts.append(k.beveled_box("porchfloor", (bw, bd, 0.12), (bx, by, Z0 - 0.02), k.c("adobe_dark"), 0.02))
@@ -279,7 +286,9 @@ for ob in soft:
     k.jitter(ob, 0.025)
 
 ob = k.finish("df_adobe_house", parts, budget=9000)
-k.grime(ob, 0.7, 0.72)
+k.height_gradient(ob)
+k.shade_volume(ob, (-W / 2 + T, FRONT + T - 0.01, -0.1), (W / 2 + 0.3, FRONT + PORCH + T + 0.05, Z0 + H1), 0.6)
+k.grime(ob, 0.7, 0.75)
 k.bake_ao(ob, strength=0.8, distance=1.2)
 print("STATS", k.stats(ob))
 k.export(ob, os.path.join(OUT, "df_adobe_house.glb"))

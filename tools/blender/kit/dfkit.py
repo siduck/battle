@@ -150,8 +150,8 @@ PALETTE = [
     ("adobe_brick_dark", "#7b4536"),
     ("beam", "#5a3a28"),
     ("beam_light", "#7a5238"),
-    ("shutter", "#4a8790"),
-    ("shutter_dark", "#386a72"),
+    ("shutter", "#4f74a1"),
+    ("shutter_dark", "#3e5e86"),
     ("void", "#1a1516"),
     ("clay", "#ad6a4e"),
     ("cloth_light", "#ecd6c2"),
@@ -484,6 +484,29 @@ def barrel(name, radius, height, at=(0, 0, 0), color="olive", band="olive_dark",
     return parts
 
 
+KEY = None
+KEY_MIX = 0.0
+ACCENTS = set()
+
+
+def harmonize(key_hex, amount=0.2, accents=(), accent_amount=0.35):
+    global KEY, KEY_MIX, ACCENTS
+    KEY = _srgb(key_hex)
+    KEY_MIX = amount
+    ACCENTS = {c(a): accent_amount for a in accents}
+
+
+def _keyed(index):
+    rgb = _srgb(PALETTE[index][1])
+
+    if KEY is None:
+        return rgb
+
+    t = ACCENTS.get(index, KEY_MIX)
+
+    return tuple(rgb[i] * (1 - t) + KEY[i] * t for i in range(3))
+
+
 def finish(name, parts, budget=None):
     ob = lpm.finish(name, parts, lpm.Palette([(n, h) for n, h in PALETTE]), budget=budget)
     me = ob.data
@@ -499,7 +522,7 @@ def finish(name, parts, budget=None):
     col = me.color_attributes.new("Col", "FLOAT_COLOR", "CORNER")
 
     for poly in me.polygons:
-        rgb = _srgb(PALETTE[attr.data[poly.index].value][1]) if attr else (0.8, 0.8, 0.8)
+        rgb = _keyed(attr.data[poly.index].value) if attr else (0.8, 0.8, 0.8)
 
         for li in poly.loop_indices:
             col.data[li].color = (rgb[0], rgb[1], rgb[2], 1.0)
@@ -699,7 +722,7 @@ def jitter(ob, amount=0.02, seed=7):
     return ob
 
 
-def arcade(name, width, height, depth, arches, pier, spring, color, segs=8):
+def arcade(name, width, height, depth, arches, pier, spring, color, segs=8, inner=None):
     span = (width - pier * (arches + 1)) / arches
     pts = [(-width / 2, 0), (-width / 2, height), (width / 2, height), (width / 2, 0)]
     x = width / 2
@@ -718,7 +741,18 @@ def arcade(name, width, height, depth, arches, pier, spring, color, segs=8):
         pts.append((x - span, 0))
         x -= span
 
-    return earclip(sweep(name, pts, depth, (0, 0, 0), color, axis="y"))
+    ob = sweep(name, pts, depth, (0, 0, 0), color, axis="y")
+
+    if inner is not None:
+        attr = ob.data.attributes["lpm_color"]
+
+        for poly in ob.data.polygons:
+            cx, cy, cz = poly.center
+
+            if abs(poly.normal.y) < 0.5 and 0.01 < cz < height - 0.01 and abs(cx) < width / 2 - 0.01:
+                attr.data[poly.index].value = inner
+
+    return ob
 
 
 def earclip(ob):
@@ -732,5 +766,36 @@ def earclip(ob):
     bm.to_mesh(ob.data)
     bm.free()
     ob.data.update()
+
+    return ob
+
+
+def height_gradient(ob, low=0.86, high=1.04):
+    me = ob.data
+    col = me.color_attributes["Col"]
+    zs = [v.co.z for v in me.vertices]
+    z0, z1 = min(zs), max(zs)
+
+    for poly in me.polygons:
+        for li in poly.loop_indices:
+            z = me.vertices[me.loops[li].vertex_index].co.z
+            k = low + (high - low) * ((z - z0) / max(z1 - z0, 1e-6)) ** 0.7
+            cc = col.data[li].color
+            col.data[li].color = (min(cc[0] * k, 1), min(cc[1] * k, 1), min(cc[2] * k, 1), 1.0)
+
+    return ob
+
+
+def shade_volume(ob, lo, hi, k=0.62):
+    me = ob.data
+    col = me.color_attributes["Col"]
+
+    for poly in me.polygons:
+        p = poly.center
+
+        if all(lo[i] <= p[i] <= hi[i] for i in range(3)):
+            for li in poly.loop_indices:
+                cc = col.data[li].color
+                col.data[li].color = (cc[0] * k, cc[1] * k, cc[2] * k * 1.04, 1.0)
 
     return ob
