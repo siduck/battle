@@ -433,6 +433,49 @@ var mat_id_loc: c_int = -1;
 var skinned_loc: c_int = -1;
 var bones_loc: c_int = -1;
 
+var cull_eye: Vec3 = .{};
+var cull_planes: [5]Vec3 = @splat(.{});
+var cull_on = false;
+
+fn setFrustum(cam: rl.Camera3D) void {
+    const eye = Vec3{ .x = cam.position.x, .y = cam.position.y, .z = cam.position.z };
+    const look_at = Vec3{ .x = cam.target.x, .y = cam.target.y, .z = cam.target.z };
+    const up0 = Vec3{ .x = cam.up.x, .y = cam.up.y, .z = cam.up.z };
+    const f = look_at.sub(eye).normalize();
+    const right = f.cross(up0).normalize();
+    const up = right.cross(f);
+    const w: f32 = @floatFromInt(@max(1, rl.GetScreenWidth()));
+    const h: f32 = @floatFromInt(@max(1, rl.GetScreenHeight()));
+    const v = @tan(cam.fovy * std.math.pi / 360) * 1.08;
+    const hz = v * w / h;
+
+    cull_eye = eye;
+    cull_planes = .{
+        f.scale(hz).sub(right).normalize(),
+        f.scale(hz).add(right).normalize(),
+        f.scale(v).sub(up).normalize(),
+        f.scale(v).add(up).normalize(),
+        f,
+    };
+    cull_on = true;
+}
+
+pub fn sphereVisible(c: Vec3, radius: f32) bool {
+    if (!cull_on) return true;
+
+    const d = c.sub(cull_eye);
+
+    for (cull_planes) |n| {
+        if (n.dot(d) < -radius) return false;
+    }
+
+    return true;
+}
+
+pub fn cullOff() void {
+    cull_on = false;
+}
+
 fn latticeHash(x: u32, y: u32) f32 {
     var h = x *% 374761393 +% y *% 668265263;
 
@@ -811,6 +854,8 @@ pub const Renderer = struct {
 
         r.cam_fovy = cam.fovy;
         r.ao_done = false;
+
+        if (r.phase == .shadow) cullOff() else setFrustum(cam);
         r.vm_pass = false;
         r.in_post = r.post and r.fx.ensure(r.render_scale);
 
@@ -1064,6 +1109,23 @@ pub const Renderer = struct {
 
             material.shader = if (r.phase == .shadow) r.depth_inst else r.lit_inst;
             drawMeshBatch(model.meshes[i], material, transforms);
+        }
+
+        if (two_sided) rlgl.rlEnableBackfaceCulling();
+    }
+
+    pub fn drawStaticRange(r: *Renderer, model: rl.Model, vbo: c_uint, start: usize, count: usize, two_sided: bool) void {
+        if (r.skip or count == 0 or vbo == 0) return;
+
+        if (two_sided) rlgl.rlDisableBackfaceCulling();
+
+        var i: usize = 0;
+
+        while (i < @as(usize, @intCast(model.meshCount))) : (i += 1) {
+            var material = model.materials[@intCast(model.meshMaterial[i])];
+
+            material.shader = if (r.phase == .shadow) r.depth_inst else r.lit_inst;
+            drawFromBuffer(model.meshes[i], material, vbo, start * 64, count);
         }
 
         if (two_sided) rlgl.rlEnableBackfaceCulling();

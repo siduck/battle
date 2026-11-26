@@ -604,6 +604,8 @@ fn drawChunks(r: *gfx.Renderer, v: View) void {
 
         if (dist > 760) continue;
 
+        if (!shadow and !gfx.sphereVisible(.{ .x = c.cx, .y = 20, .z = c.cz }, c.r + 45)) continue;
+
         const near = dist < 230 + c.r;
 
         r.setSurface(.{ .roughness = 1, .metallic = 0 });
@@ -718,7 +720,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
 
         if (dist > limit) continue;
 
-        if (dist > 12 and to.scale(1 / dist).dot(v.forward) < 0.2 and r.phase != .shadow) continue;
+        if (dist > 6 and r.phase != .shadow and !gfx.sphereVisible(car.pos, 6)) continue;
 
         vehicleart.draw(r, cars, car, g.accumulator / movement.dt);
     }

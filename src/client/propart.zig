@@ -18,7 +18,92 @@ const Slot = struct {
     visible: []rl.Matrix = &.{},
     count: usize = 0,
     vbo: c_uint = 0,
+    cells: []Cell = &.{},
 };
+
+const Cell = struct {
+    start: u32,
+    count: u32,
+    center: Vec3,
+    radius: f32,
+};
+
+const cell_size: f32 = 32;
+
+fn cellKey(p: Vec3) i64 {
+    const cx: i64 = @intFromFloat(@floor(p.x / cell_size));
+    const cz: i64 = @intFromFloat(@floor(p.z / cell_size));
+
+    return (cz + 4096) * 8192 + (cx + 4096);
+}
+
+fn buildCells(gpa: std.mem.Allocator, slot: *Slot, scales: []const f32) void {
+    const n = slot.count;
+
+    if (n == 0) return;
+
+    const order = gpa.alloc(u32, n) catch return;
+
+    defer gpa.free(order);
+
+    for (order, 0..) |*o, i| o.* = @intCast(i);
+
+    const Ctx = struct {
+        spots: []const Vec3,
+
+        fn less(ctx: @This(), a: u32, b: u32) bool {
+            return cellKey(ctx.spots[a]) < cellKey(ctx.spots[b]);
+        }
+    };
+
+    std.mem.sort(u32, order, Ctx{ .spots = slot.spots[0..n] }, Ctx.less);
+
+    const all = gpa.dupe(rl.Matrix, slot.all[0..n]) catch return;
+    const spots = gpa.dupe(Vec3, slot.spots[0..n]) catch return;
+
+    defer gpa.free(all);
+    defer gpa.free(spots);
+
+    var max_scale: f32 = 0;
+
+    for (order, 0..) |o, i| {
+        slot.all[i] = all[o];
+        slot.spots[i] = spots[o];
+        max_scale = @max(max_scale, scales[o]);
+    }
+
+    const box = rl.GetModelBoundingBox(slot.model.?);
+    const ext = Vec3{ .x = @max(@abs(box.min.x), @abs(box.max.x)), .y = @max(@abs(box.min.y), @abs(box.max.y)), .z = @max(@abs(box.min.z), @abs(box.max.z)) };
+    const margin = ext.length() * max_scale;
+    var cells: std.ArrayList(Cell) = .empty;
+    var i: usize = 0;
+
+    while (i < n) {
+        const key = cellKey(slot.spots[i]);
+        var j = i;
+        var lo_y: f32 = 1e9;
+        var hi_y: f32 = -1e9;
+
+        while (j < n and cellKey(slot.spots[j]) == key) : (j += 1) {
+            lo_y = @min(lo_y, slot.spots[j].y);
+            hi_y = @max(hi_y, slot.spots[j].y);
+        }
+
+        const cx = (@floor(slot.spots[i].x / cell_size) + 0.5) * cell_size;
+        const cz = (@floor(slot.spots[i].z / cell_size) + 0.5) * cell_size;
+        const half_y = (hi_y - lo_y) / 2;
+
+        cells.append(gpa, .{
+            .start = @intCast(i),
+            .count = @intCast(j - i),
+            .center = .{ .x = cx, .y = (lo_y + hi_y) / 2, .z = cz },
+            .radius = @sqrt(cell_size * cell_size / 2 + half_y * half_y) + margin,
+        }) catch return;
+        i = j;
+    }
+
+    slot.cells = cells.toOwnedSlice(gpa) catch &.{};
+}
 
 pub const Props = struct {
     slots: [kind_count]Slot = @splat(.{}),
@@ -47,15 +132,33 @@ pub const Props = struct {
             slot.count = 0;
         }
 
+        var scales: [kind_count][]f32 = @splat(&.{});
+
+        for (&p.slots, 0..) |*slot, i| {
+            if (slot.model != null) scales[i] = gpa.alloc(f32, slot.all.len) catch &.{};
+        }
+
         for (world.placements) |pl| {
-            const slot = &p.slots[@intFromEnum(pl.kind)];
+            const k = @intFromEnum(pl.kind);
+            const slot = &p.slots[k];
 
             if (slot.model == null or slot.count >= slot.all.len) continue;
 
             slot.all[slot.count] = mesh.transform(pl.pos, mesh.Basis.yawed(pl.yaw), pl.scale);
             slot.spots[slot.count] = pl.pos;
+
+            if (slot.count < scales[k].len) scales[k][slot.count] = pl.scale;
+
             slot.count += 1;
         }
+
+        for (&p.slots, 0..) |*slot, i| {
+            if (slot.model == null or glassy(i)) continue;
+
+            buildCells(gpa, slot, scales[i]);
+        }
+
+        for (scales) |sc| gpa.free(sc);
 
         return p;
     }
@@ -112,7 +215,25 @@ pub const Props = struct {
                     else => 0,
                 });
                 r.setMatId(kitMaterial(i));
-                r.drawStatic(model, slot.vbo, slot.count, info.foliage);
+
+                var run_start: usize = 0;
+                var run_len: usize = 0;
+
+                for (slot.cells) |c| {
+                    const d = c.center.sub(eye);
+                    const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
+                    const show = flat < limit and gfx.sphereVisible(c.center, c.radius);
+
+                    if (show and run_len > 0 and run_start + run_len == c.start) {
+                        run_len += c.count;
+                    } else if (show) {
+                        r.drawStaticRange(model, slot.vbo, run_start, run_len, info.foliage);
+                        run_start = c.start;
+                        run_len = c.count;
+                    }
+                }
+
+                r.drawStaticRange(model, slot.vbo, run_start, run_len, info.foliage);
                 r.setMatId(-1);
 
                 continue;
