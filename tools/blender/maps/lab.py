@@ -975,7 +975,7 @@ def lab_building(name, W, D, nf, seed, roof=True, entry_z=True):
     m.solid((sx, top, -1.2), (sx + 3.0, top + 0.62, 1.2))
 
     ROOMS[name] = rooms
-    info = finish(m, name, size=2.0, reach=3.4, strength=0.85)
+    info = finish(m, name, size=None, reach=3.4, strength=0.85)
 
     return info
 
@@ -1000,48 +1000,28 @@ PROPS = [
     ("bsc", "biosafety-cabinet-a46204", {}),
     ("freezer", "ultra-low-freezer-9a84fb", {}),
     ("fridge", "glass-door-sample-fridge-386715", {}),
-    ("gascab", "gas-cylinder-cabinet-cea23b", {}),
     ("shelf", "chemical-shelving-rack-3a188c", {}),
     ("lockers", "ppe-locker-bank-60dd99", {}),
     ("desk", "write-up-desk-38763a", {}),
-    ("stool", "lab-stool-022713", {"collide": "none"}),
-    ("optics", "optics-table-66db15", {}),
-    ("glovebox", "glovebox-737c45", {}),
-    ("laminar", "laminar-flow-hood-d730bd", {}),
-    ("cart", "mobile-bench-cart-4b3ff5", {}),
-    ("dewar", "nitrogen-dewar-wheeled-c9986e", {"collide": "cylinder"}),
-    ("sink", "sink-unit-with-drying-c5d11a", {}),
-    ("shower", "safety-shower-and-eyewash-1f5f20", {"collide": "none"}),
-    ("airlock", "air-shower-airlock-cabin-ed83ae", {}),
-    ("incubator", "co2-incubator-198c16", {}),
-    ("autoclave", "autoclave-d34434", {}),
-    ("firepoint", "fire-point-station-dfd230", {"collide": "none"}),
-    ("vented", "vented-chemical-storage-cabinet-91b061", {}),
 ]
 
 XPROPS = [
-    ("ward", "multi-storey-ward-block-2bac82", {"scale": 1.3, "group": "building"}),
-    ("annexe", "clinic-annexe-0f56d1", {"scale": 1.2, "group": "building"}),
     ("genset", "standby-generator-enclosure-9d48f6", {}),
-    ("canopy", "entrance-canopy-8378c5", {"collide": "none", "group": "building"}),
     ("bollard", "illuminated-bollard-9af752", {"collide": "cylinder"}),
-    ("totem", "wayfinding-totem-sign-dbb4be", {}),
     ("hedge", "clipped-hedge-section-11a067", {"group": "bush"}),
     ("fence", "mesh-fence-panel-11d4e2", {}),
     ("tree", "broad-canopy-shade-tree-e7c4a2", {"collide": "trunk", "group": "tree"}),
     ("tree2", "ornamental-front-yard-tree-c6781a", {"collide": "trunk", "group": "tree", "scale": 1.3}),
     ("shrub", "columnar-evergreen-shrub-35a00b", {"collide": "cylinder", "group": "bush", "scale": 1.3}),
-    ("bush", "trimmed-foundation-shrub-616ce0", {"collide": "none", "group": "bush", "scale": 1.2}),
     ("hvac", "hvac-condenser-unit-a41b8d", {"scale": 1.3}),
     ("bench", "campus-bench-0d6036", {}),
-    ("bikes", "campus-bike-rack-386d4d", {}),
     ("lamp", "campus-lamp-post-579291", {"collide": "cylinder"}),
     ("fountain", "campus-plaza-fountain-a0cab1", {"scale": 1.6}),
     ("planter", "campus-planter-box-10970a", {}),
     ("cwall", "campus-wall-run-6a35e0", {}),
     ("pit", "tree-in-pit-grate-ea8010", {"collide": "trunk", "group": "tree"}),
     ("dish", "comms-dish-7b129a", {"scale": 2.2}),
-    ("tank", "fuel-tank-3a0111", {"scale": 1.6}),
+    ("tank", "fuel-tank-3a0111", {"scale": 1.6, "collide": "cylinder"}),
     ("htank", "horizontal-tank-6e9b8b", {"scale": 1.8}),
     ("solar", "solar-array-rack-789c93", {}),
     ("mast", "antenna-mast-0954b0", {"collide": "cylinder", "scale": 2.6}),
@@ -1049,6 +1029,65 @@ XPROPS = [
     ("streetlight", "cobra-head-street-light-3e25b8", {"collide": "cylinder"}),
     ("kiosk", "campus-coffee-kiosk-ec2395", {}),
 ]
+
+L3 = os.path.expanduser("~/.cache/polyfork/lab3")
+
+L3PROPS = [
+    ("radar", "air-traffic-radar-mast-3e5642", {"scale": 0.9, "collide": "cylinder"}),
+    ("crate", "cargo-crate-696892", {"scale": 1.1}),
+    ("canister", "supply-canister-4b70f5", {"scale": 1.2, "collide": "cylinder"}),
+    ("radiator", "radiator-panel-ea7d86", {}),
+    ("pipe", "surface-pipe-run-62c4b3", {}),
+    ("barrier", "crash-barrier-run-b47d1d", {}),
+    ("pallet", "material-pallet-6af263", {}),
+    ("mapboard", "campus-map-board-90e067", {}),
+    ("banner", "campus-banner-pole-5fdf90", {"collide": "cylinder"}),
+    ("flowers", "flower-bed-708e73", {"scale": 1.4, "collide": "none", "group": "bush"}),
+    ("cafe", "cafe-table-set-1868d1", {"collide": "none"}),
+    ("tent", "welcome-week-tent-stall-c27020", {"scale": 1.2}),
+    ("battery", "battery-bank-b4d362", {}),
+    ("floodmast", "floodlight-mast-45d1a3", {"scale": 1.4, "collide": "cylinder"}),
+]
+
+L3BUILD = [
+    ("ctower", "control-tower-c95a65", 0.62),
+    ("otower", "observation-tower-69b692", 1.25),
+    ("dome", "habitat-dome-8d3499", 1.5),
+    ("glass", "greenhouse-53ab6d", 1.6),
+    ("gmod", "greenhouse-module-0c233d", 1.4),
+    ("command", "command-center-e65850", 1.5),
+    ("reactor", "reactor-block-13fe72", 1.4),
+    ("depot", "storage-depot-8e13e2", 1.3),
+    ("garage", "rover-garage-273fb1", 1.4),
+    ("gatehouse", "security-gatehouse-fd00c8", 1.0),
+    ("farmtank", "fuel-farm-tank-ed67f0", 0.75),
+]
+
+
+def kitbuilding(name, src, scale):
+    reset()
+    bm = piece(os.path.join(L3, src + ".glb"))
+    normalize(bm, scale=scale)
+    bake(bm, reach=2.6, strength=0.8, rays=12, grime=0.7)
+    boxes = pf.footprint(bm)
+    blocks = []
+
+    for b in boxes:
+        h = pf.column_height(bm, b)
+        small = (b[2] - b[0]) * (b[3] - b[1]) < 1.2
+        blocks.append([round(b[0], 3), round(-b[3], 3), round(b[2], 3), round(-b[1], 3), round(min(h, 3.2) if small else h, 3)])
+
+    lo, hi = bounds(bm)
+    info = export(bm, name)
+    info["blocks"] = blocks
+    info["w"] = round(max(hi.x - lo.x, 1), 2)
+    info["d"] = round(max(hi.y - lo.y, 1), 2)
+    info["kind"] = "building"
+    info["group"] = "building"
+    print("DONE", name, info["tris"], len(blocks))
+    bm.free()
+
+    return info
 
 
 def write_rooms(path):
@@ -1080,7 +1119,17 @@ def main():
 
     infos = {}
 
-    for name, W, D, nf, seed in (("lab_big", 40, 20, 2, 3), ("lab_mid", 32, 16, 2, 7), ("lab_low", 24, 16, 1, 11)):
+    global PANEL, PANEL_B, TEAL, TEAL_L
+
+    looks = {
+        "lab_big": ((0.84, 0.84, 0.8), (0.76, 0.77, 0.74), (0.12, 0.46, 0.48), (0.3, 0.62, 0.62)),
+        "lab_mid": ((0.62, 0.36, 0.27), (0.56, 0.32, 0.24), (0.88, 0.86, 0.8), (0.84, 0.8, 0.72)),
+        "lab_low": ((0.88, 0.82, 0.68), (0.82, 0.76, 0.62), (0.84, 0.44, 0.16), (0.92, 0.6, 0.3)),
+        "lab_tall": ((0.38, 0.44, 0.52), (0.33, 0.39, 0.47), (0.9, 0.9, 0.86), (0.56, 0.78, 0.86)),
+    }
+
+    for name, W, D, nf, seed in (("lab_big", 40, 20, 2, 3), ("lab_mid", 32, 16, 2, 7), ("lab_low", 24, 16, 1, 11), ("lab_tall", 24, 16, 3, 5)):
+        PANEL, PANEL_B, TEAL, TEAL_L = looks[name]
         infos[name] = lab_building(name, W, D, nf, seed)
 
     for name, kind in (("puddle", "puddle"),):
@@ -1090,11 +1139,17 @@ def main():
         infos[name] = kitprop(name, src, **opts)
 
     for name, src, opts in XPROPS:
-        if name in ("ward", "annexe", "canopy", "solar", "genset"):
+        if name in ("solar", "genset"):
             opts = dict(opts)
             opts["k"] = "decross"
 
         infos[name] = kitprop(name, os.path.join(LX, src + ".glb"), **opts)
+
+    for name, src, opts in L3PROPS:
+        infos[name] = kitprop(name, os.path.join(L3, src + ".glb"), **opts)
+
+    for name, src, scale in L3BUILD:
+        infos[name] = kitbuilding(name, src, scale)
 
     path = os.path.join(root, "src/shared/maps", "lab_kit.zig")
     emit_zig("lab", infos, path)

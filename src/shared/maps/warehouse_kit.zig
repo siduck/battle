@@ -13,40 +13,51 @@ pub const K = enum {
     drums,
     blocks,
     mast,
+    cartons,
+    cartons_b,
     puddle,
     tracks,
+    lane,
+    bay,
     load,
     pallet,
     tote,
     barrier,
-    cage,
-    jack,
     bumper,
-    film,
     sign,
     bench,
-    scale,
-    guard,
-    ladder,
     tree,
     shrub,
     hedge,
     light,
     booth,
     fence,
-    bollard,
     genset,
     tank,
     htank,
     hvac,
+    cabin,
+    fueltank,
+    crate,
+    skip,
+    orange,
+    precast,
+    dumpy,
+    pdrum,
+    tubes,
+    gantry,
+    cone,
+    carton,
+    cargo,
+    brick,
 };
 
 pub const kit = api.Kit(K);
 
 pub const table = [_]api.Info{
-    .{ .file = "warehouse/shed_a.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -39.300, -1.000, -20.000 }, .max = .{ 39.300, 12.320, 22.000 } },
-    .{ .file = "warehouse/shed_b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -31.300, -1.000, -18.000 }, .max = .{ 31.300, 11.320, 20.000 } },
-    .{ .file = "warehouse/shed_c.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -43.300, -1.000, -16.000 }, .max = .{ 43.300, 10.820, 18.000 } },
+    .{ .file = "warehouse/shed_a.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -39.300, -1.000, -20.000 }, .max = .{ 39.300, 12.900, 22.000 } },
+    .{ .file = "warehouse/shed_b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -31.300, -1.000, -18.000 }, .max = .{ 31.300, 11.900, 20.000 } },
+    .{ .file = "warehouse/shed_c.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -43.300, -1.000, -16.000 }, .max = .{ 43.300, 11.400, 18.000 } },
     .{ .file = "warehouse/rack.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -4.200, 0.000, -0.700 }, .max = .{ 4.200, 4.959, 0.610 } },
     .{ .file = "warehouse/rack_half.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -4.200, 0.000, -0.700 }, .max = .{ 4.200, 4.800, 0.610 } },
     .{ .file = "warehouse/box_red.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -3.030, 0.000, -1.220 }, .max = .{ 3.060, 2.590, 1.220 } },
@@ -56,35 +67,48 @@ pub const table = [_]api.Info{
     .{ .file = "warehouse/drums.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -1.100, 0.000, -1.100 }, .max = .{ 1.100, 1.020, 1.100 } },
     .{ .file = "warehouse/blocks.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.380, 0.000, -0.400 }, .max = .{ 2.380, 1.660, 0.400 } },
     .{ .file = "warehouse/mast.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -1.400, -0.000, -0.600 }, .max = .{ 1.400, 13.600, 0.600 } },
+    .{ .file = "warehouse/cartons.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -0.600, 0.000, -0.500 }, .max = .{ 0.600, 0.852, 0.500 } },
+    .{ .file = "warehouse/cartons_b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -0.600, 0.000, -0.500 }, .max = .{ 0.600, 1.268, 0.500 } },
     .{ .file = "warehouse/puddle.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -2.090, 0.030, -1.880 }, .max = .{ 2.577, 0.040, 1.708 } },
     .{ .file = "warehouse/tracks.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -1.316, 0.030, -5.000 }, .max = .{ 1.355, 0.030, 5.000 } },
+    .{ .file = "warehouse/lane.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -0.120, 0.030, -1.500 }, .max = .{ 0.120, 0.030, 1.500 } },
+    .{ .file = "warehouse/bay.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -0.080, 0.030, -2.500 }, .max = .{ 0.080, 0.030, 2.500 } },
     .{ .file = "warehouse/load.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.520, 0.000, -0.420 }, .max = .{ 0.520, 1.211, 0.420 } },
     .{ .file = "warehouse/pallet.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.600, 0.000, -0.600 }, .max = .{ 0.600, 0.144, 0.600 } },
     .{ .file = "warehouse/tote.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.600, 0.000, -0.501 }, .max = .{ 0.600, 1.160, 0.501 } },
     .{ .file = "warehouse/barrier.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.000, 0.000, -0.130 }, .max = .{ 1.000, 1.100, 0.130 } },
-    .{ .file = "warehouse/cage.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.416, 0.000, -0.362 }, .max = .{ 0.416, 1.800, 0.362 } },
-    .{ .file = "warehouse/jack.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.270, 0.000, -0.789 }, .max = .{ 0.270, 1.280, 0.789 } },
     .{ .file = "warehouse/bumper.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.305, 0.000, -0.060 }, .max = .{ 0.305, 0.350, 0.060 } },
-    .{ .file = "warehouse/film.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.325, 0.000, -0.230 }, .max = .{ 0.325, 0.167, 0.230 } },
     .{ .file = "warehouse/sign.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.665, 0.000, -0.065 }, .max = .{ 0.665, 1.030, 0.065 } },
     .{ .file = "warehouse/bench.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.920, 0.000, -0.459 }, .max = .{ 0.920, 2.000, 0.459 } },
-    .{ .file = "warehouse/scale.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.750, 0.000, -1.203 }, .max = .{ 0.750, 1.420, 1.203 } },
-    .{ .file = "warehouse/guard.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.564, 0.000, -0.060 }, .max = .{ 0.564, 0.400, 0.060 } },
-    .{ .file = "warehouse/ladder.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.352, 0.000, -0.515 }, .max = .{ 0.352, 2.373, 0.515 } },
     .{ .file = "warehouse/tree.glb", .scale = 1.00, .collide = .trunk, .group = .tree, .foliage = false, .min = .{ -3.670, 0.000, -3.316 }, .max = .{ 3.670, 8.536, 3.316 } },
     .{ .file = "warehouse/shrub.glb", .scale = 1.00, .collide = .cylinder, .group = .bush, .foliage = false, .min = .{ -0.568, 0.000, -0.590 }, .max = .{ 0.568, 3.120, 0.590 } },
     .{ .file = "warehouse/hedge.glb", .scale = 1.00, .collide = .box, .group = .bush, .foliage = false, .min = .{ -1.000, 0.000, -0.239 }, .max = .{ 1.000, 0.897, 0.239 } },
     .{ .file = "warehouse/light.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.525, 0.000, -1.562 }, .max = .{ 0.525, 8.012, 1.562 } },
     .{ .file = "warehouse/booth.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.000, 0.000, -1.273 }, .max = .{ 1.000, 2.800, 1.273 } },
     .{ .file = "warehouse/fence.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.000, 0.000, -0.075 }, .max = .{ 1.000, 1.800, 0.075 } },
-    .{ .file = "warehouse/bollard.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.236, 0.000, -0.236 }, .max = .{ 0.236, 1.020, 0.236 } },
     .{ .file = "warehouse/genset.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -1.000 }, .max = .{ 2.000, 3.550, 1.000 } },
     .{ .file = "warehouse/tank.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.080, 0.000, -2.080 }, .max = .{ 2.080, 6.400, 2.080 } },
     .{ .file = "warehouse/htank.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.160, 0.000, -1.048 }, .max = .{ 2.160, 2.398, 1.048 } },
     .{ .file = "warehouse/hvac.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.676, 0.000, -0.643 }, .max = .{ 0.676, 1.364, 0.643 } },
+    .{ .file = "warehouse/cabin.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -2.000, 0.000, -3.990 }, .max = .{ 2.000, 3.390, 3.990 } },
+    .{ .file = "warehouse/fueltank.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -2.400, 0.000, -4.800 }, .max = .{ 2.400, 3.888, 4.800 } },
+    .{ .file = "warehouse/crate.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.560, 0.000, -0.560 }, .max = .{ 0.560, 1.120, 0.560 } },
+    .{ .file = "warehouse/skip.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.981, 0.000, -0.935 }, .max = .{ 1.981, 1.448, 0.935 } },
+    .{ .file = "warehouse/orange.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -0.300 }, .max = .{ 2.000, 1.235, 0.300 } },
+    .{ .file = "warehouse/precast.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -0.750 }, .max = .{ 2.000, 0.896, 0.750 } },
+    .{ .file = "warehouse/dumpy.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.539, 0.000, -0.539 }, .max = .{ 0.539, 1.281, 0.539 } },
+    .{ .file = "warehouse/pdrum.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.330, 0.000, -0.322 }, .max = .{ 0.330, 0.990, 0.322 } },
+    .{ .file = "warehouse/tubes.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -0.750 }, .max = .{ 2.000, 0.587, 0.750 } },
+    .{ .file = "warehouse/gantry.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -2.400, 0.000, -2.400 }, .max = .{ 2.400, 5.040, 2.400 } },
+    .{ .file = "warehouse/cone.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.175, 0.000, -0.175 }, .max = .{ 0.175, 0.750, 0.175 } },
+    .{ .file = "warehouse/carton.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.197, 0.000, -0.155 }, .max = .{ 0.197, 0.301, 0.155 } },
+    .{ .file = "warehouse/cargo.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -20.000, -1.000, -15.480 }, .max = .{ 20.480, 12.500, 15.000 } },
+    .{ .file = "warehouse/brick.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -9.600, -1.000, -6.580 }, .max = .{ 9.880, 11.568, 6.400 } },
 };
 
 pub const buildings = [_]api.Building{
+    .{ .kind = kit.of(.cargo), .w = 40.000, .d = 30.000, .blocks = &.{ .{ -20.000, -14.500, 20.500, 14.500, 12.500 }, .{ -16.500, -15.000, 20.500, -14.500, 6.188 }, .{ -16.000, -15.500, 20.500, -15.000, 2.400 }, .{ -14.000, 14.500, -13.000, 15.000, 3.200 }, .{ -9.500, 14.500, -8.500, 15.000, 3.200 }, .{ -6.500, 14.500, -5.500, 15.000, 3.200 }, .{ -2.000, 14.500, -1.000, 15.000, 3.200 }, .{ 1.000, 14.500, 2.000, 15.000, 3.200 }, .{ 5.500, 14.500, 6.500, 15.000, 3.200 }, .{ 8.500, 14.500, 9.500, 15.000, 3.200 }, .{ 13.000, 14.500, 14.000, 15.000, 3.200 } } },
+    .{ .kind = kit.of(.brick), .w = 19.200, .d = 12.800, .blocks = &.{ .{ -9.600, -6.600, 9.900, 6.400, 11.568 } } },
 };
 
 pub const solids = struct {
@@ -170,6 +194,9 @@ pub const solids = struct {
         .{ 0.000, 22.000, 1.200, 13.000, 24.800, 3.800, 15.750 },
         .{ 0.000, 25.400, 1.200, 13.000, 28.200, 3.800, 15.750 },
         .{ 0.000, 28.800, 1.200, 13.000, 31.600, 3.800, 15.750 },
+        .{ 0.000, 4.000, 5.000, 16.000, 6.000, 5.200, 17.600 },
+        .{ 0.000, 5.920, 5.200, 16.000, 6.080, 6.300, 17.600 },
+        .{ 1.000, -2.000, 0.000, 16.050, 4.000, 5.200, 17.250 },
     };
     pub const shed_b = [_][7]f32{
         .{ 0.000, -24.300, -1.000, -14.300, 24.300, 1.200, 14.300 },
@@ -237,6 +264,9 @@ pub const solids = struct {
         .{ 0.000, 14.000, 1.200, 11.000, 16.800, 3.800, 13.750 },
         .{ 0.000, 17.400, 1.200, 11.000, 20.200, 3.800, 13.750 },
         .{ 0.000, 20.800, 1.200, 11.000, 23.600, 3.800, 13.750 },
+        .{ 0.000, 18.000, 5.000, 14.000, 20.000, 5.200, 15.600 },
+        .{ 0.000, 19.920, 5.200, 14.000, 20.080, 6.300, 15.600 },
+        .{ 1.000, 12.000, 0.000, 14.050, 18.000, 5.200, 15.250 },
     };
     pub const shed_c = [_][7]f32{
         .{ 0.000, -36.300, -1.000, -12.300, 36.300, 1.200, 12.300 },
@@ -311,6 +341,9 @@ pub const solids = struct {
         .{ 0.000, 19.820, 1.200, 11.420, 20.180, 8.700, 11.780 },
         .{ 0.000, 27.820, 1.200, -11.780, 28.180, 8.700, -11.420 },
         .{ 0.000, 27.820, 1.200, 11.420, 28.180, 8.700, 11.780 },
+        .{ 0.000, 2.000, 5.000, 12.000, 4.000, 5.200, 13.600 },
+        .{ 0.000, 3.920, 5.200, 12.000, 4.080, 6.300, 13.600 },
+        .{ 1.000, -4.000, 0.000, 12.050, 2.000, 5.200, 13.250 },
     };
     pub const rack = [_][7]f32{
         .{ 0.000, -4.150, 0.000, -0.650, 4.150, 4.800, 0.650 },
@@ -340,8 +373,18 @@ pub const solids = struct {
     pub const mast = [_][7]f32{
         .{ 0.000, -0.600, 0.000, -0.600, 0.600, 13.600, 0.600 },
     };
+    pub const cartons = [_][7]f32{
+        .{ 0.000, -0.600, 0.000, -0.500, 0.600, 0.851, 0.500 },
+    };
+    pub const cartons_b = [_][7]f32{
+        .{ 0.000, -0.600, 0.000, -0.500, 0.600, 1.267, 0.500 },
+    };
     pub const puddle = [_][7]f32{
     };
     pub const tracks = [_][7]f32{
+    };
+    pub const lane = [_][7]f32{
+    };
+    pub const bay = [_][7]f32{
     };
 };

@@ -380,6 +380,86 @@
   "d": 4.12,
   "kind": "building"
  },
+ "store": {
+  "file": "stadium/store.glb",
+  "min": [
+   -2.5999999046325684,
+   -1.0,
+   -2.032599925994873
+  ],
+  "max": [
+   2.880000114440918,
+   3.8999998569488525,
+   1.9473999738693237
+  ],
+  "tris": 1587,
+  "blocks": [
+   [
+    -2.6,
+    -2.053,
+    -2.1,
+    1.947,
+    3.9
+   ],
+   [
+    -2.1,
+    -2.053,
+    2.9,
+    1.447,
+    3.9
+   ],
+   [
+    -0.1,
+    1.447,
+    0.4,
+    1.947,
+    3.2
+   ],
+   [
+    0.9,
+    1.447,
+    2.4,
+    1.947,
+    3.2
+   ]
+  ],
+  "w": 5.2,
+  "d": 3.89,
+  "kind": "building"
+ },
+ "snackbox": {
+  "file": "stadium/snackbox.glb",
+  "min": [
+   -3.0,
+   -1.0,
+   -1.4800000190734863
+  ],
+  "max": [
+   3.4800000190734863,
+   3.0,
+   1.0
+  ],
+  "tris": 1942,
+  "blocks": [
+   [
+    -3.0,
+    -1.5,
+    3.5,
+    0.5,
+    3.0
+   ],
+   [
+    -2.0,
+    0.5,
+    2.0,
+    1.0,
+    2.965
+   ]
+  ],
+  "w": 6.0,
+  "d": 2.0,
+  "kind": "building"
+ },
  "seats": {
   "file": "stadium/seats.glb",
   "min": [
@@ -465,23 +545,6 @@
   "group": "building",
   "collide": "cylinder"
  },
- "hoarding": {
-  "file": "stadium/hoarding.glb",
-  "min": [
-   -0.699999988079071,
-   0.0,
-   -0.32199999690055847
-  ],
-  "max": [
-   0.699999988079071,
-   1.4176907539367676,
-   0.32199999690055847
-  ],
-  "tris": 214,
-  "kind": "prop",
-  "group": "street",
-  "collide": "box"
- },
  "mesh": {
   "file": "stadium/mesh.glb",
   "min": [
@@ -550,23 +613,6 @@
   "group": "street",
   "collide": "none"
  },
- "roller": {
-  "file": "stadium/roller.glb",
-  "min": [
-   -1.2999999523162842,
-   0.0,
-   -1.625
-  ],
-  "max": [
-   1.2999999523162842,
-   1.1699999570846558,
-   1.625
-  ],
-  "tris": 592,
-  "kind": "prop",
-  "group": "street",
-  "collide": "box"
- },
  "tarp": {
   "file": "stadium/tarp.glb",
   "min": [
@@ -580,57 +626,6 @@
    1.2000607252120972
   ],
   "tris": 696,
-  "kind": "prop",
-  "group": "street",
-  "collide": "box"
- },
- "trolley": {
-  "file": "stadium/trolley.glb",
-  "min": [
-   -0.9749999642372131,
-   0.0,
-   -0.6493382453918457
-  ],
-  "max": [
-   0.9749999642372131,
-   1.5599805116653442,
-   0.6493382453918457
-  ],
-  "tris": 418,
-  "kind": "prop",
-  "group": "street",
-  "collide": "box"
- },
- "linecart": {
-  "file": "stadium/linecart.glb",
-  "min": [
-   -0.30000001192092896,
-   0.0,
-   -0.601262629032135
-  ],
-  "max": [
-   0.30000001192092896,
-   1.1910200119018555,
-   0.601262629032135
-  ],
-  "tris": 682,
-  "kind": "prop",
-  "group": "street",
-  "collide": "box"
- },
- "ballcart": {
-  "file": "stadium/ballcart.glb",
-  "min": [
-   -0.6000000238418579,
-   0.0,
-   -0.601212739944458
-  ],
-  "max": [
-   0.6000000238418579,
-   1.3806073665618896,
-   0.6012127995491028
-  ],
-  "tris": 1155,
   "kind": "prop",
   "group": "street",
   "collide": "box"
@@ -651,6 +646,40 @@
   "kind": "prop",
   "group": "street",
   "collide": "cylinder"
+ },
+ "sled": {
+  "file": "stadium/sled.glb",
+  "min": [
+   -1.2999999523162842,
+   0.0,
+   -0.6499999761581421
+  ],
+  "max": [
+   1.2999999523162842,
+   2.18399977684021,
+   0.6499999761581421
+  ],
+  "tris": 720,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "rack": {
+  "file": "stadium/rack.glb",
+  "min": [
+   -1.2999999523162842,
+   0.0,
+   -0.32499998807907104
+  ],
+  "max": [
+   1.2999999523162842,
+   1.920925259590149,
+   0.32499998807907104
+  ],
+  "tris": 6830,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
  },
  "medtent": {
   "file": "stadium/medtent.glb",
@@ -754,40 +783,6 @@
   "group": "street",
   "collide": "box"
  },
- "clock": {
-  "file": "stadium/clock.glb",
-  "min": [
-   -0.7200000286102295,
-   0.0,
-   -0.36000001430511475
-  ],
-  "max": [
-   0.7200000286102295,
-   4.800000190734863,
-   0.36000001430511475
-  ],
-  "tris": 650,
-  "kind": "prop",
-  "group": "street",
-  "collide": "cylinder"
- },
- "horn": {
-  "file": "stadium/horn.glb",
-  "min": [
-   -0.7951688766479492,
-   0.0,
-   -0.7951688766479492
-  ],
-  "max": [
-   0.7951688766479492,
-   5.199999809265137,
-   0.7951688766479492
-  ],
-  "tris": 698,
-  "kind": "prop",
-  "group": "street",
-  "collide": "cylinder"
- },
  "flagpole": {
   "file": "stadium/flagpole.glb",
   "min": [
@@ -854,24 +849,7 @@
   "tris": 608,
   "kind": "prop",
   "group": "ground",
-  "collide": "none"
- },
- "stretcher": {
-  "file": "stadium/stretcher.glb",
-  "min": [
-   -1.100000023841858,
-   0.0,
-   -0.2750000059604645
-  ],
-  "max": [
-   1.100000023841858,
-   0.6324999928474426,
-   0.2750000059604645
-  ],
-  "tris": 646,
-  "kind": "prop",
-  "group": "street",
-  "collide": "none"
+  "collide": "box"
  },
  "tactics": {
   "file": "stadium/tactics.glb",
@@ -907,40 +885,6 @@
   "group": "ground",
   "collide": "none"
  },
- "ladder": {
-  "file": "stadium/ladder.glb",
-  "min": [
-   -0.5,
-   0.0,
-   -0.5
-  ],
-  "max": [
-   0.5,
-   0.6038058400154114,
-   0.5
-  ],
-  "tris": 614,
-  "kind": "prop",
-  "group": "ground",
-  "collide": "none"
- },
- "bags": {
-  "file": "stadium/bags.glb",
-  "min": [
-   -0.8016705513000488,
-   0.0,
-   -2.6480000019073486
-  ],
-  "max": [
-   0.8016705513000488,
-   0.24999596178531647,
-   2.6480000019073486
-  ],
-  "tris": 960,
-  "kind": "prop",
-  "group": "ground",
-  "collide": "none"
- },
  "hurdle": {
   "file": "stadium/hurdle.glb",
   "min": [
@@ -956,23 +900,6 @@
   "tris": 468,
   "kind": "prop",
   "group": "street",
-  "collide": "none"
- },
- "blocks": {
-  "file": "stadium/blocks.glb",
-  "min": [
-   -0.30000001192092896,
-   0.0,
-   -0.6000000238418579
-  ],
-  "max": [
-   0.30000001192092896,
-   0.2845878303050995,
-   0.6000000238418579
-  ],
-  "tris": 542,
-  "kind": "prop",
-  "group": "ground",
   "collide": "none"
  },
  "discus": {
@@ -1009,57 +936,6 @@
   "group": "street",
   "collide": "box"
  },
- "longjump": {
-  "file": "stadium/longjump.glb",
-  "min": [
-   -1.9499999284744263,
-   0.0,
-   -4.875
-  ],
-  "max": [
-   1.9499999284744263,
-   0.1664000004529953,
-   4.875
-  ],
-  "tris": 386,
-  "kind": "prop",
-  "group": "ground",
-  "collide": "none"
- },
- "shotput": {
-  "file": "stadium/shotput.glb",
-  "min": [
-   -1.4485008716583252,
-   0.0,
-   -1.4603981971740723
-  ],
-  "max": [
-   1.4485008716583252,
-   0.2892000079154968,
-   1.4603983163833618
-  ],
-  "tris": 354,
-  "kind": "prop",
-  "group": "ground",
-  "collide": "none"
- },
- "minibus": {
-  "file": "stadium/minibus.glb",
-  "min": [
-   -1.368499994277954,
-   0.0,
-   -3.1624999046325684
-  ],
-  "max": [
-   1.368499994277954,
-   2.757124900817871,
-   3.1624999046325684
-  ],
-  "tris": 2404,
-  "kind": "prop",
-  "group": "street",
-  "collide": "box"
- },
  "cornerflag": {
   "file": "stadium/cornerflag.glb",
   "min": [
@@ -1077,56 +953,226 @@
   "group": "street",
   "collide": "none"
  },
- "chain": {
-  "file": "stadium/chain.glb",
+ "parasol": {
+  "file": "stadium/parasol.glb",
   "min": [
-   -4.5,
+   -1.3578009605407715,
+   0.0,
+   -1.3578009605407715
+  ],
+  "max": [
+   1.3578009605407715,
+   2.687549591064453,
+   1.3578009605407715
+  ],
+  "tris": 660,
+  "kind": "prop",
+  "group": "street",
+  "collide": "cylinder"
+ },
+ "picnic": {
+  "file": "stadium/picnic.glb",
+  "min": [
+   -0.8999999761581421,
+   0.0,
+   -0.7549999952316284
+  ],
+  "max": [
+   0.8999999761581421,
+   0.75,
+   0.7549999952316284
+  ],
+  "tris": 484,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "ptoilet": {
+  "file": "stadium/ptoilet.glb",
+  "min": [
+   -0.6000000238418579,
+   0.0,
+   -0.6000000238418579
+  ],
+  "max": [
+   0.6000000238418579,
+   2.4800000190734863,
+   0.6000000238418579
+  ],
+  "tris": 836,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "generator": {
+  "file": "stadium/generator.glb",
+  "min": [
+   -1.25,
+   0.0,
+   -0.5130000114440918
+  ],
+  "max": [
+   1.25,
+   1.864139199256897,
+   0.5130000114440918
+  ],
+  "tris": 772,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "jersey": {
+  "file": "stadium/jersey.glb",
+  "min": [
+   -1.0,
+   0.0,
+   -0.3246957063674927
+  ],
+  "max": [
+   1.0,
+   0.800000011920929,
+   0.3246957063674927
+  ],
+  "tris": 508,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "waterbar": {
+  "file": "stadium/waterbar.glb",
+  "min": [
+   -2.0,
+   0.0,
+   -0.30000001192092896
+  ],
+  "max": [
+   2.0,
+   1.2350000143051147,
+   0.30000001192092896
+  ],
+  "tris": 749,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "stall": {
+  "file": "stadium/stall.glb",
+  "min": [
+   -1.5004934072494507,
+   0.0,
+   -1.5004934072494507
+  ],
+  "max": [
+   1.5004934072494507,
+   3.0,
+   1.5004934072494507
+  ],
+  "tris": 774,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "pallet": {
+  "file": "stadium/pallet.glb",
+  "min": [
+   -0.5199999809265137,
+   0.0,
+   -0.41999998688697815
+  ],
+  "max": [
+   0.5199999809265137,
+   1.2109999656677246,
+   0.41999998688697815
+  ],
+  "tris": 632,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "planter": {
+  "file": "stadium/planter.glb",
+  "min": [
+   -0.5,
+   0.0,
+   -0.5
+  ],
+  "max": [
+   0.5,
+   0.9008260369300842,
+   0.5
+  ],
+  "tris": 440,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "banner": {
+  "file": "stadium/banner.glb",
+  "min": [
+   -0.9200000166893005,
    0.0,
    -0.25
   ],
   "max": [
-   4.5,
-   2.3877642154693604,
+   0.9200000166893005,
+   5.0,
    0.25
   ],
-  "tris": 944,
+  "tris": 514,
+  "kind": "prop",
+  "group": "street",
+  "collide": "cylinder"
+ },
+ "fence": {
+  "file": "stadium/fence.glb",
+  "min": [
+   -2.0,
+   0.0,
+   -0.5407631993293762
+  ],
+  "max": [
+   2.0,
+   2.018777847290039,
+   0.5407631993293762
+  ],
+  "tris": 1522,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "shelter": {
+  "file": "stadium/shelter.glb",
+  "min": [
+   -4.0,
+   0.0,
+   -4.0
+  ],
+  "max": [
+   4.0,
+   6.299499988555908,
+   4.0
+  ],
+  "tris": 616,
   "kind": "prop",
   "group": "street",
   "collide": "none"
  },
- "medbag": {
-  "file": "stadium/medbag.glb",
+ "rail": {
+  "file": "stadium/rail.glb",
   "min": [
-   -0.32499998807907104,
+   -1.0,
    0.0,
-   -0.22554999589920044
+   -0.13858193159103394
   ],
   "max": [
-   0.32499998807907104,
-   0.5873479247093201,
-   0.22554999589920044
+   1.0,
+   1.0499999523162842,
+   0.13858193159103394
   ],
-  "tris": 702,
+  "tris": 596,
   "kind": "prop",
-  "group": "ground",
-  "collide": "none"
- },
- "yardmark": {
-  "file": "stadium/yardmark.glb",
-  "min": [
-   -0.2240000069141388,
-   0.0,
-   -0.18570926785469055
-  ],
-  "max": [
-   0.2240000069141388,
-   0.7272420525550842,
-   0.18570926785469055
-  ],
-  "tris": 470,
-  "kind": "prop",
-  "group": "ground",
-  "collide": "none"
+  "group": "street",
+  "collide": "box"
  },
  "oak": {
   "file": "stadium/oak.glb",
@@ -1196,19 +1242,87 @@
   "group": "bush",
   "collide": "none"
  },
- "parkbench": {
-  "file": "stadium/parkbench.glb",
+ "ad_red": {
+  "file": "stadium/ad_red.glb",
   "min": [
-   -1.034999966621399,
+   -3.0,
    0.0,
-   -0.30274128913879395
+   -0.6000000238418579
   ],
   "max": [
-   1.034999966621399,
-   1.034999966621399,
-   0.30274128913879395
+   3.0,
+   1.0,
+   0.10000000149011612
   ],
-  "tris": 564,
+  "tris": 600,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "ad_navy": {
+  "file": "stadium/ad_navy.glb",
+  "min": [
+   -3.0,
+   0.0,
+   -0.6000000238418579
+  ],
+  "max": [
+   3.0,
+   1.0,
+   0.10000000149011612
+  ],
+  "tris": 888,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "ad_gold": {
+  "file": "stadium/ad_gold.glb",
+  "min": [
+   -3.0,
+   0.0,
+   -0.6000000238418579
+  ],
+  "max": [
+   3.0,
+   1.0,
+   0.10000000149011612
+  ],
+  "tris": 576,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "sback_gate": {
+  "file": "stadium/sback_gate.glb",
+  "min": [
+   -3.0299999713897705,
+   0.0,
+   -0.44999998807907104
+  ],
+  "max": [
+   3.0,
+   6.949999809265137,
+   0.4000000059604645
+  ],
+  "tris": 1044,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "sback_wall": {
+  "file": "stadium/sback_wall.glb",
+  "min": [
+   -3.0299999713897705,
+   0.0,
+   -0.44999998807907104
+  ],
+  "max": [
+   3.0,
+   6.949999809265137,
+   0.3199999928474426
+  ],
+  "tris": 624,
   "kind": "prop",
   "group": "street",
   "collide": "box"

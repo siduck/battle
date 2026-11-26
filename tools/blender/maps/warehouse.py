@@ -23,7 +23,7 @@ REBAR = (0.46, 0.25, 0.13)
 STEEL = (0.34, 0.37, 0.42)
 DIRT = (0.36, 0.34, 0.31)
 CLAD = [(0.42, 0.5, 0.58), (0.38, 0.46, 0.54)]
-CLAD_B = [(0.72, 0.72, 0.7), (0.66, 0.66, 0.64)]
+CLAD_B = [(0.36, 0.48, 0.4), (0.32, 0.43, 0.36)]
 CLAD_C = [(0.56, 0.24, 0.18), (0.5, 0.21, 0.16)]
 ROOF = (0.5, 0.52, 0.54)
 UPRIGHT = (0.16, 0.34, 0.6)
@@ -47,13 +47,14 @@ class Mesh:
         self.solids = []
         self.rng = random.Random(7)
 
-    def box(self, a, b, c, bevel=0.0, solid=False, jitter=0.0):
+    def box(self, a, b, c, bevel=0.0, solid=False, jitter=0.0, skip=()):
         x0, y0, z0 = a
         x1, y1, z1 = b
         lo = (x0, -z1, y0)
         hi = (x1, -z0, y1)
         vs = [self.bm.verts.new((hi[0] if i & 1 else lo[0], hi[1] if i & 2 else lo[1], hi[2] if i & 4 else lo[2])) for i in range(8)]
-        quads = [(0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)]
+        named = {"bottom": (0, 2, 3, 1), "top": (4, 5, 7, 6), "zhi": (0, 1, 5, 4), "zlo": (2, 6, 7, 3), "xlo": (0, 4, 6, 2), "xhi": (1, 3, 7, 5)}
+        quads = [q for n, q in named.items() if n not in skip]
         fs = [self.bm.faces.new([vs[i] for i in q]) for q in quads]
 
         if jitter:
@@ -529,6 +530,10 @@ def decal(name, kind):
                 cx = side + math.sin(k * 0.4) * 0.1
                 c = (0.36, 0.3, 0.24) if k % 2 else (0.33, 0.27, 0.22)
                 flat_poly(m, [(cx - w0, z0), (cx + w0, z0), (cx + w0 * 0.9, z0 + 1.0), (cx - w0 * 0.9, z0 + 1.0)], 0.03, c)
+    elif kind == "lane":
+        flat_poly(m, [(-0.12, -1.5), (0.12, -1.5), (0.12, 1.5), (-0.12, 1.5)], 0.03, (0.86, 0.68, 0.14))
+    elif kind == "bay":
+        flat_poly(m, [(-0.08, -2.5), (0.08, -2.5), (0.08, 2.5), (-0.08, 2.5)], 0.03, (0.86, 0.86, 0.82))
     elif kind == "puddle":
         n = 16
         pts = []
@@ -791,7 +796,7 @@ def jersey():
 
 
 
-def clad_box(m, a, b, cols, along_x, rib=0.5):
+def clad_box(m, a, b, cols, along_x, rib=0.7, outside=0):
     x0, y0, z0 = a
     x1, y1, z1 = b
     m.box(a, b, cols[0])
@@ -804,8 +809,8 @@ def clad_box(m, a, b, cols, along_x, rib=0.5):
         while x < x1 - 0.1:
             e = min(x + rib * 0.5, x1)
 
-            for z in (z0 - 0.04, z1):
-                m.box((x, y0, z), (e, y1, z + 0.04), cols[k % 2] if k % 2 else (cols[0][0] * 0.9, cols[0][1] * 0.9, cols[0][2] * 0.9))
+            for z in ((z0 - 0.04,) if outside < 0 else (z1,) if outside > 0 else (z0 - 0.04, z1)):
+                m.box((x, y0, z), (e, y1, z + 0.04), cols[k % 2] if k % 2 else (cols[0][0] * 0.9, cols[0][1] * 0.9, cols[0][2] * 0.9), skip=("bottom", "top", "zhi" if z < z0 else "zlo"))
 
             x += rib
             k += 1
@@ -816,14 +821,14 @@ def clad_box(m, a, b, cols, along_x, rib=0.5):
         while z < z1 - 0.1:
             e = min(z + rib * 0.5, z1)
 
-            for x in (x0 - 0.04, x1):
-                m.box((x, y0, z), (x + 0.04, y1, e), (cols[0][0] * 0.9, cols[0][1] * 0.9, cols[0][2] * 0.9))
+            for x in ((x0 - 0.04,) if outside < 0 else (x1,) if outside > 0 else (x0 - 0.04, x1)):
+                m.box((x, y0, z), (x + 0.04, y1, e), (cols[0][0] * 0.9, cols[0][1] * 0.9, cols[0][2] * 0.9), skip=("bottom", "top", "xhi" if x < x0 else "xlo"))
 
             z += rib
             k += 1
 
 
-def wall_run(m, along_x, fixed0, fixed1, a0, a1, y0, y1, openings, cols):
+def wall_run(m, along_x, fixed0, fixed1, a0, a1, y0, y1, openings, cols, outside=0):
     cuts = sorted(openings)
     p = a0
 
@@ -842,9 +847,9 @@ def wall_run(m, along_x, fixed0, fixed1, a0, a1, y0, y1, openings, cols):
             m.solid(lo, (hi[0], split, hi[2]))
 
             if yb > split:
-                clad_box(m, (lo[0], split, lo[2]), hi, cols, along_x)
+                clad_box(m, (lo[0], split, lo[2]), hi, cols, along_x, outside=outside)
         else:
-            clad_box(m, lo, hi, cols, along_x)
+            clad_box(m, lo, hi, cols, along_x, outside=outside)
 
     for a, b, oy0, oy1, shut in cuts:
         seg(p, a, y0, y1)
@@ -856,9 +861,9 @@ def wall_run(m, along_x, fixed0, fixed1, a0, a1, y0, y1, openings, cols):
             m.box((a - 0.12, oy1, fixed0 - 0.1), (b + 0.12, oy1 + 0.45, fixed1 + 0.1), STEEL)
 
             if shut > 0:
-                for q in range(int(shut / 0.25)):
-                    yy = oy1 - (q + 1) * 0.25
-                    m.box((a, yy, (fixed0 + fixed1) / 2 - 0.03), (b, yy + 0.23, (fixed0 + fixed1) / 2 + 0.03), SHUTTER)
+                for q in range(int(shut / 0.4)):
+                    yy = oy1 - (q + 1) * 0.4
+                    m.box((a, yy, (fixed0 + fixed1) / 2 - 0.03), (b, yy + 0.37, (fixed0 + fixed1) / 2 + 0.03), SHUTTER)
 
                 m.solid((a, oy1 - shut, fixed0), (b, oy1, fixed1))
         else:
@@ -870,7 +875,242 @@ def wall_run(m, along_x, fixed0, fixed1, a0, a1, y0, y1, openings, cols):
     seg(p, a1, y0, y1)
 
 
-def shed(name, W, D, H, cols, docks, rear, mezz=True, seed=1):
+
+FONT = {
+    "A": ["010", "101", "111", "101", "101"],
+    "B": ["110", "101", "110", "101", "110"],
+    "C": ["011", "100", "100", "100", "011"],
+    "D": ["110", "101", "101", "101", "110"],
+    "E": ["111", "100", "110", "100", "111"],
+    "F": ["111", "100", "110", "100", "100"],
+    "G": ["011", "100", "101", "101", "011"],
+    "H": ["101", "101", "111", "101", "101"],
+    "I": ["111", "010", "010", "010", "111"],
+    "K": ["101", "101", "110", "101", "101"],
+    "L": ["100", "100", "100", "100", "111"],
+    "M": ["101", "111", "111", "101", "101"],
+    "N": ["111", "101", "101", "101", "101"],
+    "O": ["111", "101", "101", "101", "111"],
+    "P": ["110", "101", "110", "100", "100"],
+    "R": ["110", "101", "110", "101", "101"],
+    "S": ["011", "100", "010", "001", "110"],
+    "T": ["111", "010", "010", "010", "010"],
+    "U": ["101", "101", "101", "101", "111"],
+    "X": ["101", "101", "010", "101", "101"],
+    "Y": ["101", "101", "010", "010", "010"],
+    "0": ["111", "101", "101", "101", "111"],
+    "1": ["010", "110", "010", "010", "111"],
+    "2": ["110", "001", "010", "100", "111"],
+    "3": ["110", "001", "010", "001", "110"],
+    "4": ["101", "101", "111", "001", "001"],
+    "5": ["111", "100", "110", "001", "110"],
+    "6": ["011", "100", "111", "101", "111"],
+    "7": ["111", "001", "010", "010", "010"],
+    "8": ["111", "101", "111", "101", "111"],
+    "9": ["111", "101", "111", "001", "110"],
+    "-": ["000", "000", "111", "000", "000"],
+    " ": ["000", "000", "000", "000", "000"],
+}
+
+
+def text_width(s, px):
+    return (len(s) * 4 - 1) * px
+
+
+def face_box(m, o, right, normal, a0, a1, y0, y1, d0, d1, c):
+    pts = []
+
+    for a in (a0, a1):
+        for d in (d0, d1):
+            pts.append((o[0] + right[0] * a + normal[0] * d, o[1] + right[1] * a + normal[1] * d))
+
+    xs = [p[0] for p in pts]
+    zs = [p[1] for p in pts]
+    m.box((min(xs), y0, min(zs)), (max(xs), y1, max(zs)), c)
+
+
+def text(m, s, o, right, normal, y, px, c, depth=0.05):
+    a = 0.0
+
+    for ch in s:
+        g = FONT.get(ch, FONT[" "])
+
+        for r, row in enumerate(g):
+            yy = y + (4 - r) * px
+            col = 0
+
+            while col < 3:
+                if row[col] != "1":
+                    col += 1
+                    continue
+
+                e = col
+
+                while e < 3 and row[e] == "1":
+                    e += 1
+
+                face_box(m, o, right, normal, a + col * px, a + e * px, yy, yy + px, 0.0, depth, c)
+                col = e
+
+        a += 4 * px
+
+
+def sign(m, s, centre, right, normal, y, px, bg, fg, pad=None):
+    pad = pad if pad is not None else px * 1.2
+    w = text_width(s, px)
+    o = (centre[0] - right[0] * w / 2, centre[1] - right[1] * w / 2)
+    face_box(m, o, right, normal, -pad, w + pad, y - pad, y + 5 * px + pad, 0.0, 0.06, bg)
+    face_box(m, o, right, normal, -pad - 0.06, w + pad + 0.06, y - pad - 0.06, y + 5 * px + pad + 0.06, -0.01, 0.04, (bg[0] * 0.6, bg[1] * 0.6, bg[2] * 0.6))
+    text(m, s, (o[0] + normal[0] * 0.06, o[1] + normal[1] * 0.06), right, normal, y, px, fg)
+
+
+def steel_stair(m, x0, x1, z0, z1, y0, y1, c=(0.4, 0.43, 0.46)):
+    n = max(2, int(round((y1 - y0) / 0.25)))
+    run = (x1 - x0) / n
+    rise = (y1 - y0) / n
+
+    for i in range(n):
+        xa = x0 + run * i
+        xb = x0 + run * (i + 1)
+        m.box((min(xa, xb), y0 + rise * (i + 1) - 0.06, z0 + 0.06), (max(xa, xb), y0 + rise * (i + 1), z1 - 0.06), c)
+
+    for z in (z0, z1 - 0.08):
+        m.beam((x0, y0 + 0.1, z + 0.04), (x1, y1 - 0.05, z + 0.04), 0.08, 0.3, (0.3, 0.32, 0.34))
+        m.beam((x0, y0 + 1.0, z + 0.04), (x1, y1 + 1.0, z + 0.04), 0.05, 0.05, RAIL)
+
+        for i in range(0, n + 1, 4):
+            px = x0 + run * i
+            m.box((px - 0.025, y0 + rise * i, z + 0.015), (px + 0.025, y0 + rise * i + 1.0, z + 0.065), RAIL)
+
+    m.ramp((min(x0, x1), y0, z0), (max(x0, x1), y1, z1), "px" if x1 > x0 else "nx")
+
+
+def roof_strip(m, x, top, ridge, zeave, w, th, c, u0=0.0, u1=1.0):
+    m.beam((x, top + (ridge - top) * u0, zeave * (1 - u0)), (x, top + (ridge - top) * u1, zeave * (1 - u1)), w, th, c)
+
+
+def exterior(m, W, D, top, ridge, fl, cols, st, docks, rear, rng):
+    X0, X1, Z0, Z1 = -W / 2, W / 2, -D / 2, D / 2
+    trim = st["trim"]
+    dark = (cols[0][0] * 0.55, cols[0][1] * 0.55, cols[0][2] * 0.55)
+
+    for z, zo in ((Z0, -1), (Z1, 1)):
+        m.box((X0 - 0.12, top - 0.7, z - 0.1 if zo < 0 else z - 0.02), (X1 + 0.12, top + 0.05, z + 0.02 if zo < 0 else z + 0.1), trim)
+        m.box((X0 - 0.2, top - 0.1, z - 0.32 if zo < 0 else z + 0.08), (X1 + 0.2, top + 0.1, z - 0.08 if zo < 0 else z + 0.32), (0.3, 0.31, 0.33))
+
+    for x in (X0, X1):
+        for z in (Z0, Z1):
+            m.box((x - 0.14, fl, z - 0.14), (x + 0.14, top, z + 0.14), trim)
+
+    for z, zo in ((Z0, -1), (Z1, 1)):
+        x = X0 + 2.0
+
+        while x < X1 - 1:
+            zz = z + zo * 0.2
+            m.box((x - 0.07, 0.0, zz - 0.07), (x + 0.07, top, zz + 0.07), st.get("pipe", (0.3, 0.31, 0.33)))
+            m.box((x - 0.12, 0.0, zz - 0.12), (x + 0.12, 0.3, zz + 0.12), (0.3, 0.31, 0.33))
+            x += 16.0
+
+    for k in range(docks):
+        cx = X0 + W * (k + 0.5) / docks
+        y = fl + 4.62
+        m.box((cx - 2.05, fl, Z0 - 0.45), (cx - 1.8, fl + 4.6, Z0 - 0.02), (0.14, 0.14, 0.15))
+        m.box((cx + 1.8, fl, Z0 - 0.45), (cx + 2.05, fl + 4.6, Z0 - 0.02), (0.14, 0.14, 0.15))
+        m.box((cx - 2.05, fl + 4.45, Z0 - 0.45), (cx + 2.05, fl + 4.75, Z0 - 0.02), (0.14, 0.14, 0.15))
+        sign(m, "%02d" % (k + 1), (cx, Z0 - 0.48), (-1, 0), (0, -1), y + 0.35, 0.11, (0.95, 0.95, 0.92), (0.12, 0.13, 0.15), pad=0.1)
+        m.box((cx + 0.9, y + 0.3, Z0 - 0.6), (cx + 1.4, y + 0.5, Z0 - 0.1), (0.25, 0.26, 0.28))
+        m.box((cx + 0.95, y + 0.28, Z0 - 0.58), (cx + 1.35, y + 0.3, Z0 - 0.12), (1.0, 0.98, 0.86))
+
+    if st.get("canopy"):
+        cy = st["canopy"]
+        m.beam((X0 - 0.2, cy + 0.25, Z0 - 0.1), (X1 + 0.2, cy + 0.25, Z0 - 0.1), 0.1, 0.1, trim)
+        m.box((X0 - 0.2, cy - 0.12, Z0 - 3.9), (X1 + 0.2, cy + 0.05, Z0), (0.42, 0.44, 0.46))
+        m.box((X0 - 0.2, cy - 0.45, Z0 - 4.0), (X1 + 0.2, cy + 0.1, Z0 - 3.85), trim)
+        x = X0 + 8
+
+        while x < X1 - 1:
+            m.beam((x, cy - 0.12, Z0 - 3.6), (x, cy - 1.8, Z0 - 0.05), 0.12, 0.12, (0.3, 0.31, 0.33))
+            x += 8
+
+    sx = st.get("sign_x", 0.0)
+    sy = st["sign_y"]
+    sign(m, st["sign"], (sx, Z0 - 0.12), (-1, 0), (0, -1), sy, st["sign_px"], st["sign_bg"], st["sign_fg"])
+
+    if st.get("rear_sign"):
+        sign(m, st["rear_sign"], (0.0, Z1 + 0.12), (1, 0), (0, 1), sy, st["sign_px"], st["sign_bg"], st["sign_fg"])
+
+    gx = X1 + 0.06
+    letter = st.get("gable")
+
+    if letter:
+        sign(m, letter, (gx, 0.0), (0, -1), (1, 0), top - 2.6, 0.55, st["sign_bg"], st["sign_fg"], pad=0.5)
+        sign(m, letter, (X0 - 0.06, 0.0), (0, 1), (-1, 0), top - 2.6, 0.55, st["sign_bg"], st["sign_fg"], pad=0.5)
+
+    for x in (X0 - 0.06, X1 + 0.06):
+        sgn = 1 if x > 0 else -1
+
+        for k in range(5):
+            y = fl + 3.0 + k * 0.22
+            m.box((x - 0.06 if sgn > 0 else x - 0.08, y, D / 4 - 1.0), (x + 0.08 if sgn > 0 else x + 0.06, y + 0.12, D / 4 + 1.0), (0.3, 0.31, 0.33))
+
+        m.box((x - 0.04, fl + 2.9, D / 4 - 1.1), (x + 0.04, fl + 4.1, D / 4 + 1.1), (0.5, 0.52, 0.54))
+        m.box((x - 0.05 if sgn > 0 else x - 1.3, fl + 2.7, -1.3), (x + 1.3 if sgn > 0 else x + 0.05, fl + 2.85, 1.3), (0.36, 0.38, 0.4))
+
+    n = int(W)
+
+    for side in (-1, 1):
+        zeave = (Z0 - 0.4) if side < 0 else (Z1 + 0.4)
+
+        for i in range(n):
+            x = X0 + 0.5 + i
+
+            if i % 3 == 0:
+                roof_strip(m, x, top, ridge, zeave, 0.07, 0.24, st.get("roof_rib", (0.4, 0.42, 0.44)))
+
+        x = X0 + 6
+
+        while x < X1 - 4:
+            roof_strip(m, x, top, ridge, zeave, 1.4, 0.26, (0.72, 0.8, 0.84), 0.2, 0.8)
+            x += 10
+
+    x = X0 + 6
+
+    while x < X1 - 4:
+        m.box((x - 0.5, ridge + 0.1, -0.5), (x + 0.5, ridge + 0.6, 0.5), (0.55, 0.57, 0.6))
+        m.box((x - 0.6, ridge + 0.6, -0.6), (x + 0.6, ridge + 0.7, 0.6), (0.4, 0.42, 0.44))
+        x += 12
+
+    if st.get("office"):
+        ox0 = X0 + W / (2 * max(rear, 1)) + 3
+        ox1 = ox0 + st["office"]
+
+        m.box((ox0 - 0.4, fl + 0.6, Z1), (ox1 + 0.2, fl + 6.4, Z1 + 0.07), (0.84, 0.84, 0.8), skip=("zlo",))
+
+        for y0 in (fl + 1.0, fl + 4.6):
+            x = ox0
+
+            while x + 1.6 <= ox1:
+                m.box((x, y0 - 0.1, Z1 - 0.02), (x + 1.6, y0 + 1.4, Z1 + 0.08), (0.62, 0.64, 0.66))
+                m.box((x + 0.1, y0, Z1 + 0.08), (x + 1.5, y0 + 1.2, Z1 + 0.1), (0.22, 0.32, 0.4))
+                m.box((x + 0.78, y0, Z1 + 0.08), (x + 0.82, y0 + 1.2, Z1 + 0.12), (0.9, 0.9, 0.88))
+                x += 2.0
+
+        sx0 = ox1 + 1.0
+        ly = fl + 4.0
+        m.box((sx0 + 6.0, ly - 0.2, Z1), (sx0 + 8.0, ly, Z1 + 1.6), (0.4, 0.43, 0.46))
+        m.solid((sx0 + 6.0, ly - 0.2, Z1), (sx0 + 8.0, ly, Z1 + 1.6))
+        rail_run(m, sx0 + 8.0, Z1, sx0 + 8.0, Z1 + 1.6, ly)
+        rail_run(m, sx0 + 6.0, Z1 + 1.6, sx0 + 8.0, Z1 + 1.6, ly, solid=False)
+
+        for px in (sx0 + 6.1, sx0 + 7.9):
+            m.box((px - 0.05, 0.0, Z1 + 1.45), (px + 0.05, ly - 0.2, Z1 + 1.55), (0.3, 0.32, 0.34))
+
+        m.box((sx0 + 6.4, ly, Z1 - 0.02), (sx0 + 7.6, ly + 2.2, Z1 + 0.06), (0.86, 0.86, 0.84))
+        m.box((sx0 + 6.5, ly, Z1 + 0.06), (sx0 + 7.5, ly + 2.1, Z1 + 0.09), (0.3, 0.42, 0.5))
+        steel_stair(m, sx0, sx0 + 6.0, Z1 + 0.05, Z1 + 1.25, 0.0, ly)
+
+
+def shed(name, W, D, H, cols, docks, rear, mezz=True, seed=1, st=None):
     reset()
     m = Mesh()
     rng = random.Random(seed)
@@ -882,10 +1122,7 @@ def shed(name, W, D, H, cols, docks, rear, mezz=True, seed=1):
     m.box((X0 - 0.3, -1.0, Z0 - 0.3), (X1 + 0.3, fl, Z1 + 0.3), CONCRETE_D, bevel=0.04)
     m.solid((X0 - 0.3, -1.0, Z0 - 0.3), (X1 + 0.3, fl, Z1 + 0.3))
 
-    for gx in range(int(W / 6)):
-        for gz in range(int(D / 6)):
-            c = FLOORC if (gx + gz) % 2 else (0.54, 0.54, 0.52)
-            m.box((X0 + gx * 6 + 0.05, fl, Z0 + gz * 6 + 0.05), (X0 + gx * 6 + 5.95, fl + 0.01, Z0 + gz * 6 + 5.95), c)
+    m.box((X0 + 0.3, fl, Z0 + 0.3), (X1 - 0.3, fl + 0.01, Z1 - 0.3), FLOORC, skip=("bottom",))
 
     for z in (-2.2, 2.2):
         m.box((X0 + 1, fl + 0.01, z - 0.08), (X1 - 1, fl + 0.015, z + 0.08), HAZARD)
@@ -914,16 +1151,16 @@ def shed(name, W, D, H, cols, docks, rear, mezz=True, seed=1):
         shut = rng.choice([0.0, 0.0, 1.6, 2.4])
         ops.append((cx - 1.8, cx + 1.8, fl, fl + 4.4, shut))
 
-    wall_run(m, True, Z0, Z0 + t, X0, X1, fl, top, ops, cols)
+    wall_run(m, True, Z0, Z0 + t, X0, X1, fl, top, ops, cols, outside=-1)
     rops = []
 
     for k in range(rear):
         cx = X0 + W * (k + 0.5) / rear
         rops.append((cx - 1.0, cx + 1.0, fl, fl + 2.6, 0.0))
 
-    wall_run(m, True, Z1 - t, Z1, X0, X1, fl, top, rops, cols)
-    wall_run(m, False, X0, X0 + t, Z0 + t, Z1 - t, fl, top, [(-1.0, 1.0, fl, fl + 2.6, 0.0)], cols)
-    wall_run(m, False, X1 - t, X1, Z0 + t, Z1 - t, fl, top, [], cols)
+    wall_run(m, True, Z1 - t, Z1, X0, X1, fl, top, rops, cols, outside=1)
+    wall_run(m, False, X0, X0 + t, Z0 + t, Z1 - t, fl, top, [(-1.0, 1.0, fl, fl + 2.6, 0.0)], cols, outside=-1)
+    wall_run(m, False, X1 - t, X1, Z0 + t, Z1 - t, fl, top, [], cols, outside=1)
 
     for k in range(rear):
         cx = X0 + W * (k + 0.5) / rear
@@ -1021,7 +1258,10 @@ def shed(name, W, D, H, cols, docks, rear, mezz=True, seed=1):
             m.box((x + 0.4, fl + 1.0, Z1 - 3.02), (x + 2.4, fl + 2.0, Z1 - 3.0), (0.2, 0.3, 0.36))
             m.solid((x, fl, Z1 - 3.0), (x + 2.8, fl + 2.6, Z1 - t))
 
-    return finish(m, name, size=2.4, reach=4.0, strength=0.85)
+    if st:
+        exterior(m, W, D, top, ridge, fl, cols, st, docks, rear, rng)
+
+    return finish(m, name, size=0, reach=2.0, strength=0.6)
 
 
 def rack(name, full=True, seed=1):
@@ -1066,6 +1306,49 @@ def rack(name, full=True, seed=1):
     return finish(m, name, size=0, reach=1.6, strength=0.8)
 
 
+def cartons(name, seed):
+    reset()
+    m = Mesh()
+    rng = random.Random(seed)
+    m.box((-0.6, 0.0, -0.5), (0.6, 0.04, 0.5), BOARD[0])
+
+    for x in (-0.55, -0.05, 0.45):
+        m.box((x, 0.04, -0.5), (x + 0.1, 0.11, 0.5), BOARD[1], skip=("bottom",))
+
+    m.box((-0.6, 0.11, -0.5), (0.6, 0.15, 0.5), BOARD[2], skip=("bottom",))
+    browns = [(0.66, 0.5, 0.32), (0.72, 0.56, 0.36), (0.6, 0.45, 0.28), (0.76, 0.62, 0.42)]
+    y = 0.15
+    top = 0.0
+
+    for layer in range(rng.randint(2, 3)):
+        h = rng.uniform(0.32, 0.42)
+        cols = 2 if rng.random() < 0.6 else 3
+        w = 1.16 / cols
+        rows = 2
+
+        for i in range(cols):
+            for j in range(rows):
+                if layer > 0 and rng.random() < 0.15:
+                    continue
+
+                x0 = -0.58 + i * w + 0.01
+                z0 = -0.48 + j * 0.48 + 0.01
+                c = rng.choice(browns)
+                hh = h * rng.uniform(0.92, 1.0)
+                m.box((x0, y, z0), (x0 + w - 0.02, y + hh, z0 + 0.46), c, skip=("bottom",))
+                m.box((x0 + w / 2 - 0.04, y + hh, z0), (x0 + w / 2 + 0.04, y + hh + 0.005, z0 + 0.46), (0.82, 0.7, 0.5), skip=("bottom",))
+
+                if rng.random() < 0.4:
+                    m.box((x0 + 0.08, y + hh * 0.4, z0 - 0.005), (x0 + 0.26, y + hh * 0.7, z0), (0.92, 0.92, 0.9), skip=("zhi",))
+
+        y += h
+        top = y
+
+    m.solid((-0.6, 0.0, -0.5), (0.6, top, 0.5))
+
+    return finish(m, name, size=0, reach=0.6, strength=0.5)
+
+
 def mast(name):
     reset()
     m = Mesh()
@@ -1087,15 +1370,33 @@ PROPS = [
     ("pallet", "timber-eur-pallet-a1f655", {}),
     ("tote", "ibc-tote-88385a", {}),
     ("barrier", "pedestrian-safety-barrier-run-2afeca", {}),
-    ("cage", "roll-cage-trolley-0ccae7", {}),
-    ("jack", "manual-pallet-jack-1a842e", {"collide": "none"}),
     ("bumper", "dock-bumper-94978d", {"collide": "none"}),
-    ("film", "hand-stretch-film-roll-0e602d", {"collide": "none"}),
     ("sign", "hanging-aisle-sign-0b372d", {"collide": "none"}),
     ("bench", "packing-bench-302f02", {}),
-    ("scale", "pallet-floor-scale-2bdf24", {"collide": "none"}),
-    ("guard", "rack-end-guard-98aff9", {}),
-    ("ladder", "rolling-warehouse-step-ladder-9ed8b2", {}),
+]
+
+DX = os.path.expanduser("~/.cache/polyfork/depotx/")
+CX = os.path.expanduser("~/.cache/polyfork/construction/")
+AX = os.path.expanduser("~/.cache/polyfork/airport/")
+
+BUILDS = [
+    ("cargo", AX + "cargo-shed-bcb2a8.glb", 1.25),
+    ("brick", DX + "brick-depot-warehouse-3dd642.glb", 1.6),
+]
+
+EXTRA = [
+    ("cabin", CX + "site-cabin-e9ee10.glb", {"scale": 1.0, "group": "building"}),
+    ("fueltank", DX + "depot-fuel-tank-55a00e.glb", {"scale": 1.2, "group": "building"}),
+    ("crate", DX + "cargo-crate-9afc44.glb", {"scale": 1.4}),
+    ("skip", CX + "builder-s-skip-191d35.glb", {"scale": 1.1}),
+    ("orange", CX + "crash-barrier-run-b47d1d.glb", {"scale": 1.0}),
+    ("precast", CX + "precast-concrete-stack-8945ac.glb", {"scale": 1.0}),
+    ("dumpy", CX + "builder-s-dumpy-bag-89fd1b.glb", {"scale": 1.1}),
+    ("pdrum", DX + "plastic-drum-da992f.glb", {"scale": 1.1, "collide": "cylinder"}),
+    ("tubes", CX + "scaffold-material-stack-836dd2.glb", {"scale": 1.0}),
+    ("gantry", CX + "loading-gantry-34460f.glb", {"scale": 1.2, "group": "building"}),
+    ("cone", CX + "site-traffic-cone-d3ce94.glb", {"scale": 1.0, "collide": "none"}),
+    ("carton", DX + "cardboard-delivery-box-59cc68.glb", {"scale": 0.7, "collide": "none"}),
 ]
 
 XPROPS = [
@@ -1105,7 +1406,6 @@ XPROPS = [
     ("light", "cobra-head-street-light-3e25b8", {"collide": "cylinder"}),
     ("booth", "campus-coffee-kiosk-ec2395", {}),
     ("fence", "mesh-fence-panel-11d4e2", {}),
-    ("bollard", "illuminated-bollard-9af752", {"collide": "cylinder"}),
     ("genset", "standby-generator-enclosure-9d48f6", {"k": "decross"}),
     ("tank", "fuel-tank-3a0111", {"scale": 1.6}),
     ("htank", "horizontal-tank-6e9b8b", {"scale": 1.8}),
@@ -1124,9 +1424,9 @@ def main():
 
     infos = {}
     builds = [
-        lambda: shed("shed_a", 64, 32, 9.0, CLAD, 8, 2, seed=3),
-        lambda: shed("shed_b", 48, 28, 8.0, CLAD_B, 6, 1, seed=5),
-        lambda: shed("shed_c", 72, 24, 7.5, CLAD_C, 9, 2, mezz=False, seed=9),
+        lambda: shed("shed_a", 64, 32, 9.0, CLAD, 8, 2, seed=3, st=dict(trim=(0.9, 0.9, 0.87), sign="DEPOT 1", sign_y=7.9, sign_px=0.24, sign_x=-14.0, sign_bg=(0.92, 0.92, 0.9), sign_fg=(0.14, 0.26, 0.46), rear_sign="DEPOT 1", gable="1", canopy=7.25, office=10, pipe=(0.86, 0.86, 0.84))),
+        lambda: shed("shed_b", 48, 28, 8.0, CLAD_B, 6, 1, seed=5, st=dict(trim=(0.2, 0.22, 0.24), sign="COLD STORE", sign_y=7.35, sign_px=0.18, sign_x=8.0, sign_bg=(0.94, 0.94, 0.92), sign_fg=(0.16, 0.36, 0.26), rear_sign="COLD STORE", gable="2", canopy=7.0, office=8, roof_rib=(0.3, 0.32, 0.34))),
+        lambda: shed("shed_c", 72, 24, 7.5, CLAD_C, 9, 2, mezz=False, seed=9, st=dict(trim=(0.88, 0.86, 0.8), sign="DEPOT 3", sign_y=6.7, sign_px=0.2, sign_x=-20.0, sign_bg=(0.9, 0.88, 0.82), sign_fg=(0.5, 0.16, 0.12), rear_sign="DISPATCH", gable="3", office=10, pipe=(0.88, 0.86, 0.8))),
         lambda: rack("rack", True, 2),
         lambda: rack("rack_half", False, 4),
         lambda: container("box_red", (0.66, 0.22, 0.14)),
@@ -1136,13 +1436,15 @@ def main():
         drums,
         jersey,
         lambda: mast("mast"),
+        lambda: cartons("cartons", 4),
+        lambda: cartons("cartons_b", 11),
     ]
 
     for fn in builds:
         info = fn()
         infos[info["file"].split("/")[-1][:-4]] = info
 
-    for name, kind in (("puddle", "puddle"), ("tracks", "tracks")):
+    for name, kind in (("puddle", "puddle"), ("tracks", "tracks"), ("lane", "lane"), ("bay", "bay")):
         infos[name] = decal(name, kind)
 
     for name, src, opts in PROPS:
@@ -1150,6 +1452,13 @@ def main():
 
     for name, src, opts in XPROPS:
         infos[name] = kitprop(name, os.path.join(LX, src + ".glb"), **opts)
+
+    for name, src, opts in EXTRA:
+        infos[name] = kitprop(name, src, **opts)
+
+    for name, src, sc in BUILDS:
+        reset()
+        infos[name] = pf.make_building(name, src, scale=sc, plinth=CONCRETE_D)
 
     path = os.path.join(root, "src/shared/maps", "warehouse_kit.zig")
     emit_zig("warehouse", infos, path)

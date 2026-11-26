@@ -38,7 +38,7 @@ pub const def: api.Def = .{
     },
     .backdrop = .{ 120, 150, 100 },
     .grip = 0.86,
-    .tufts = 0.6,
+    .tufts = 0.15,
 };
 
 const cell: f32 = 2;
@@ -186,6 +186,62 @@ fn height(x: f32, z: f32) f32 {
     return h + m * m * (20 + 30 * ridged + 6 * n2);
 }
 
+fn turf(x: f32, z: f32, w: f32) [3]f32 {
+    const band = @mod(@floor(x / w), 2);
+    const check = @mod(@floor(z / (w * 1.6)), 2);
+    const wear = t.fbm(x * 0.09 + 4, z * 0.09 - 2);
+    var c: [3]f32 = if (band < 1) .{ 70, 134, 46 } else .{ 96, 160, 58 };
+
+    c = mix3(c, if (check < 1) [3]f32{ 62, 124, 42 } else [3]f32{ 104, 166, 62 }, 0.18);
+    c = mix3(c, .{ 128, 148, 72 }, t.smooth(0.62, 0.8, wear) * 0.3);
+
+    return c;
+}
+
+const islands = [_][2]f32{ .{ 30, -116 }, .{ 92, -116 }, .{ 30, -138 }, .{ 92, -138 }, .{ -30, -116 }, .{ -92, -116 }, .{ -30, -138 }, .{ -92, -138 } };
+
+fn fanLane(x: f32) bool {
+    return @abs(x) < 7 or @abs(@abs(x) - 61) < 3.6;
+}
+
+fn walkBand(z: f32) bool {
+    return @abs(z + 106) < 2.6 or @abs(z + 127) < 2.6;
+}
+
+fn island(x: f32, z: f32, pad: f32) bool {
+    for (islands) |q| {
+        if (@abs(x - q[0]) < 6 + pad and @abs(z - q[1]) < 3.2 + pad) return true;
+    }
+
+    return false;
+}
+
+fn plaza(x: f32, z: f32) [3]f32 {
+    const fx = x / 2 - @floor(x / 2);
+    const fz = z / 2 - @floor(z / 2);
+    const joint = fx < 0.05 or fz < 0.05;
+    const slab = @mod(@floor(x / 2) * 3 + @floor(z / 2) * 7, 5) / 5;
+    var c = mix3(.{ 176, 172, 162 }, .{ 158, 154, 146 }, slab * 0.8 + t.fbm(x * 0.15, z * 0.15) * 0.2);
+
+    if (fanLane(x) or walkBand(z)) {
+        const brick = @mod(@floor(x / 1.2) + @floor(z / 0.6), 2);
+
+        c = if (brick < 1) .{ 132, 88, 74 } else .{ 120, 80, 68 };
+
+        if (!walkBand(z) and (@abs(@abs(x) - 6.8) < 0.2 or @abs(@abs(@abs(x) - 61) - 3.4) < 0.2)) c = .{ 190, 186, 176 };
+    } else if (joint) {
+        c = mix3(c, .{ 110, 106, 100 }, 0.6);
+    }
+
+    if (walkBand(z) and !fanLane(x) and (@abs(@abs(z + 106) - 2.4) < 0.2 or @abs(@abs(z + 127) - 2.4) < 0.2)) c = .{ 190, 186, 176 };
+
+    if (island(x, z, 0.35)) c = .{ 196, 192, 182 };
+
+    if (island(x, z, 0)) c = mix3(.{ 84, 140, 52 }, .{ 108, 156, 60 }, t.fbm(x * 0.4, z * 0.4));
+
+    return c;
+}
+
 fn ground(x: f32, z: f32) api.Rgb {
     const n = t.normal(x, z);
     const slope = 1 - n.y;
@@ -202,40 +258,33 @@ fn ground(x: f32, z: f32) api.Rgb {
     const od = ovalDist(x, z);
 
     if (@abs(x) < pitch_x + 3 and @abs(z) < pitch_z + 3) {
-        const band = @mod(@floor((x + pitch_x) / 5.25), 2);
-
-        c = if (band < 1) .{ 70, 146, 110 } else .{ 84, 162, 122 };
+        c = turf(x, z, 5.25);
     } else if (od < track_out and od > track_in - 0.5) {
         c = mix3(.{ 176, 82, 60 }, .{ 164, 74, 56 }, t.fbm(x * 0.3, z * 0.3));
     } else if (od < track_in) {
-        c = .{ 80, 150, 112 };
+        c = mix3(.{ 92, 146, 56 }, .{ 102, 154, 60 }, t.fbm(x * 0.2, z * 0.2));
     } else if (@abs(x) < 101 and z > -80 and z < 110) {
         const tile = @mod(@floor(x / 4) + @floor(z / 4), 2);
 
         c = if (tile < 1) .{ 168, 166, 158 } else .{ 156, 154, 148 };
     }
 
-    if (inBox(x, z, -130, -150, 130, -82)) {
-        c = mix3(.{ 150, 144, 132 }, .{ 136, 130, 120 }, t.fbm(x * 0.2, z * 0.2));
-    }
+    if (inBox(x, z, -130, -150, 130, -82)) c = plaza(x, z);
 
     if (inBox(x, z, 104, -58, 196, 52)) {
-        const lane = @abs(z + 3) < 6;
+        const od2 = @sqrt(@max(@abs(x - 150) - 26, 0) * @max(@abs(x - 150) - 26, 0) + (z + 3) * (z + 3));
 
-        c = if (lane) .{ 176, 84, 62 } else c;
+        if (od2 < 26 and od2 > 20) c = mix3(.{ 176, 84, 62 }, .{ 164, 76, 58 }, t.fbm(x * 0.3, z * 0.3));
+        if (od2 <= 20) c = turf(x - 150, z, 4);
     }
 
     for ([_][2]f32{ .{ 110, 110 }, .{ 160, 110 } }) |p| {
-        if (inBox(x, z, p[0] - 18, p[1] - 28, p[0] + 18, p[1] + 28)) {
-            const band = @mod(@floor((z - p[1]) / 5), 2);
-
-            c = if (band < 1) .{ 74, 148, 112 } else .{ 86, 160, 120 };
-        }
+        if (inBox(x, z, p[0] - 19, p[1] - 29, p[0] + 19, p[1] + 29)) c = turf(z - p[1] + 100, x, 4);
     }
 
     const pd = trailDist(x, z);
 
-    c = mix3(c, .{ 132, 132, 134 }, 1 - t.smooth(3, 4.5, pd));
+    if (!inBox(x, z, -130, -150, 130, -84)) c = mix3(c, .{ 132, 132, 134 }, 1 - t.smooth(3, 4.5, pd));
 
     const rock = mix3(.{ 112, 110, 104 }, .{ 140, 136, 126 }, t.fbm(x * 0.15, z * 0.4));
 
@@ -306,14 +355,32 @@ fn scatterIn(b: *Builder, kinds: []const K, n: usize, cx: f32, cz: f32, r: f32, 
     }
 }
 
-fn line(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
+fn dash(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
     const y = t.height((x0 + x1) / 2, (z0 + z1) / 2);
 
-    b.deco(vec(@min(x0, x1) - 0.08, y + 0.02, @min(z0, z1) - 0.08), vec(@max(x0, x1) + 0.08, y + 0.05, @max(z0, z1) + 0.08), .flag_cloth);
+    b.deco(vec(@min(x0, x1) - 0.07, y + 0.02, @min(z0, z1) - 0.07), vec(@max(x0, x1) + 0.07, y + 0.05, @max(z0, z1) + 0.07), .flag_cloth);
+}
+
+fn line(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+
+    if (@abs(dx) < 0.05 or @abs(dz) < 0.05) return dash(b, x0, z0, x1, z1);
+
+    const len = @sqrt(dx * dx + dz * dz);
+    const n: usize = @intFromFloat(@ceil(len / 0.3));
+    var i: usize = 0;
+
+    while (i < n) : (i += 1) {
+        const ua = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(n));
+        const ub = @as(f32, @floatFromInt(i + 1)) / @as(f32, @floatFromInt(n));
+
+        dash(b, x0 + dx * ua, z0 + dz * ua, x0 + dx * ub, z0 + dz * ub);
+    }
 }
 
 fn ring(b: *Builder, cx: f32, cz: f32, r: f32, a0: f32, a1: f32) void {
-    const n: usize = 16;
+    const n: usize = @intFromFloat(@max(8, @ceil(@abs(a1 - a0) * r / 2)));
     var i: usize = 0;
 
     while (i < n) : (i += 1) {
@@ -331,6 +398,7 @@ fn pitchLines(b: *Builder) void {
     line(b, pitch_x, -pitch_z, pitch_x, pitch_z);
     line(b, 0, -pitch_z, 0, pitch_z);
     ring(b, 0, 0, 9.15, 0, std.math.tau);
+    line(b, -0.2, -0.2, 0.2, 0.2);
 
     for ([_]f32{ -1, 1 }) |s| {
         const gx = s * pitch_x;
@@ -343,6 +411,9 @@ fn pitchLines(b: *Builder) void {
         line(b, sx, -9.16, sx, 9.16);
         line(b, gx, -9.16, sx, -9.16);
         line(b, gx, 9.16, sx, 9.16);
+        line(b, gx - s * 11 - 0.15, -0.15, gx - s * 11 + 0.15, 0.15);
+
+        if (s > 0) ring(b, gx - 11, 0, 9.15, std.math.pi - 0.927, std.math.pi + 0.927) else ring(b, gx + 11, 0, 9.15, -0.927, 0.927);
         b.putAt(kit.of(.goal), vec(gx + s * 1, t.height(gx, 0), 0), -s * hp, 1);
     }
 
@@ -353,8 +424,11 @@ fn pitchLines(b: *Builder) void {
     while (lane < track_out) : (lane += 1.5) {
         line(b, -46, -lane, 46, -lane);
         line(b, -46, lane, 46, lane);
-        ring(b, 46, 0, lane, -hp, hp);
-        ring(b, -46, 0, lane, hp, 3 * hp);
+
+        if (lane < track_in + 2 or lane > track_out - 2) {
+            ring(b, 46, 0, lane, -hp, hp);
+            ring(b, -46, 0, lane, hp, 3 * hp);
+        }
     }
 }
 
@@ -405,6 +479,52 @@ fn terraceRow(b: *Builder, xf: f32, side: f32, z0: f32, z1: f32) void {
     api.box(b, @min(back, back + side * 0.4), y - 1, z0, @max(back, back + side * 0.4), y + 8, z1);
 }
 
+const ads = [_]K{ .ad_red, .ad_navy, .ad_gold };
+
+fn ad(i: usize) K {
+    return ads[i % ads.len];
+}
+
+const Spot = struct { e: K, x: f32, z: f32, yaw: f32, s: f32 = 1 };
+
+fn spots(b: *Builder, list: []const Spot, ox: f32, oz: f32, mirror: bool) void {
+    for (list) |p| {
+        put(b, p.e, ox + p.x, oz + p.z, p.yaw, p.s);
+        claim(ox + p.x, oz + p.z, 1.5);
+
+        if (mirror) {
+            put(b, p.e, ox - p.x, oz - p.z, p.yaw + std.math.pi, p.s);
+            claim(ox - p.x, oz - p.z, 1.5);
+        }
+    }
+}
+
+fn boardsX(b: *Builder, x0: f32, x1: f32, z: f32, yaw: f32, s: f32, skip: []const f32, seed: usize) void {
+    const step = 6 * s;
+    var x = x0 + step / 2;
+    var i: usize = seed;
+
+    outer: while (x < x1) : (x += step) {
+        for (skip) |q| if (@abs(x - q) < step / 2) continue :outer;
+
+        put(b, ad(i), x, z, yaw, s);
+        i += 1;
+    }
+}
+
+fn boardsZ(b: *Builder, z0: f32, z1: f32, x: f32, yaw: f32, s: f32, skip: []const f32, seed: usize) void {
+    const step = 6 * s;
+    var z = z0 + step / 2;
+    var i: usize = seed;
+
+    outer: while (z < z1) : (z += step) {
+        for (skip) |q| if (@abs(z - q) < step / 2) continue :outer;
+
+        put(b, ad(i), x, z, yaw, s);
+        i += 1;
+    }
+}
+
 fn bowl(b: *Builder) void {
     standRow(b, -stand_x, -6, -stand_front, -1, true);
     standRow(b, 6, stand_x, -stand_front, -1, true);
@@ -419,23 +539,10 @@ fn bowl(b: *Builder) void {
         claim(p[0], p[1], 3);
     }
 
-    var x: f32 = -pitch_x + 2;
-
-    while (x < pitch_x - 1) : (x += 1.4) {
-        if (@mod(x + pitch_x, 16) < 3) continue;
-
-        put(b, .hoarding, x, -pitch_z - 3, 0, 1);
-        put(b, .hoarding, x, pitch_z + 3, std.math.pi, 1);
-    }
-
-    var z: f32 = -pitch_z + 2;
-
-    while (z < pitch_z - 1) : (z += 1.4) {
-        if (@abs(z) < 6 or @mod(z + pitch_z, 12) < 3) continue;
-
-        put(b, .hoarding, -pitch_x - 4, z, hp, 1);
-        put(b, .hoarding, pitch_x + 4, z, -hp, 1);
-    }
+    boardsX(b, -48, 48, -pitch_z - 3, 0, 1, &.{ -27, 0, 27 }, 0);
+    boardsX(b, -48, 48, pitch_z + 3, std.math.pi, 1, &.{ -27, 27 }, 1);
+    boardsZ(b, -30, 30, -pitch_x - 4, hp, 1, &.{ -15, 15 }, 2);
+    boardsZ(b, -30, 30, pitch_x + 4, -hp, 1, &.{ -15, 15 }, 0);
 
     put(b, .dugout, -12, pitch_z + 6.5, std.math.pi, 1);
     put(b, .dugout, 12, pitch_z + 6.5, std.math.pi, 1);
@@ -443,108 +550,159 @@ fn bowl(b: *Builder) void {
     put(b, .bench, 20, pitch_z + 6, std.math.pi, 1);
     put(b, .scoreboard, end_front - 4, 36, -hp - 0.4, 1);
     put(b, .scoreboard, -end_front + 4, -36, hp - 0.4, 1);
-    put(b, .clock, -end_front + 3, 34, hp, 1);
+
+    for ([_][3]f32{ .{ -36, pitch_z + 6.2, 0 }, .{ 36, pitch_z + 6.2, 0 }, .{ -30, -pitch_z - 6.2, 0 }, .{ 30, -pitch_z - 6.2, 0 } }) |p| {
+        put(b, .crate, p[0], p[1], p[2], 1);
+        put(b, .crate, p[0] + 0.8, p[1] + 0.1, 0.3, 1);
+        put(b, .kitbag, p[0] - 1.2, p[1], 1.2, 1);
+    }
+}
+
+fn facade(b: *Builder, x: f32, z: f32, yaw: f32, gate: bool) void {
+    const y = t.height(x, z) - 0.1;
+
+    b.putAt(kit.of(if (gate) .sback_gate else .sback_wall), vec(x, y, z), yaw, 1);
 }
 
 fn standBacks(b: *Builder) void {
-    const back = stand_front + stand_depth + 1.4;
-    var x: f32 = -stand_x + 3;
+    const zb = stand_front + stand_depth + 0.75;
     var i: usize = 0;
+    var x: f32 = -57;
 
-    while (x < stand_x - 2) : (x += 6) {
-        if (@abs(x) < 9) continue;
+    while (x < 58) : (x += 6) {
+        const gate = i % 3 == 1;
 
-        for ([_]f32{ -1, 1 }) |s| {
-            const z = s * back;
-            const yaw: f32 = if (s > 0) std.math.pi else 0;
+        facade(b, x, zb, 0, gate);
 
-            switch (i % 4) {
-                0 => {
-                    put(b, .hoarding, x - 0.7, z, yaw, 1.6);
-                    put(b, .hoarding, x + 0.7, z, yaw, 1.6);
-                },
-                1 => put(b, .flagpole, x, z + s * 1.5, 0, 1),
-                2 => {
-                    put(b, .bin, x, z + s * 0.6, 0, 1);
-                    put(b, .bush, x + 2, z + s * 1.2, 0, 1.1);
-                },
-                else => put(b, .birch, x, z + s * 2.5, b.rng.range(0, 6), 1.3),
-            }
-        }
+        if (@abs(x) > 8) facade(b, x, -zb, std.math.pi, gate);
 
         i += 1;
     }
 
-    var z: f32 = -26;
+    var z: f32 = -27;
 
-    while (z < 28) : (z += 7) {
-        for ([_]f32{ -1, 1 }) |s| {
-            const bx = s * (end_front + 10.6);
+    i = 0;
 
-            if (@mod(z + 26, 14) < 7) put(b, .hoarding, bx, z, -s * hp, 1.6) else put(b, .oak, bx + s * 2.5, z, b.rng.range(0, 6), 1.1);
+    while (z < 28) : (z += 6) {
+        facade(b, end_front + 10.1, z, hp, i % 4 == 1);
+        facade(b, -end_front - 10.1, z, -hp, i % 4 == 2);
+        i += 1;
+    }
+
+    const front = zb + 0.6;
+
+    for ([_]f32{ -1, 1 }) |s| {
+        const yaw: f32 = if (s > 0) 0 else std.math.pi;
+        const z0 = s * front;
+
+        for ([_]f32{ -45, -15, 15, 45 }) |kx| {
+            house(b, .kiosk, kx, z0 + s * 2.2, yaw);
+            put(b, .bin, kx + 3, z0 + s * 1.2, 0, 1);
+            put(b, .pallet, kx - 3, z0 + s * 0.8, 0.2, 1);
+            put(b, .crate, kx - 3.2, z0 + s * 2.0, 0.5, 1);
+        }
+
+        for ([_]f32{ -54, -30, 30, 54 }) |px| {
+            put(b, .planter, px - 1.6, z0 + s * 1.2, 0, 1.3);
+            put(b, .planter, px + 1.6, z0 + s * 1.2, 0, 1.3);
+            put(b, .banner, px, z0 + s * 1.0, 0, 1);
+        }
+    }
+
+    for ([_]f32{ -1, 1 }) |s| {
+        var q: f32 = -24;
+
+        while (q < 26) : (q += 16) {
+            put(b, .bin, s * 99.6, q + 3, 0, 1);
+            put(b, .planter, s * 99.8, q - 2, 0, 1.2);
         }
     }
 }
 
+const pitch_cover = [_]Spot{
+    .{ .e = .ad_red, .x = 18, .z = 8, .yaw = 0, .s = 1.2 },
+    .{ .e = .ad_navy, .x = 22, .z = 12, .yaw = hp, .s = 1.2 },
+    .{ .e = .ad_gold, .x = 36, .z = -14, .yaw = hp, .s = 1.2 },
+    .{ .e = .ad_navy, .x = 6, .z = -24, .yaw = 0, .s = 1.2 },
+    .{ .e = .ad_red, .x = 44, .z = 22, .yaw = 0.3, .s = 1.2 },
+    .{ .e = .medtent, .x = 30, .z = 20, .yaw = 2.6 },
+    .{ .e = .scaffold, .x = 32, .z = 2, .yaw = 0 },
+    .{ .e = .scaffold, .x = 0, .z = 20, .yaw = 0.2 },
+    .{ .e = .tarp, .x = 12, .z = -6, .yaw = 0.3 },
+    .{ .e = .tarp, .x = 13, .z = -3.4, .yaw = 0.3 },
+    .{ .e = .tarp, .x = 24, .z = -24, .yaw = 1.4 },
+    .{ .e = .sled, .x = 26, .z = -5, .yaw = 0.4 },
+    .{ .e = .sled, .x = 8, .z = 14, .yaw = -0.2 },
+    .{ .e = .dummy, .x = 44, .z = -6, .yaw = 0 },
+    .{ .e = .dummy, .x = 45, .z = -3, .yaw = 0 },
+    .{ .e = .dummy, .x = 43.5, .z = 0, .yaw = 0 },
+    .{ .e = .rack, .x = 40, .z = 10, .yaw = 1.2 },
+    .{ .e = .rack, .x = 16, .z = 24, .yaw = 0.1 },
+    .{ .e = .inflatable, .x = 48, .z = -22, .yaw = -hp },
+    .{ .e = .tactics, .x = 20, .z = 5.5, .yaw = 0.5 },
+    .{ .e = .crate, .x = 19, .z = 6.6, .yaw = 0 },
+    .{ .e = .crate, .x = 33, .z = -12.5, .yaw = 0.4 },
+    .{ .e = .kitbag, .x = 34, .z = -15.8, .yaw = 1 },
+    .{ .e = .pallet, .x = 7, .z = -22.4, .yaw = 0 },
+    .{ .e = .pallet, .x = 8.1, .z = -22.5, .yaw = 0.2 },
+    .{ .e = .cones, .x = 28, .z = 12, .yaw = 0.8 },
+    .{ .e = .cones, .x = 4, .z = 6, .yaw = 2.1 },
+};
+
 fn matchDay(b: *Builder) void {
-    const kits = [_]struct { e: K, x: f32, z: f32, yaw: f32 }{
-        .{ .e = .inflatable, .x = 0, .z = -pitch_z - 0.5, .yaw = 0 },
-        .{ .e = .medtent, .x = -30, .z = -pitch_z + 4, .yaw = 0.2 },
-        .{ .e = .medtent, .x = 36, .z = pitch_z - 5, .yaw = 2.9 },
-        .{ .e = .tarp, .x = -18, .z = 8, .yaw = 0.3 },
-        .{ .e = .tarp, .x = -16, .z = 10.5, .yaw = 0.3 },
-        .{ .e = .tarp, .x = 22, .z = -12, .yaw = -0.4 },
-        .{ .e = .tarp, .x = 24, .z = -9.5, .yaw = -0.4 },
-        .{ .e = .tarp, .x = 8, .z = 18, .yaw = 1.2 },
-        .{ .e = .tarp, .x = -36, .z = -14, .yaw = 0.1 },
-        .{ .e = .trolley, .x = -40, .z = 22, .yaw = 0.6 },
-        .{ .e = .trolley, .x = 40, .z = 10, .yaw = -0.2 },
-        .{ .e = .linecart, .x = -6, .z = -20, .yaw = 0.9 },
-        .{ .e = .ballcart, .x = 30, .z = 24, .yaw = 0.4 },
-        .{ .e = .ballcart, .x = -26, .z = -26, .yaw = 0.2 },
-        .{ .e = .scaffold, .x = -24, .z = pitch_z + 9.5, .yaw = 0 },
-        .{ .e = .scaffold, .x = 30, .z = -pitch_z - 9.5, .yaw = 0 },
-        .{ .e = .scaffold, .x = end_front - 12, .z = -14, .yaw = 0 },
-        .{ .e = .tactics, .x = -10, .z = pitch_z + 2, .yaw = 0 },
-        .{ .e = .stretcher, .x = -28, .z = -pitch_z + 7, .yaw = 0.3 },
-        .{ .e = .chain, .x = 0, .z = pitch_z + 1.6, .yaw = 0 },
-    };
+    spots(b, &pitch_cover, 0, 0, true);
+    put(b, .inflatable, 0, -pitch_z - 0.5, 0, 1);
+    put(b, .medtent, -6, 0, 0.3, 1);
+    put(b, .medtent, 6, 0, 0.3 + std.math.pi, 1);
+}
 
-    for (kits) |p| {
-        put(b, p.e, p.x, p.z, p.yaw, 1);
-        claim(p.x, p.z, 2);
+fn picnicSet(b: *Builder, x: f32, z: f32, yaw: f32) void {
+    put(b, .parasol, x, z, yaw, 1.15);
+    put(b, .picnic, x + @cos(yaw) * 0.1, z - @sin(yaw) * 0.1, yaw, 1.1);
+    put(b, .bin, x + 2.2, z + 1.4, 0, 1);
+    claim(x, z, 2.5);
+}
+
+fn stallRow(b: *Builder, x0: f32, z: f32, n: usize, yaw: f32) void {
+    var i: usize = 0;
+
+    while (i < n) : (i += 1) {
+        const x = x0 + @as(f32, @floatFromInt(i)) * 4.6;
+
+        put(b, .stall, x, z, yaw, 1.35);
+        put(b, if (i % 2 == 0) .crate else .pallet, x + 2.3, z + 1.2, 0.3, 1);
+        claim(x, z, 2.5);
+    }
+}
+
+fn loos(b: *Builder, x: f32, z: f32, yaw: f32) void {
+    var i: usize = 0;
+    const cx = @cos(yaw);
+    const sz = -@sin(yaw);
+
+    while (i < 5) : (i += 1) {
+        const o = @as(f32, @floatFromInt(i)) * 1.5;
+
+        put(b, .ptoilet, x + cx * o, z + sz * o, yaw, 1);
     }
 
-    const walls = [_][4]f32{ .{ -40, -8, 6, 0 }, .{ -40, -8, 4, 1 }, .{ 32, 6, 6, 0 }, .{ 36, 6, 4, 1 }, .{ -14, 22, 5, 0 }, .{ 10, -24, 5, 0 }, .{ -4, 6, 4, 1 }, .{ 18, 20, 4, 1 }, .{ -24, -18, 4, 1 }, .{ 44, -28, 5, 0 }, .{ -46, 24, 4, 1 } };
+    put(b, .generator, x + cx * 9, z + sz * 9, yaw + hp, 1);
+    claim(x + cx * 3, z + sz * 3, 5);
+}
 
-    for (walls) |w| {
-        var j: usize = 0;
-        const n: usize = @intFromFloat(w[2]);
+fn barrierLine(b: *Builder, e: K, x0: f32, z0: f32, x1: f32, z1: f32, step: f32, s: f32) void {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const len = @sqrt(dx * dx + dz * dz);
+    const n: usize = @intFromFloat(@max(1, @round(len / step)));
+    const yaw = std.math.atan2(dx, dz) - hp;
+    var i: usize = 0;
 
-        while (j < n) : (j += 1) {
-            const off = @as(f32, @floatFromInt(j)) * 1.4;
+    while (i < n) : (i += 1) {
+        const u = (@as(f32, @floatFromInt(i)) + 0.5) / @as(f32, @floatFromInt(n));
 
-            if (w[3] < 0.5) put(b, .hoarding, w[0] + off, w[1], 0, 1.3) else put(b, .hoarding, w[0], w[1] + off, hp, 1.3);
-        }
-
-        claim(w[0], w[1], 3);
+        put(b, e, x0 + dx * u, z0 + dz * u, yaw, s);
     }
-
-    for ([_][3]f32{ .{ -12, -8, 0.4 }, .{ 26, 16, 2.6 }, .{ -36, 14, 1.2 }, .{ 40, -14, 0.1 } }) |p| {
-        put(b, .medtent, p[0], p[1], p[2], 1);
-        claim(p[0], p[1], 3);
-    }
-
-    put(b, .inflatable, -46, -4, hp, 1);
-    put(b, .inflatable, 46, 4, -hp, 1);
-    put(b, .scaffold, 0, 18, 0, 1);
-    put(b, .scaffold, -20, -4, 0, 1);
-    put(b, .scaffold, 20, 0, 0, 1);
-
-    for ([_][2]f32{ .{ 12, -2 }, .{ 14, 1 }, .{ 11, 3.5 }, .{ -32, 4 }, .{ -30, 6.5 }, .{ 44, -22 }, .{ 46, -19 } }) |p| put(b, .dummy, p[0], p[1], 0, 1);
-
-    scatterIn(b, &.{ .kitbag, .crate, .medbag, .cones, .yardmark }, 40, 0, 0, 40, 0.9, 1.2);
-    scatterIn(b, &.{ .kitbag, .crate, .bin, .cones }, 30, 0, -pitch_z - 7, 30, 0.9, 1.2);
 }
 
 fn concourse(b: *Builder) void {
@@ -556,27 +714,57 @@ fn concourse(b: *Builder) void {
 
     for ([_]f32{ -40, 40 }) |x| house(b, .booth, x, zg - 2, 0);
 
-    for ([_][3]f32{ .{ -46, 78, 0 }, .{ -20, 82, 0 }, .{ 22, 82, 0 }, .{ 48, 78, 0 }, .{ -46, -70, std.math.pi }, .{ 46, -70, std.math.pi } }) |p| {
-        house(b, .kiosk, p[0], p[1], p[2]);
-        put(b, .bin, p[0] + 3, p[1] - 2.5, 0, 1);
-        put(b, .crate, p[0] - 2.6, p[1] - 2.2, 0.3, 1);
-    }
-
-    var x: f32 = -60;
-
-    while (x <= 60) : (x += 12) {
-        put(b, if (@mod(x, 24) == 0) .horn else .flagpole, x, 70, 0, 1);
-        put(b, .bin, x + 4, 70.5, 0, 1);
-    }
-
-    for ([_][2]f32{ .{ -8, 90 }, .{ 8, 90 }, .{ -60, 96 }, .{ 60, 96 } }) |p| put(b, .clock, p[0], p[1], 0, 1);
-
-    x = -96;
+    var x: f32 = -96;
 
     while (x < 96) : (x += 2.4) {
         if (@abs(x) < 34 or @abs(x - 76) < 5 or @abs(x + 76) < 5) continue;
 
         put(b, .wall, x, zg, 0, 1);
+    }
+
+    for ([_]f32{ -1, 1 }) |s| {
+        barrierLine(b, .rail, s * 9, 92, s * 9, 100, 2, 1);
+        barrierLine(b, .rail, s * 19, 90, s * 19, 100, 2, 1);
+        barrierLine(b, .rail, s * 29, 92, s * 29, 100, 2, 1);
+        put(b, .banner, s * 34, 100, 0, 1);
+        put(b, .banner, s * 4.5, 100, 0, 1);
+
+        picnicSet(b, s * 30, 75, 0.3);
+        picnicSet(b, s * 36, 78, 1.1);
+        picnicSet(b, s * 24, 79, 2.0);
+        picnicSet(b, s * 60, 76, 0.6);
+        picnicSet(b, s * 66, 80, 2.4);
+        put(b, .oak, s * 12, 76, s, 1.2);
+        put(b, .planter, s * 10, 74, 0, 1.3);
+        put(b, .planter, s * 14, 74, 0, 1.3);
+        put(b, .planter, s * 10, 78, 0, 1.3);
+        put(b, .planter, s * 14, 78, 0, 1.3);
+        claim(s * 12, 76, 3);
+        house(b, .snackbox, s * 48, 88, if (s > 0) std.math.pi else 0);
+        put(b, .crate, s * 44.5, 85.6, 0.2, 1);
+        put(b, .pallet, s * 52, 86, 0.4, 1);
+        stallRow(b, if (s > 0) 70 else -88, 88, 5, std.math.pi);
+        loos(b, s * 92, 82, if (s > 0) hp else -hp);
+        put(b, .flood, s * 82, 98, 0, 0.8);
+        put(b, .bin, s * 80, 94, 0, 1);
+        put(b, .ad_red, s * 72, 68, 0.15 * s, 1.6);
+        put(b, .ad_gold, s * 86, 72, hp + 0.2 * s, 1.6);
+    }
+
+    for ([_]f32{ -1, 1 }) |s| {
+        const zs: f32 = -stand_front - stand_depth - 3.2;
+
+        put(b, .ad_navy, s * 22, zs - 9, 0, 1.6);
+        put(b, .ad_gold, s * 64, zs - 6, 0, 1.6);
+        picnicSet(b, s * 34, zs - 9, 0.6);
+        picnicSet(b, s * 76, zs - 8, 1.6);
+        house(b, .snackbox, s * 88, zs - 3, if (s > 0) -hp else hp);
+        put(b, .stall, s * 12, zs - 13, 0, 1.35);
+        put(b, .stall, s * 16.6, zs - 13, 0, 1.35);
+        put(b, .pallet, s * 9.5, zs - 12, 0.2, 1);
+        barrierLine(b, .waterbar, s * 40, zs - 14, s * 56, zs - 14, 4, 1);
+        put(b, .bin, s * 30, zs - 2, 0, 1);
+        put(b, .banner, s * 50, zs - 1.5, 0, 1);
     }
 
     for ([_][4]f32{ .{ -102, -80, -102, 104 }, .{ 102, -80, 102, 104 } }) |s| {
@@ -590,47 +778,106 @@ fn concourse(b: *Builder) void {
     }
 }
 
-fn plaza(b: *Builder) void {
+fn cluster(b: *Builder, x: f32, z: f32, pick: usize, yaw: f32, i: usize) void {
+    const cx = @cos(yaw);
+    const sz = -@sin(yaw);
+
+    switch (pick % 9) {
+        0 => {
+            picnicSet(b, x, z, yaw);
+            picnicSet(b, x + cx * 3.6, z + sz * 3.6, yaw + 0.5);
+        },
+        1 => {
+            put(b, .stall, x, z, yaw, 1.35);
+            put(b, .stall, x + cx * 4.4, z + sz * 4.4, yaw, 1.35);
+            put(b, .pallet, x - cx * 2.6, z - sz * 2.6 + 1, yaw, 1);
+            put(b, .crate, x + cx * 6.6, z + sz * 6.6, 0.3, 1);
+        },
+        2 => {
+            put(b, ad(i), x, z, yaw, 1.8);
+            put(b, .bin, x + sz * 1.6, z - cx * 1.6, 0, 1);
+            put(b, .planter, x + cx * 6 + sz * 1.2, z + sz * 6 - cx * 1.2, 0, 1.3);
+        },
+        3 => {
+            put(b, .waterbar, x, z, yaw, 1);
+            put(b, .waterbar, x + cx * 3.6 + sz * 1.4, z + sz * 3.6 - cx * 1.4, yaw + 0.6, 1);
+            put(b, .crate, x - cx * 2.6, z - sz * 2.6, 0.2, 1);
+            put(b, .crate, x - cx * 2.0, z - sz * 2.0 + 0.6, 0.9, 1);
+        },
+        4 => {
+            put(b, .ptoilet, x, z, yaw, 1);
+            put(b, .ptoilet, x + cx * 1.4, z + sz * 1.4, yaw, 1);
+            put(b, .ptoilet, x + cx * 2.8, z + sz * 2.8, yaw, 1);
+            put(b, .generator, x + cx * 5.4, z + sz * 5.4, yaw + hp, 1);
+        },
+        5 => {
+            put(b, .tarp, x, z, yaw, 1);
+            put(b, .tarp, x + sz * 2.4, z - cx * 2.4, yaw, 1);
+            put(b, .pallet, x + cx * 2.6, z + sz * 2.6, yaw, 1);
+            put(b, .pallet, x + cx * 3.7, z + sz * 3.7, yaw + 0.2, 1);
+            put(b, .pallet, x + cx * 3.1, z + sz * 3.1 - 1.1, yaw, 1);
+        },
+        6 => {
+            put(b, .oak, x, z, yaw, b.rng.range(0.9, 1.2));
+            put(b, .planter, x + 1.8, z + 1.2, 0, 1.3);
+            put(b, .planter, x - 1.8, z + 1.2, 0, 1.3);
+            put(b, .planter, x, z - 1.9, 0, 1.3);
+            put(b, .banner, x + cx * 3.5, z + sz * 3.5, yaw, 1);
+        },
+        7 => {
+            put(b, .jersey, x, z, yaw, 1.3);
+            put(b, .jersey, x + cx * 2.7, z + sz * 2.7, yaw, 1.3);
+            put(b, .jersey, x + cx * 5.4, z + sz * 5.4, yaw, 1.3);
+            put(b, .kitbag, x + sz * 1.2, z - cx * 1.2, 0.4, 1);
+        },
+        else => {
+            put(b, .medtent, x, z, yaw, 1);
+            put(b, .rack, x + cx * 3.6, z + sz * 3.6, yaw, 1);
+            put(b, .crate, x - cx * 3, z - sz * 3, 0.1, 1);
+        },
+    }
+
+    claim(x, z, 3.6);
+}
+
+fn plazaFill(b: *Builder) void {
     var i: usize = 0;
 
-    while (i < 420) : (i += 1) {
+    while (i < 320) : (i += 1) {
         const x = b.rng.range(-98, 98);
         const z = b.rng.range(-78, 108);
 
-        if (@abs(x) < stand_x + 4 and @abs(z) < stand_front + stand_depth + 4) continue;
+        if (@abs(x) < stand_x + 4 and @abs(z) < stand_front + stand_depth + 7) continue;
 
-        if (@abs(x) < end_front + 12 and @abs(z) < 34) continue;
+        if (@abs(x) < end_front + 13 and @abs(z) < 34) continue;
 
-        if (trailDist(x, z) < 5 or !open(x, z, 3.5)) continue;
+        if (trailDist(x, z) < 4 or !open(x, z, 4)) continue;
 
-        const roll = b.rng.next();
+        cluster(b, x, z, @intFromFloat(b.rng.range(0, 9)), b.rng.range(0, 6), i);
+    }
+}
 
-        if (roll < 0.3) {
-            put(b, if (b.rng.next() < 0.5) .birch else .oak, x, z, b.rng.range(0, 6), b.rng.range(0.9, 1.3));
-            put(b, .bush, x + 1.6, z + 1.2, 0, 0.9);
-            put(b, .parkbench, x, z - 2.6, 0, 1);
-        } else if (roll < 0.45) {
-            put(b, .bin, x, z, 0, 1);
-            put(b, .bush, x + 1.4, z, 0, 1);
-        } else if (roll < 0.58) {
-            put(b, .scaffold, x, z, if (b.rng.next() < 0.5) 0 else hp, 1);
-        } else if (roll < 0.7) {
-            put(b, .hoarding, x, z, 0, 1.5);
-            put(b, .hoarding, x + 1.5, z, 0, 1.5);
-            put(b, .hoarding, x + 3, z, 0, 1.5);
-        } else if (roll < 0.8) {
-            put(b, .tarp, x, z, b.rng.range(0, 6), 1);
-            put(b, .trolley, x + 2, z + 1, b.rng.range(0, 6), 1);
-            put(b, .crate, x - 1.5, z + 1, 0, 1);
-        } else if (roll < 0.9) {
-            put(b, .tarp, x, z, b.rng.range(0, 6), 1);
-            put(b, .linecart, x + 2, z - 1, 0.4, 1);
-        } else {
-            put(b, .medtent, x, z, b.rng.range(0, 6), 1);
-            put(b, .stretcher, x + 3, z, 0.2, 1);
+fn grid(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, step: f32, seed: usize) void {
+    var z = z0;
+    var i: usize = seed;
+
+    while (z <= z1) : (z += step) {
+        var x = x0;
+
+        while (x <= x1) : (x += step) {
+            const px = x + jit(b, step * 0.25);
+            const pz = z + jit(b, step * 0.25);
+
+            i += 1;
+
+            if (inBox(px, pz, -130, -150, 130, -82) and (fanLane(px) or fanLane(px + 3) or fanLane(px - 3) or walkBand(pz) or walkBand(pz + 3) or walkBand(pz - 3) or island(px, pz, 3))) continue;
+
+            if ((!inBox(px, pz, -130, -150, 130, -82) and trailDist(px, pz) < 4) or !open(px, pz, 3)) continue;
+
+            const yaw = @round(b.rng.range(0, 4)) * hp + jit(b, 0.25);
+
+            cluster(b, px, pz, i * 7 + @as(usize, @intFromFloat(b.rng.range(0, 3))), yaw, i);
         }
-
-        claim(x, z, 3);
     }
 }
 
@@ -641,10 +888,18 @@ fn clubSide(b: *Builder) void {
     house(b, .pressbox, -164, 102, hp);
     house(b, .toilets, -40, -94, 0);
     house(b, .firstaid, 52, -92, 0);
-    put(b, .medtent, -108, 92, 0.1, 1);
+    house(b, .store, -112, 98, hp);
+    put(b, .medtent, -108, 88, 0.1, 1);
     put(b, .flagpole, -128, 98, 0, 1);
     put(b, .flagpole, -122, 98, 0, 1);
-    scatterIn(b, &.{ .kitbag, .bin, .crate, .ballcart, .parkbench }, 18, -130, 116, 24, 0.9, 1.1);
+    put(b, .flagpole, -134, 98, 0, 1);
+    picnicSet(b, -140, 98, 0.3);
+    picnicSet(b, -146, 104, 1.4);
+    put(b, .shelter, -150, 116, 0.2, 1);
+    claim(-150, 116, 5);
+    barrierLine(b, .fence, -172, 90, -172, 140, 4, 1);
+    barrierLine(b, .fence, -172, 140, -100, 140, 4, 1);
+    scatterIn(b, &.{ .kitbag, .bin, .crate, .pallet, .planter, .rack, .sled }, 22, -130, 116, 26, 0.9, 1.1);
 }
 
 fn training(b: *Builder) void {
@@ -656,16 +911,31 @@ fn training(b: *Builder) void {
         line(b, p[0] - 18, p[1] - 28, p[0] - 18, p[1] + 28);
         line(b, p[0] + 18, p[1] - 28, p[0] + 18, p[1] + 28);
         line(b, p[0] - 18, p[1], p[0] + 18, p[1]);
-        put(b, .ladder, p[0] - 8, p[1] + 8, 0, 1);
-        put(b, .bags, p[0] + 8, p[1] - 10, 0, 1);
-        put(b, .dummy, p[0] - 4, p[1] - 16, 0, 1);
-        put(b, .dummy, p[0] + 1, p[1] - 15, 0, 1);
-        put(b, .dummy, p[0] + 6, p[1] - 16.5, 0, 1);
-        put(b, .ballcart, p[0] + 12, p[1] + 14, 0.4, 1);
-        put(b, .tactics, p[0] - 14, p[1] + 2, hp, 1);
-        put(b, .bench, p[0] - 19.5, p[1] - 6, hp, 1);
-        put(b, .bench, p[0] - 19.5, p[1] + 6, hp, 1);
-        scatterIn(b, &.{ .cones, .kitbag, .crate }, 10, p[0], p[1], 16, 0.9, 1.2);
+        ring(b, p[0], p[1], 6, 0, std.math.tau);
+
+        const drill = [_]Spot{
+            .{ .e = .sled, .x = -6, .z = 14, .yaw = 0.2 },
+            .{ .e = .sled, .x = 7, .z = -12, .yaw = 3.0 },
+            .{ .e = .dummy, .x = -4, .z = -16, .yaw = 0 },
+            .{ .e = .dummy, .x = 1, .z = -15, .yaw = 0 },
+            .{ .e = .dummy, .x = 6, .z = -16.5, .yaw = 0 },
+            .{ .e = .dummy, .x = -10, .z = 4, .yaw = 0 },
+            .{ .e = .dummy, .x = -9, .z = 7, .yaw = 0 },
+            .{ .e = .rack, .x = 12, .z = 14, .yaw = 0.4 },
+            .{ .e = .tactics, .x = -14, .z = 2, .yaw = hp },
+            .{ .e = .bench, .x = -19.5, .z = -6, .yaw = hp },
+            .{ .e = .bench, .x = -19.5, .z = 6, .yaw = hp },
+            .{ .e = .tarp, .x = 10, .z = 2, .yaw = 0.2 },
+            .{ .e = .tarp, .x = 10.6, .z = 4.4, .yaw = 0.2 },
+            .{ .e = .ad_navy, .x = 0, .z = 22, .yaw = 0, .s = 1.1 },
+            .{ .e = .ad_red, .x = -12, .z = -22, .yaw = 0.4, .s = 1.1 },
+            .{ .e = .crate, .x = 13, .z = 16, .yaw = 0.3 },
+            .{ .e = .kitbag, .x = -18, .z = 0, .yaw = 0.1 },
+            .{ .e = .cones, .x = 4, .z = 8, .yaw = 0.7 },
+            .{ .e = .cones, .x = -3, .z = -6, .yaw = 2.2 },
+        };
+
+        spots(b, &drill, p[0], p[1], false);
     }
 
     var x: f32 = 88;
@@ -687,54 +957,189 @@ fn training(b: *Builder) void {
     }
 
     house(b, .booth, 135, 76, 0);
+    house(b, .store, 135, 126, std.math.pi);
+    house(b, .store, 135, 94, 0);
+    put(b, .scaffold, 135, 110, 0, 1);
+    put(b, .rack, 133, 102, hp, 1);
+    put(b, .pallet, 137, 118, 0.3, 1);
+    put(b, .pallet, 138.2, 118.4, 0.1, 1);
+    put(b, .tarp, 132, 116, 1.6, 1);
+    loos(b, 176, 72, 0);
+    put(b, .medtent, 100, 72, 0.2, 1);
+    put(b, .ptoilet, 94, 72, 0, 1);
 }
 
 fn athletics(b: *Builder) void {
-    put(b, .discus, 170, 30, 0, 1);
-    api.box(b, 165.4, 0, 25, 166.4, 6, 35);
-    api.box(b, 173.6, 0, 25, 174.6, 6, 35);
-    api.box(b, 166, 0, 34, 174, 6, 35);
-    put(b, .highjump, 130, 30, 0, 1);
-    put(b, .longjump, 120, -3, hp, 1);
-    put(b, .longjump, 150, -3, hp, 1);
-    put(b, .shotput, 140, 30, 0, 1);
-    put(b, .shotput, 186, -40, 0, 1);
+    put(b, .discus, 186, 30, 0, 1);
+    api.box(b, 181.4, 0, 25, 182.4, 6, 35);
+    api.box(b, 189.6, 0, 25, 190.6, 6, 35);
+    api.box(b, 182, 0, 34, 190, 6, 35);
+    put(b, .highjump, 150, -3, 0, 1);
+    put(b, .highjump, 136, 6, 0.4, 1);
 
-    var x: f32 = 112;
+    for ([_]f32{ -27.5, -24.5 }) |zz| {
+        var x: f32 = 128;
 
-    while (x < 190) : (x += 10) {
-        put(b, .hurdle, x, -30, hp, 1);
-        put(b, .hurdle, x + 5, -36, hp, 1);
-        put(b, .hurdle, x, -42, hp, 1);
+        while (x < 182) : (x += 9) put(b, .hurdle, x, zz, hp, 1);
     }
 
-    for ([_]f32{ -30, -36, -42 }) |z| put(b, .blocks, 106, z, hp, 1);
+    for ([_]f32{ 18.5, 21.5 }) |zz| {
+        var x: f32 = 132;
 
-    scatterIn(b, &.{ .kitbag, .crate, .cones, .bin }, 14, 150, 0, 40, 0.9, 1.2);
-    scatterIn(b, &.{ .oak, .bush, .parkbench, .birch, .tarp, .bush, .medtent, .tarp }, 46, 150, -5, 50, 0.9, 1.25);
+        while (x < 180) : (x += 9) put(b, .hurdle, x, zz, hp, 1);
+    }
+
+    const kit_spots = [_]Spot{
+        .{ .e = .ad_navy, .x = 134, .z = 10, .yaw = 0.3, .s = 1.1 },
+        .{ .e = .ad_gold, .x = 166, .z = -16, .yaw = -0.3, .s = 1.1 },
+        .{ .e = .waterbar, .x = 158, .z = 12, .yaw = 0 },
+        .{ .e = .waterbar, .x = 162, .z = 12, .yaw = 0 },
+        .{ .e = .waterbar, .x = 140, .z = -18, .yaw = 0 },
+        .{ .e = .tarp, .x = 148, .z = 4, .yaw = 1.5 },
+        .{ .e = .tarp, .x = 150.4, .z = 4.2, .yaw = 1.5 },
+        .{ .e = .rack, .x = 136, .z = -4, .yaw = 0.6 },
+        .{ .e = .sled, .x = 156, .z = -12, .yaw = 0.2 },
+        .{ .e = .pallet, .x = 168, .z = 10, .yaw = 0 },
+        .{ .e = .pallet, .x = 169.1, .z = 10.2, .yaw = 0.3 },
+        .{ .e = .crate, .x = 146, .z = -9, .yaw = 0.3 },
+        .{ .e = .kitbag, .x = 147, .z = -10, .yaw = 1.1 },
+        .{ .e = .medtent, .x = 142, .z = 9, .yaw = 0.4 },
+        .{ .e = .rack, .x = 158, .z = -7, .yaw = 1.1 },
+        .{ .e = .dummy, .x = 166, .z = 3, .yaw = 0 },
+        .{ .e = .dummy, .x = 167.5, .z = 5.5, .yaw = 0 },
+        .{ .e = .dummy, .x = 165, .z = 7, .yaw = 0 },
+        .{ .e = .waterbar, .x = 134, .z = -9, .yaw = 0.5 },
+        .{ .e = .sled, .x = 144, .z = -14, .yaw = 2.6 },
+        .{ .e = .crate, .x = 141, .z = 6.6, .yaw = 0.3 },
+        .{ .e = .pallet, .x = 159.5, .z = -4.6, .yaw = 0.3 },
+        .{ .e = .medtent, .x = 112, .z = -12, .yaw = hp },
+        .{ .e = .medtent, .x = 188, .z = 8, .yaw = -hp },
+        .{ .e = .tarp, .x = 160, .z = 6, .yaw = 0.3 },
+        .{ .e = .tarp, .x = 161, .z = 8.4, .yaw = 0.3 },
+        .{ .e = .tarp, .x = 140, .z = -12, .yaw = 1.2 },
+        .{ .e = .ad_gold, .x = 150, .z = 14, .yaw = 0, .s = 1.3 },
+        .{ .e = .ad_navy, .x = 150, .z = -20, .yaw = 0, .s = 1.3 },
+        .{ .e = .ad_red, .x = 128, .z = 2, .yaw = hp, .s = 1.3 },
+        .{ .e = .ad_red, .x = 172, .z = -8, .yaw = hp, .s = 1.3 },
+        .{ .e = .scaffold, .x = 176, .z = 12, .yaw = 0 },
+        .{ .e = .scaffold, .x = 124, .z = -18, .yaw = 0 },
+        .{ .e = .rack, .x = 116, .z = 10, .yaw = 0.2 },
+        .{ .e = .sled, .x = 166, .z = -16, .yaw = 0.4 },
+        .{ .e = .shelter, .x = 116, .z = 44, .yaw = 0 },
+        .{ .e = .shelter, .x = 184, .z = -50, .yaw = 0.4 },
+        .{ .e = .waterbar, .x = 150, .z = -44, .yaw = 0 },
+        .{ .e = .waterbar, .x = 146, .z = -44, .yaw = 0 },
+        .{ .e = .jersey, .x = 132, .z = -46, .yaw = 0.3, .s = 1.2 },
+        .{ .e = .pallet, .x = 113, .z = 12, .yaw = 0 },
+        .{ .e = .crate, .x = 117, .z = 13, .yaw = 0.5 },
+        .{ .e = .kitbag, .x = 158, .z = 4, .yaw = 0.2 },
+        .{ .e = .planter, .x = 172, .z = -40, .yaw = 0, .s = 1.3 },
+    };
+
+    spots(b, &kit_spots, 0, 0, false);
+    standRow(b, 132, 168, 29.5, 1, true);
+
+    var x: f32 = 132;
+    var i: usize = 0;
+
+    while (x < 168) : (x += 6) {
+        facade(b, x + 3, 29.5 + stand_depth + 0.75, 0, i % 3 == 1);
+        i += 1;
+    }
+
+    boardsX(b, 126, 174, 27, std.math.pi, 1, &.{150}, 0);
+    boardsX(b, 126, 174, -33, 0, 1, &.{ 138, 162 }, 1);
+
+    for ([_][2]f32{ .{ 116, -42 }, .{ 184, -42 }, .{ 118, 40 }, .{ 180, 44 } }) |p| put(b, .flood, p[0], p[1], std.math.atan2(150 - p[0], -3 - p[1]), 0.7);
+
     house(b, .clubhouse, 150, -80, 0);
     house(b, .toilets, 176, 60, std.math.pi);
+    grid(b, 110, -58, 192, -36, 12, 11);
+    grid(b, 104, 46, 124, 66, 11, 17);
+    house(b, .store, 120, 60, 0);
+    house(b, .store, 106, -40, hp);
 }
 
-fn carPark(b: *Builder) void {
-    var x: f32 = -120;
+fn fanZone(b: *Builder) void {
+    defer grid(b, -124, -147, 124, -86, 6.5, 3);
 
-    while (x <= 120) : (x += 5) {
-        for ([_]f32{ -96, -118, -140 }) |z| {
-            line(b, x, z - 4.5, x, z + 4.5);
+    const deck_y = t.height(0, -136) + 0.9;
 
-            if (b.rng.next() < 0.18 and @abs(x) > 8) put(b, .hoarding, x + 2.5, z, hp, 1.5);
-        }
+    b.mass(vec(-9, deck_y - 2, -142), vec(9, deck_y, -132), .concrete);
+    b.solid(.{ .ramp = .{ .min = vec(-4, deck_y - 2, -132), .max = vec(4, deck_y, -128), .rise = .neg_z } });
+    b.deco(vec(-4, deck_y - 2, -132), vec(4, deck_y - 0.4, -128), .concrete);
+    b.putAt(kit.of(.ad_navy), vec(0, deck_y + 3.2, -141.6), 0, 2.6);
+    b.putAt(kit.of(.scaffold), vec(-10.5, deck_y - 0.9, -140), 0, 1);
+    b.putAt(kit.of(.scaffold), vec(10.5, deck_y - 0.9, -140), 0, 1);
+    put(b, .generator, -13, -134, hp, 1);
+    put(b, .pallet, 12.5, -133, 0.2, 1);
+    claim(0, -136, 14);
+
+    for (islands) |q| {
+        put(b, .oak, q[0], q[1], q[0] * 0.1, 1.2);
+        put(b, .bush, q[0] - 3.6, q[1] + 0.8, 0.3, 0.9);
+        put(b, .bush, q[0] + 3.8, q[1] - 0.6, 1.3, 0.8);
+        put(b, .banner, q[0] + 5.2, q[1] + 2.4, 0, 1);
+        put(b, .bin, q[0] - 6.6, q[1] - 2.2, 0, 1);
+        claim(q[0], q[1], 6);
     }
 
-    for ([_]f32{ -107, -129 }) |z| {
-        x = -120;
+    for ([_]f32{ -1, 1 }) |s| {
+        const off: f32 = if (s < 0) 4.6 * 4 else 0;
 
-        while (x < 120) : (x += 20) {
-            put(b, .bush, x + 10, z, 0, 1);
-            put(b, .oak, x, z, b.rng.range(0, 6), 1.1);
+        stallRow(b, s * 20 - off, -96, 5, std.math.pi);
+        stallRow(b, s * 70 - off, -96, 5, std.math.pi);
+        stallRow(b, s * 22 - off, -132.5, 5, 0);
+        house(b, .snackbox, s * 48, -94, std.math.pi);
+        house(b, .snackbox, s * 104, -100, if (s > 0) -hp else hp);
+        house(b, .snackbox, s * 104, -120, if (s > 0) -hp else hp);
+        house(b, .snackbox, s * 46, -142, 0);
+
+        for ([_][2]f32{ .{ 14, -114 }, .{ 42, -114 }, .{ 70, -112 }, .{ 82, -118 }, .{ 110, -112 }, .{ 74, -142 } }) |p| picnicSet(b, s * p[0], p[1], b.rng.range(0, 6));
+
+        put(b, .shelter, s * 50, -116, 0.1 * s, 1);
+        claim(s * 50, -116, 5);
+        put(b, .picnic, s * 49, -115, 0.1, 1.1);
+        put(b, .picnic, s * 51.5, -118, 0.1, 1.1);
+        loos(b, s * 112 - 3, -140, 0);
+        put(b, .ad_red, s * 18, -118, hp, 2);
+        put(b, .ad_gold, s * 76, -121, 0, 2);
+        put(b, .ad_navy, s * 104, -134, hp, 2);
+        put(b, .ad_red, s * 28, -146, 0, 2);
+        put(b, .ad_gold, s * 122, -112, hp, 2);
+        barrierLine(b, .waterbar, s * 8, -86, s * 8, -102, 4, 1);
+        barrierLine(b, .jersey, s * 66, -137, s * 84, -137, 2.4, 1.2);
+        barrierLine(b, .jersey, s * 100, -86, s * 126, -86, 2.4, 1.2);
+        barrierLine(b, .fence, s * 130, -82, s * 130, -150, 4, 1);
+        barrierLine(b, .fence, s * 12, -150, s * 130, -150, 4, 1);
+        put(b, .flood, s * 52, -147, if (s > 0) 0.6 else -0.6, 0.9);
+        put(b, .scaffold, s * 40, -138, 0, 1);
+        put(b, .tarp, s * 70, -132, 0.4, 1);
+        put(b, .tarp, s * 71, -134.4, 0.4, 1);
+        put(b, .pallet, s * 75, -133, 0.1, 1);
+        put(b, .pallet, s * 76.1, -133.2, 0.3, 1);
+        put(b, .crate, s * 74.4, -134.2, 0.3, 1);
+        put(b, .generator, s * 50, -100, 0, 1);
+
+        for ([_]f32{ -103.1, -108.9, -124.1, -129.9 }) |rz| {
+            var x0: f32 = 9;
+
+            while (x0 < 124) : (x0 += 14) {
+                const x1 = @min(x0 + 9, 126);
+
+                if (x1 > 56.6 and x0 < 65.4) continue;
+
+                barrierLine(b, .rail, s * x0, rz, s * x1, rz, 2, 1);
+            }
         }
+
+        for ([_]f32{ 56.9, 65.1 }) |lx| {
+            for ([_][2]f32{ .{ -100, -88 }, .{ -121, -112 }, .{ -146, -133 } }) |seg| barrierLine(b, .rail, s * lx, seg[0], s * lx, seg[1], 2, 1);
+        }
+
+        for ([_]f32{ -90, -116, -140 }) |bz| put(b, .banner, s * 7.6, bz, 0, 1);
     }
+
 }
 
 fn park(b: *Builder) void {
@@ -776,7 +1181,7 @@ fn park(b: *Builder) void {
 
             if (!open(x, z, 1.5) or inBox(x, z, -102, -82, 102, 104)) continue;
 
-            put(b, .parkbench, x, z, std.math.atan2(dx, dz) + hp, 1);
+            put(b, .picnic, x, z, std.math.atan2(dx, dz) + hp, 1.1);
             put(b, .bin, x + dx / len * 2, z + dz / len * 2, 0, 1);
         }
     }
@@ -811,8 +1216,8 @@ fn build(b: *Builder) void {
     clubSide(b);
     training(b);
     athletics(b);
-    plaza(b);
-    carPark(b);
+    plazaFill(b);
+    fanZone(b);
     park(b);
     shadeProps(b);
 }
