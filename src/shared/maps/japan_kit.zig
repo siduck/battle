@@ -93,7 +93,7 @@ pub const table = [_]api.Info{
     .{ .file = "japan/board.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.335, 0.000, -0.248 }, .max = .{ 0.335, 0.998, 0.248 } },
     .{ .file = "japan/stonefence.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.005, 0.000, -0.180 }, .max = .{ 2.005, 0.995, 0.180 } },
     .{ .file = "japan/bin.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.293, 0.000, -0.293 }, .max = .{ 0.293, 0.900, 0.293 } },
-    .{ .file = "japan/lamp.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.420, 0.000, -0.985 }, .max = .{ 0.420, 4.995, 0.985 } },
+    .{ .file = "japan/lamp.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.320, 0.000, -0.985 }, .max = .{ 0.320, 4.995, 0.985 } },
     .{ .file = "japan/cone.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.220, 0.000, -0.220 }, .max = .{ 0.220, 0.680, 0.220 } },
     .{ .file = "japan/signal.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -1.625, 0.000, -0.340 }, .max = .{ 1.625, 4.995, 0.340 } },
     .{ .file = "japan/pole.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -1.146, 0.000, -4.091 }, .max = .{ 1.146, 7.960, 4.091 } },

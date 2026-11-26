@@ -656,9 +656,9 @@ def lamp():
     B((0.2, 0.3, 0.06), (0, -0.62, 4.92), "jp_slate", 0.01)
 
     for z in (2.62, 3.62):
-        R((-0.42, py, z), (0.42, py, z), 0.02, "jp_slate_dark", 6)
+        R((0.06, py, z), (0.46, py, z), 0.02, "jp_slate_dark", 6)
 
-    for sx, col in ((-1, "jp_indigo"), (1, "jp_indigo")):
+    for sx, col in ((1, "jp_indigo"),):
         x = sx * 0.26
         F((0.3, 0.025, 0.96), (x, py, 2.64), col)
         F((0.3, 0.03, 0.04), (x, py, 2.64), "jp_tile_dark")
