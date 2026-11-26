@@ -38,6 +38,10 @@ downloaded packs: load the `dronefire-assets` skill. Every asset is a recipe in
 `tools/blender/assets/`, built from `tools/blender/kit/dfkit.py`, previewed, checked against its
 triangle budget, and verified in the game with `DF_ASSET`.
 
+**Art direction is Synty POLYGON style, project-wide.** Every new asset follows the "Art direction"
+section of the `dronefire-assets` skill (shape, colour and quality check). An asset that looks like
+a basic Blender tutorial model is not finished.
+
 ## Other rules
 
 - Test on hidden Xvfb displays only, never the user's display. Kill only processes you started.

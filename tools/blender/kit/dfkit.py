@@ -14,7 +14,88 @@ from mathutils import Matrix, Vector
 box = lpm.box
 prism = lpm.prism
 lathe = lpm.lathe
-sweep = lpm.sweep
+
+
+def _earclip2d(pts):
+    area = sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))
+    idx = list(range(len(pts))) if area > 0 else list(reversed(range(len(pts))))
+    tris = []
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    def inside(p, a, b, c):
+        return cross(a, b, p) >= -1e-9 and cross(b, c, p) >= -1e-9 and cross(c, a, p) >= -1e-9
+
+    guard = 0
+
+    while len(idx) > 3 and guard < 10000:
+        guard += 1
+        cut = False
+
+        for k in range(len(idx)):
+            i0, i1, i2 = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            a, b, c = pts[i0], pts[i1], pts[i2]
+
+            if cross(a, b, c) <= 1e-9:
+                continue
+
+            if any(inside(pts[j], a, b, c) for j in idx if j not in (i0, i1, i2) and pts[j] not in (a, b, c)):
+                continue
+
+            tris.append((i0, i1, i2))
+            idx.pop(k)
+            cut = True
+            break
+
+        if not cut:
+            idx.pop(0)
+
+    if len(idx) == 3:
+        tris.append(tuple(idx))
+
+    return tris
+
+
+def sweep(name, outline, depth, at=(0, 0, 0), color=0, axis="y"):
+    ob = lpm.sweep(name, outline, depth, at, color, axis)
+    x0, y0, z0 = at
+
+    if axis == "y":
+        front = [Vector((x0 + px, y0 - depth / 2, z0 + pz)) for px, pz in outline]
+        back = [Vector((x0 + px, y0 + depth / 2, z0 + pz)) for px, pz in outline]
+    else:
+        front = [Vector((x0 + px, y0 + py, z0)) for px, py in outline]
+        back = [Vector((x0 + px, y0 + py, z0 + depth)) for px, py in outline]
+
+    n = len(outline)
+    bm = bmesh.new()
+    vf = [bm.verts.new(v) for v in front]
+    vb = [bm.verts.new(v) for v in back]
+
+    for t in _earclip2d([tuple(p) for p in outline]):
+        bm.faces.new([vf[i] for i in t])
+        bm.faces.new([vb[i] for i in reversed(t)])
+
+    for i in range(n):
+        bm.faces.new([vf[i], vb[i], vb[(i + 1) % n], vf[(i + 1) % n]])
+
+    bm.normal_update()
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    attr = ob.data.attributes.get("lpm_color")
+    value = attr.data[0].value if attr else color
+    bm.to_mesh(ob.data)
+    bm.free()
+    attr = ob.data.attributes.get("lpm_color") or ob.data.attributes.new("lpm_color", "INT", "FACE")
+
+    for d in attr.data:
+        d.value = value
+
+    ob.data.update()
+
+    return ob
+
+
 plate = lpm.plate
 move = lpm.move
 rotate = lpm.rotate
@@ -62,6 +143,19 @@ PALETTE = [
     ("tank_green", "#6f8a5c"),
     ("awning_red", "#c2442f"),
     ("cream", "#efe1c2"),
+    ("adobe", "#e6a283"),
+    ("adobe_dark", "#c2785a"),
+    ("adobe_light", "#f2c4a6"),
+    ("adobe_brick", "#9a4632"),
+    ("adobe_brick_dark", "#7a3526"),
+    ("beam", "#5a3a28"),
+    ("beam_light", "#7a5238"),
+    ("shutter", "#2f7584"),
+    ("shutter_dark", "#225663"),
+    ("void", "#1a1516"),
+    ("clay", "#b45f3e"),
+    ("cloth_light", "#ecd6c2"),
+    ("tank_black", "#2c2b2d"),
     ("sand_dark", "#9c8e6d"),
 ]
 
@@ -558,7 +652,7 @@ def bake_ao(ob, strength=0.55, samples=24, distance=1.5):
     bpy.ops.object.bake(type="AO", target="VERTEX_COLORS")
 
     for i, d in enumerate(base.data):
-        a = ao.data[i].color[0]
+        a = ao.data[i].color_srgb[0]
         k = 1.0 - strength * (1.0 - a)
         c = d.color
         d.color = (c[0] * k, c[1] * k, c[2] * k, 1.0)
@@ -586,5 +680,57 @@ def grime(ob, height=0.9, dark=0.72):
         for li in poly.loop_indices:
             c = col.data[li].color
             col.data[li].color = (c[0] * k, c[1] * k, c[2] * k, 1.0)
+
+    return ob
+
+
+def jitter(ob, amount=0.02, seed=7):
+    import random
+
+    for v in ob.data.vertices:
+        key = (round(v.co.x, 2), round(v.co.y, 2), round(v.co.z, 2), seed)
+        r = random.Random(hash(key))
+        v.co.x += r.uniform(-amount, amount)
+        v.co.y += r.uniform(-amount, amount)
+        v.co.z += r.uniform(-amount, amount) * 0.5
+
+    ob.data.update()
+
+    return ob
+
+
+def arcade(name, width, height, depth, arches, pier, spring, color, segs=8):
+    span = (width - pier * (arches + 1)) / arches
+    pts = [(-width / 2, 0), (-width / 2, height), (width / 2, height), (width / 2, 0)]
+    x = width / 2
+
+    for _ in range(arches):
+        x -= pier
+        pts.append((x, 0))
+        pts.append((x, spring))
+        cx = x - span / 2
+
+        for i in range(1, segs):
+            a = math.pi * i / segs
+            pts.append((cx + span / 2 * math.cos(a), spring + span / 2 * math.sin(a)))
+
+        pts.append((x - span, spring))
+        pts.append((x - span, 0))
+        x -= span
+
+    return earclip(sweep(name, pts, depth, (0, 0, 0), color, axis="y"))
+
+
+def earclip(ob):
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    big = [f for f in bm.faces if len(f.verts) > 4]
+
+    if big:
+        bmesh.ops.triangulate(bm, faces=big, quad_method="BEAUTY", ngon_method="EAR_CLIP")
+
+    bm.to_mesh(ob.data)
+    bm.free()
+    ob.data.update()
 
     return ob

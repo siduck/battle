@@ -138,6 +138,39 @@ Polyfork kits, measured with `tools/blender/study/analyze.py`, and POLYGON Milit
 - **Pressed or embossed surfaces** (jerry can X): model the raised panels as extruded outlines;
   thin bars for grooves read as wire.
 
+## Art direction: Synty POLYGON (project standard, required for every asset)
+
+Battle's visual target is the shared DNA of Synty's POLYGON packs, not any one pack. Every
+building, vehicle, prop, road and nature asset follows it. A box with flat colours is not done.
+
+**Shape**
+- Chunky, deliberate geometry with slightly exaggerated proportions: thick walls (0.35 to 0.45 m),
+  deep reveals, oversized trim, beams, sills and lintels.
+- Silhouette first: every building gets a feature that breaks the box (arcade, balcony, outdoor
+  stair, roof room, beam ends, awning, tank).
+- Hand-made, not machine-perfect: `k.jitter` on walls, parapets and slabs (2 to 3 cm), soft rounded
+  parapets (`k.chamfer(ob, 0.09, 30, 2)`). Never jitter big concave caps (arcades, stairs); they streak.
+- Openings are deep, dark holes (`void` inside), with frames set back and lintels proud.
+- Small details are geometry: planks, slats, bricks, spindles, beam ends. One box each, consistent size.
+
+**Colour**
+- One main material hue at three values (body, a darker step for ledges, bases and insides, a
+  lighter step for caps). Trim is a value step of the same hue, never a second near-white.
+- One accent hue, roughly opposite the main hue (teal against terracotta), used sparingly:
+  shutters, cloth, a door.
+- Wood dark and warm, metal neutral, voids near black. No pure white, no pure black on surfaces.
+- Wear: brick patches in the wall's dark step with a few bricks, plus base grime and baked AO.
+
+**Quality check before an asset is done**
+1. Silhouette reads at 30 m in the game (screenshot with `DF_ASSET`, `DF_ASSET_DIST`, `DF_ASSET_YAW`).
+2. Palette: body, dark step, light step, one accent, wood. Nothing else fighting.
+3. Studio render (`studio.py` style: sun, dark background) next to the reference sheets in
+   `~/gamess/design`. Would it sit in a Synty layout sheet without standing out?
+4. Every face has a reason; no flat wall wider than about 3 m without an opening, beam or patch.
+5. Triangle budget and on-device FPS as in the performance skill.
+
+Reference build: `tools/blender/assets/adobe_house.py`.
+
 ## What POLYGON packs really are (157 marketing images studied, Nov 2026)
 
 Military, War, Sci-Fi Space, Sci-Fi City, Nature and Farm packs:
