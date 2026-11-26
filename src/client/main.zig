@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const rlgl = @import("rlgl");
 const gfx = @import("gfx.zig");
 const game_mod = @import("game.zig");
 const models_mod = @import("models.zig");
@@ -25,6 +26,7 @@ const menu_mod = @import("menu.zig");
 const loadout_mod = @import("loadout.zig");
 const lobby = @import("lobby.zig");
 const pvs = @import("pvs.zig");
+const gputime = @import("gputime.zig");
 const net = @import("net.zig");
 
 const Game = game_mod.Game;
@@ -581,6 +583,19 @@ var prism_glow: gfx.Glow = .{};
 var auto_scale: f32 = 1;
 var slow_time: f32 = 0;
 var fast_time: f32 = 0;
+
+extern fn glInvalidateFramebuffer(target: c_uint, count: c_int, attachments: [*]const c_uint) callconv(.c) void;
+
+fn dropDepth(screen: bool) void {
+    if (!assets.mobile) return;
+
+    rlgl.rlDrawRenderBatchActive();
+
+    const fbo_depth = [_]c_uint{0x8D00};
+    const screen_depth = [_]c_uint{ 0x1801, 0x1802 };
+
+    if (screen) glInvalidateFramebuffer(0x8D40, 2, &screen_depth) else glInvalidateFramebuffer(0x8D40, 1, &fbo_depth);
+}
 
 var refresh_asked = false;
 var stat_t: f32 = 0;
@@ -1309,17 +1324,22 @@ pub fn main() void {
         if (target) |rt| {
             const scene_start = rl.GetTime();
 
+            gputime.mark(0);
             rl.BeginTextureMode(rt);
             renderer.begin(cam, game.time);
             render.scene(&renderer, &models, &arts, &scenery, &rig, kit, &cars, game, now, frame_dt);
             renderer.end();
+            dropDepth(false);
             rl.EndTextureMode();
+            gputime.mark(1);
             stat_scene += @floatCast(rl.GetTime() - scene_start);
 
             if (shared.terrain.current == .prism) prism_glow.process(rt.texture);
         }
 
         rl.BeginDrawing();
+
+        if (target != null) rl.ClearBackground(.{ .r = 0, .g = 0, .b = 0, .a = 255 });
 
         if (target) |rt| {
             const src = rl.Rectangle{ .x = 0, .y = 0, .width = @floatFromInt(rt.texture.width), .height = @floatFromInt(-rt.texture.height) };
@@ -1358,7 +1378,10 @@ pub fn main() void {
         }
         const cpu_end = rl.GetTime();
 
+        gputime.mark(2);
+        dropDepth(true);
         rl.EndDrawing();
+        gputime.endFrame();
         frameStats(frame_dt, @floatCast(cpu_end - frame_start), @floatCast(rl.GetTime() - cpu_end));
     }
 }

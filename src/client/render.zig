@@ -692,9 +692,13 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     for (g.drops.items) |d| {
         if (!d.active) continue;
 
+        const gap = d.pos.sub(v.eye).length();
+
+        if (gap > 90 or (gap > 3 and (!gfx.sphereVisible(d.pos, 1.5) or !pvs.visible(v.eye, d.pos, 1)))) continue;
+
         const bob: Vec3 = .{ .y = @sin(d.phase * 1.3) * 0.08 };
 
-        const near = d.pos.sub(v.eye).length() < 40;
+        const near = gap < 40;
 
         skin = if (near) d.held.rarity else .common;
         drawGun(r, models, arts, d.held.weapon, d.pos.add(bob), Basis.yawed(d.phase), 1.6);
@@ -705,6 +709,10 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
 
     for (g.pickups.items) |p| {
         if (!p.active) continue;
+
+        const gap = p.pos.sub(v.eye).length();
+
+        if (gap > 90 or (gap > 3 and (!gfx.sphereVisible(p.pos, 1) or !pvs.visible(v.eye, p.pos, 1)))) continue;
 
         const m = if (p.kind == .ammo) models.pickup else models.medkit;
         const at = p.pos.add(.{ .y = @sin(p.phase) * 0.12 });
