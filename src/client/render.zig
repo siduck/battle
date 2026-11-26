@@ -695,14 +695,6 @@ fn mark(i: usize) void {
 pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.count]gunart.Art, scenery: *propart.Props, rig: *soldier.Rig, kit: soldier.Kit, cars: *const vehicleart.Art, g: Game, v: View, dt: f32) void {
     mark(0);
     r.ambientBoost(if (indoors(v.eye)) 1.8 else 1);
-    r.setSurface(.{ .roughness = 1, .metallic = 0 });
-    r.setDetailMode(0);
-    if (on(16)) r.draw(models.world, mesh.identity, true);
-
-    for (models_mod.extraMeshes()) |em| r.draw(em, mesh.identity, true);
-
-    if (shared.terrain.current != .courtyard and on(2)) drawChunks(r, v);
-    mark(1);
     r.setDetailMode(0);
     r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
     r.setPropDetail(true);
@@ -715,6 +707,14 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     if (on(8)) cover.draw(r, v.eye);
     mark(3);
     r.setPropDetail(false);
+    r.setSurface(.{ .roughness = 1, .metallic = 0 });
+    if (on(16)) r.draw(models.world, mesh.identity, true);
+
+    for (models_mod.extraMeshes()) |em| r.draw(em, mesh.identity, true);
+
+    if (shared.terrain.current != .courtyard and on(2)) drawChunks(r, v);
+    mark(1);
+    r.setDetailMode(0);
     r.setSurface(.{ .roughness = 0.5 });
 
     for (g.drops.items) |d| {

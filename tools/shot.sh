@@ -28,7 +28,7 @@ done
 disp=:$(head -n1 "$fdfile")
 rm -f "$fdfile"
 
-envs=(DISPLAY="$disp" DF_WIN="$size")
+envs=(DISPLAY="$disp" DF_WIN="$size" DF_MUTE=1)
 [ "$map" = menu ] || envs+=(DF_MAP="$map")
 [ -n "$cam" ] && envs+=(DF_CAM="$cam")
 [ -n "${SHOT_HUD:-}" ] || envs+=(DF_NOHUD=1)

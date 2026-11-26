@@ -250,7 +250,7 @@ const lit_fs_head =
     \\
 ;
 
-const lit_fs_body =
+const lit_fs_pre =
     \\uniform vec3 fogColor;
     \\vec3 groundSurface(vec3 n, float dist) {
     \\    vec2 guv = (worldPos.xz + groundXf.x) * groundXf.y;
@@ -278,7 +278,14 @@ const lit_fs_body =
     \\}
     \\void main() {
     \\    vec4 texel = texture(texture0, uv);
+
+;
+
+const lit_fs_cut =
     \\    if (texel.a * colDiffuse.a < 0.45) discard;
+;
+
+const lit_fs_post =
     \\    vec3 n = normalize(worldNormal);
     \\    if (!gl_FrontFacing) n = -n;
     \\    float dist = length(viewPos - worldPos);
@@ -294,7 +301,10 @@ const lit_fs_body =
     \\}
 ;
 
+const lit_fs_body = lit_fs_pre ++ "\n" ++ lit_fs_cut ++ "\n" ++ lit_fs_post;
+
 const lit_fs = lit_fs_head ++ lit_fs_body;
+const lit_fs_opaque = lit_fs_head ++ lit_fs_pre ++ "\n" ++ lit_fs_post;
 
 const sky_vs =
     \\#version 330
@@ -425,6 +435,14 @@ const SkyLocs = struct {
 pub const Phase = enum { shadow, main };
 
 const inst_cap: usize = 16384;
+pub var draw_calls: u64 = 0;
+pub var draw_tris: u64 = 0;
+
+fn tally(mesh: rl.Mesh, n: usize) void {
+    draw_calls += 1;
+    draw_tris += @as(u64, @intCast(mesh.triangleCount)) * n;
+}
+
 var inst_stage: [inst_cap][16]f32 = undefined;
 var inst_vbos: [3]c_uint = .{ 0, 0, 0 };
 var inst_frame: usize = 0;
@@ -640,6 +658,8 @@ fn drawFromBuffer(mesh: rl.Mesh, material: rl.Material, vbo: c_uint, base: usize
 
     rlgl.rlSetUniformMatrix(sh.locs[@intCast(rl.SHADER_LOC_MATRIX_MVP)], asMat(rlgl.Matrix, rm.MatrixMultiply(rm.MatrixMultiply(asMat(rm.Matrix, rlgl.rlGetMatrixTransform()), asMat(rm.Matrix, view)), asMat(rm.Matrix, proj))));
 
+    tally(mesh, count);
+
     if (mesh.indices != null) {
         rlgl.rlDrawVertexArrayElementsInstanced(0, mesh.triangleCount * 3, null, @intCast(count));
     } else {
@@ -713,7 +733,7 @@ pub const Renderer = struct {
 
     pub fn init(sky_path: [:0]const u8, sky_mesh: rl.Mesh) Renderer {
         const lit = fastShader(lit_vs, lit_fs);
-        var lit_inst = fastShader(lit_inst_vs, lit_fs);
+        var lit_inst = fastShader(lit_inst_vs, lit_fs_opaque);
         const depth = shader(depth_vs, depth_fs);
         var depth_inst = shader(depth_inst_vs, depth_fs);
 
@@ -1163,6 +1183,7 @@ pub const Renderer = struct {
             return;
         }
 
+        tally(m, 1);
         rl.DrawMesh(m, r.lit_material, transform);
     }
 
@@ -1181,6 +1202,7 @@ pub const Renderer = struct {
 
         rlgl.rlDisableBackfaceCulling();
         rlgl.rlDisableDepthMask();
+        tally(r.sky_mesh, 1);
         rl.DrawMesh(r.sky_mesh, r.sky_material, r.sky_at);
         rlgl.rlEnableDepthMask();
         rlgl.rlEnableBackfaceCulling();
@@ -1216,6 +1238,7 @@ pub const Renderer = struct {
             var material = model.materials[@intCast(model.meshMaterial[i])];
 
             material.shader = if (r.phase == .shadow) r.depth else r.lit;
+            tally(model.meshes[i], 1);
             rl.DrawMesh(model.meshes[i], material, transform);
         }
     }
@@ -1237,6 +1260,7 @@ pub const Renderer = struct {
             if (r.phase == .shadow) material.maps[0].texture = .{ .id = rlgl.rlGetTextureIdDefault(), .width = 1, .height = 1, .mipmaps = 1, .format = rl.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
 
             material.shader = if (r.phase == .shadow) r.depth else r.lit;
+            tally(model.meshes[i], 1);
             rl.DrawMesh(model.meshes[i], material, transform);
             material.maps[0].texture = own;
         }
@@ -1260,6 +1284,7 @@ pub const Renderer = struct {
             rl.SetShaderValue(r.lit, loc, &alpha, rl.SHADER_UNIFORM_FLOAT);
             material.maps[0].color.a = 255;
             material.shader = r.lit;
+            tally(model.meshes[i], 1);
             rl.DrawMesh(model.meshes[i], material, transform);
         }
 

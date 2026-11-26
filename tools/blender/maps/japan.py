@@ -380,6 +380,14 @@ def emit(map_name, infos, path):
         f.write("\n".join(out))
 
 
+OWN = os.environ.get("OWN", "")
+
+def own(name):
+    path = os.path.join(OWN, name + ".glb") if OWN else ""
+
+    return path if path and os.path.exists(path) else None
+
+
 def ex(name):
     return os.path.join(EXTRA, name + ".glb")
 
@@ -410,6 +418,9 @@ def assemble(name, parts, dist=5.0, strength=0.55, split=4.0, dy=1.5, cell=0.5, 
     return finish(bm, name, {"kind": "prop", "group": "building", "collide": "none", "solids": solids(bm, dy=dy, cell=cell)})
 
 
+BUILDINGS = {"parlour", "apartment", "tower", "barhut", "konbini", "corner", "shop3", "shop2", "wide", "roof"}
+
+
 def main():
     root = os.environ.get("ROOT", os.getcwd())
     global OUT
@@ -417,6 +428,15 @@ def main():
     import pf
     pf.OUT = OUT
     os.makedirs(OUT, exist_ok=True)
+    if os.environ.get("FARONLY"):
+        for name in sorted(BUILDINGS):
+            mine = own(name)
+
+            if mine:
+                build(name + ".lod", mine, glass=False, voxel=False, dist=3, split=0)
+
+        return
+
 
     for f in os.listdir(OUT):
         if f.endswith(".glb"):
@@ -426,6 +446,28 @@ def main():
     infos = {}
     apt = "apartment-block-6445af"
     roof = "tiled-roof-section-6f1121"
+    jobs_meta = {
+        "cherry": {"group": "tree", "collide": "trunk", "dist": 3, "sky": 0.3},
+        "tree": {"group": "tree", "collide": "trunk", "dist": 3, "sky": 0.3},
+        "maple": {"group": "tree", "collide": "trunk", "dist": 3, "sky": 0.3},
+        "bush": {"group": "bush", "collide": "none", "sky": 0.3},
+        "sunflower": {"group": "bush", "collide": "none"},
+        "rock": {"group": "rock"},
+        "track": {"group": "road", "collide": "none", "dist": 0.5, "strength": 0.2},
+        "crate": {"collide": "none"}, "bikerack": {"collide": "none"}, "awning": {"collide": "none"},
+        "meter": {"collide": "none"}, "noren": {"collide": "none"}, "lantern": {"collide": "none"},
+        "shutter": {"collide": "none"}, "board": {"collide": "none"}, "cone": {"collide": "none"},
+        "kanji": {"collide": "none"}, "laundry": {"collide": "none"}, "bed": {"collide": "none"},
+        "barrow": {"collide": "none"},
+        "mirror": {"collide": "cylinder"}, "drum": {"collide": "cylinder"}, "potted": {"collide": "cylinder"},
+        "postbox": {"collide": "cylinder"}, "bin": {"collide": "cylinder"}, "lamp": {"collide": "cylinder"},
+        "signal": {"collide": "cylinder"}, "pole": {"collide": "cylinder", "dist": 1.0, "strength": 0.3},
+        "olive": {"collide": "cylinder"},
+        "parlour": {"dist": 4, "split": 6}, "apartment": {"dist": 4, "split": 0}, "tower": {"dist": 4, "split": 0},
+        "barhut": {"dist": 3, "split": 4}, "konbini": {"dist": 3, "split": 5}, "corner": {"dist": 3, "split": 6},
+        "shop3": {"dist": 3, "split": 6}, "shop2": {"dist": 3, "split": 6}, "wide": {"dist": 3, "split": 6},
+        "roof": {"dist": 2, "split": 2, "voxel": False},
+    }
     jobs = [
         ("parlour", lambda: build("parlour", "amusement-parlour-7eb45f", dist=4, split=3)),
         ("apartment", lambda: build("apartment", apt, dist=4, split=3)),
@@ -487,6 +529,14 @@ def main():
 
     for name, fn in jobs:
         if only and name not in only.split(","):
+            continue
+
+        mine = own(name)
+
+        if mine:
+            base = dict(jobs_meta.get(name, {}))
+
+            infos[name] = (build(name, mine, glass=False, **base) if name in BUILDINGS else prop(name, mine, **base))
             continue
 
         infos[name] = fn()

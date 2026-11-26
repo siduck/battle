@@ -620,6 +620,7 @@ var stat_cpu: f32 = 0;
 var stat_swap: f32 = 0;
 var stat_sim: f32 = 0;
 var stat_scene: f32 = 0;
+var stat_worst: f32 = 0;
 
 fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     if (!assets.mobile) return;
@@ -628,6 +629,7 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     stat_n += 1;
     stat_cpu += cpu;
     stat_swap += swap;
+    stat_worst = @max(stat_worst, dt);
 
     if (stat_t < 2) return;
 
@@ -641,10 +643,31 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
 
     rl.TraceLog(rl.LOG_INFO, "%s", parts.ptr);
 
+    const draws = std.fmt.bufPrintSentinel(&buf, "draws {d} tris {d}k worst {d:.1} ms", .{ gfx.draw_calls / @as(u64, @intFromFloat(stat_n)), gfx.draw_tris / @as(u64, @intFromFloat(stat_n)) / 1000, stat_worst * 1000 }, 0) catch return;
+
+    rl.TraceLog(rl.LOG_INFO, "%s", draws.ptr);
+    gfx.draw_calls = 0;
+    gfx.draw_tris = 0;
+    stat_worst = 0;
+
     if (assets.mobile) {
         var prop: [92]u8 = @splat(0);
 
         if (__system_property_get("debug.df.skip", &prop) > 0) render.skip = std.fmt.parseInt(u32, std.mem.sliceTo(&prop, 0), 10) catch 0 else render.skip = 0;
+
+        var lodpx: [92]u8 = @splat(0);
+
+        var scale: [92]u8 = @splat(0);
+
+        scale_override = if (__system_property_get("debug.df.scale", &scale) > 0) std.fmt.parseFloat(f32, std.mem.sliceTo(&scale, 0)) catch 0 else 0;
+
+
+
+
+        var tol: [92]u8 = @splat(0);
+
+        propart.lod_tolerance = if (__system_property_get("debug.df.lodtol", &tol) > 0) std.fmt.parseFloat(f32, std.mem.sliceTo(&tol, 0)) catch 1 else 1;
+        propart.lod_pixels = if (__system_property_get("debug.df.lodpx", &lodpx) > 0) std.fmt.parseFloat(f32, std.mem.sliceTo(&lodpx, 0)) catch 100 else 100;
     }
     render.part_ms = @splat(0);
     stat_t = 0;
@@ -713,7 +736,11 @@ fn nearUsable(g: *Game) bool {
     return false;
 }
 
+var scale_override: f32 = 0;
+
 fn sceneScale() f32 {
+    if (scale_override > 0) return scale_override;
+
     return settings.render_scale * auto_scale;
 }
 

@@ -6,6 +6,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "kit"))
 
 import dfkit as k
+import bpy
 from mathutils import Vector
 
 OUT = os.environ.get("OUT", "/tmp/dfkit")
@@ -21,6 +22,9 @@ FRONT = -D / 2
 rng = random.Random(11)
 
 k.reset()
+MID = os.environ.get("MID") == "1"
+k.set_mid(MID)
+N = 2 if MID else 1
 
 if os.environ.get("SHUTTER"):
     main, dark = os.environ["SHUTTER"].split(",")
@@ -64,8 +68,10 @@ def window(w, h, sill_z, shutters=True, bars=False):
             k.rotate(sh, side * -18, "Z", (side * w / 2, -0.02, 0))
             items.append(sh)
 
-            for j in range(3):
-                sl = k.box("slat", (w / 2 - 0.08, 0.02, 0.05), (side * w * 0.75, -0.075, sill_z + 0.15 + j * (h - 0.3) / 2), k.c("shutter_dark"))
+            slats = 9 if MID else 3
+
+            for j in range(slats):
+                sl = k.box("slat", (w / 2 - 0.08, 0.02, 0.05 if not MID else 0.035), (side * w * 0.75, -0.075, sill_z + 0.15 + j * (h - 0.3) / (slats - 1)), k.c("shutter_dark"))
                 k.rotate(sl, side * -18, "Z", (side * w / 2, -0.02, 0))
                 items.append(sl)
 
@@ -135,7 +141,14 @@ def vigas(length, z, every=0.9):
 
     for i in range(n):
         x = -length / 2 + every * (i + 0.5)
-        items.append(k.beveled_box("viga", (0.16, 0.42, 0.16), (x, -0.2, z), k.c("beam"), 0.02))
+        if MID:
+            v = k.prism("viga", 8, 0.085, 0.42, (0, 0, 0), k.c("beam"), rotate=22.5)
+            k.chamfer(v, 0.015, 30, 2)
+            k.rotate(v, 90, "X")
+            k.move(v, x, -0.42 + 0.22, z + 0.08)
+            items.append(v)
+        else:
+            items.append(k.beveled_box("viga", (0.16, 0.42, 0.16), (x, -0.2, z), k.c("beam"), 0.02))
 
     return items
 
@@ -187,11 +200,11 @@ for side in (-1, 1):
 
 parts.append(k.beveled_box("brail", (2.2, 0.08, 0.08), (0, by - 0.47, ZU + 0.88), k.c("beam_light"), 0.01))
 
-front_arc = k.arcade("arcade", W, H1, T, 3, 0.55, 1.75, k.c("adobe"), inner=k.c("adobe_dark"))
+front_arc = k.arcade("arcade", W, H1, T, 3, 0.55, 1.75, k.c("adobe"), segs=8 * N, inner=k.c("adobe_dark"))
 k.move(front_arc, 0, FRONT + T / 2, Z0)
 parts.append(front_arc)
 
-sa = k.arcade("sidearc", PORCH, H1, T, 1, 0.45, 1.6, k.c("adobe"), inner=k.c("adobe_dark"))
+sa = k.arcade("sidearc", PORCH, H1, T, 1, 0.45, 1.6, k.c("adobe"), segs=8 * N, inner=k.c("adobe_dark"))
 k.rotate(sa, -90)
 k.move(sa, -(W / 2 - T / 2), FRONT + PORCH / 2, Z0)
 parts.append(sa)
@@ -232,10 +245,10 @@ tank = (2.4, 2.2)
 
 for lx in (-0.42, 0.42):
     for ly in (-0.42, 0.42):
-        parts.append(k._bar("tleg", Vector((tank[0] + lx, tank[1] + ly, ZT)), Vector((tank[0] + lx, tank[1] + ly, ZT + 1.0)), 0.045, k.c("beam"), sides=4))
+        parts.append(k._bar("tleg", Vector((tank[0] + lx, tank[1] + ly, ZT)), Vector((tank[0] + lx, tank[1] + ly, ZT + 1.0)), 0.045, k.c("beam"), sides=4 * N))
 
 parts.append(k.beveled_box("tdeck", (1.1, 1.1, 0.1), (tank[0], tank[1], ZT + 1.0), k.c("beam_light"), 0.015))
-parts.append(k.lathe("tank", [(0, 0), (0.5, 0), (0.52, 0.2), (0.5, 0.4), (0.52, 0.6), (0.5, 0.8), (0.52, 1.0), (0.45, 1.2), (0.15, 1.25), (0.15, 1.35), (0, 1.35)], 12, (tank[0], tank[1], ZT + 1.1), k.c("tank_black")))
+parts.append(k.lathe("tank", [(0, 0), (0.5, 0), (0.52, 0.2), (0.5, 0.4), (0.52, 0.6), (0.5, 0.8), (0.52, 1.0), (0.45, 1.2), (0.15, 1.25), (0.15, 1.35), (0, 1.35)], 12 * N, (tank[0], tank[1], ZT + 1.1), k.c("tank_black")))
 
 stair_w = 1.05
 rise, run, steps = 0.2, 0.29, int((ZU - 0.02) / 0.2)
@@ -260,7 +273,7 @@ for ob in (stair, rail, cap):
 canopy_at = (-W / 2 - 1.3, FRONT + 2.0)
 
 for i, (dx, dy) in enumerate(((-0.9, -1.1), (-0.9, 1.1))):
-    parts.append(k._bar("pole", Vector((canopy_at[0] + dx, canopy_at[1] + dy, 0)), Vector((canopy_at[0] + dx, canopy_at[1] + dy, 2.3)), 0.05, k.c("beam"), sides=5))
+    parts.append(k._bar("pole", Vector((canopy_at[0] + dx, canopy_at[1] + dy, 0)), Vector((canopy_at[0] + dx, canopy_at[1] + dy, 2.3)), 0.05, k.c("beam"), sides=5 * N))
 
 for i in range(8):
     y0 = canopy_at[1] - 1.2 + i * 0.3
@@ -270,7 +283,7 @@ for i in range(8):
     parts.append(strip)
 
 for i, (px, py, r, h) in enumerate(((-1.0, FRONT + PORCH - 0.4, 0.26, 0.6), (-1.55, FRONT + PORCH - 0.35, 0.2, 0.45), (1.1, FRONT + PORCH - 0.4, 0.24, 0.55), (-W / 2 - 1.6, FRONT + 1.6, 0.3, 0.7))):
-    parts.append(k.lathe(f"pot{i}", [(0, 0), (r * 0.6, 0), (r, h * 0.45), (r * 0.8, h * 0.85), (r * 0.55, h * 0.9), (r * 0.62, h), (0, h * 0.95)], 9, (px, py, Z0 if py > FRONT + 0.1 else 0), k.c("clay")))
+    parts.append(k.lathe(f"pot{i}", [(0, 0), (r * 0.6, 0), (r, h * 0.45), (r * 0.8, h * 0.85), (r * 0.55, h * 0.9), (r * 0.62, h), (0, h * 0.95)], 9 * N, (px, py, Z0 if py > FRONT + 0.1 else 0), k.c("clay")))
 
 for i, (cx, cy, cz, sw, sh, col) in enumerate(((-W / 2 - 1.6, FRONT + 2.6, 0, 0.7, 0.5, "beam_light"), (-W / 2 - 1.55, FRONT + 2.55, 0.5, 0.55, 0.4, "beam"), (-W / 2 - 0.9, FRONT + 2.8, 0, 0.5, 0.45, "beam_light"))):
     cr = k.beveled_box(f"crate{i}", (sw, sw * 0.9, sh), (cx, cy, cz), k.c(col), 0.03)
@@ -285,12 +298,18 @@ for bx in (1.75, 3.05):
 for ob in soft:
     k.jitter(ob, 0.025)
 
-ob = k.finish("df_adobe_house", parts, budget=9000)
+if MID:
+    gone = {id(o) for o in soft[1:]}
+    parts = [p for p in parts if id(p) not in gone]
+    k.fuse(soft, bevel=0.06, segments=3)
+
+ob = k.finish("df_adobe_house", parts, budget=30000 if MID else 9000)
 k.height_gradient(ob)
 k.shade_volume(ob, (-W / 2 + T, FRONT + T - 0.01, -0.1), (W / 2 + 0.3, FRONT + PORCH + T + 0.05, Z0 + H1), 0.6)
 k.grime(ob, 0.7, 0.75)
 k.bake_ao(ob, strength=0.8, distance=1.2)
 print("STATS", k.stats(ob))
-k.export(ob, os.path.join(OUT, "df_adobe_house.glb"))
+NAME = "df_adobe_house_mid" if MID else "df_adobe_house"
+k.export(ob, os.path.join(OUT, NAME + ".glb"))
 k.VIEWS["hero"] = (1.0, -1.35, 0.55)
-print("SHEET", k.preview([ob], os.path.join(OUT, "df_adobe_house_sheet.png"), views=("hero", "front", "right", "back")))
+print("SHEET", k.preview([ob], os.path.join(OUT, NAME + "_sheet.png"), views=("hero", "front", "right", "back")))

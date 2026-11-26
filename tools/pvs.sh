@@ -16,7 +16,7 @@ disp=:$(head -n1 "$fdfile")
 rm -f "$fdfile"
 
 for m in "${maps[@]}"; do
-	DISPLAY=$disp DF_WIN=640x360 DF_MAP=$m DF_PVSGEN=src/client/assets/pvs "$prefix/bin/dronefire" 2>&1 | grep "^pvs" &
+	DISPLAY=$disp DF_MUTE=1 DF_WIN=640x360 DF_MAP=$m DF_PVSGEN=src/client/assets/pvs "$prefix/bin/dronefire" 2>&1 | grep "^pvs" &
 done
 
 wait $(jobs -p | grep -v "^$xpid$") 2>/dev/null

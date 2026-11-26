@@ -16,6 +16,8 @@ const kind_count = props.kind_capacity;
 const Slot = struct {
     model: ?rl.Model = null,
     lod: ?rl.Model = null,
+    steps: [2]u16 = .{ 0, 0 },
+    step_err: [2]f32 = .{ 0, 0 },
     all: []rl.Matrix = &.{},
     spots: []Vec3 = &.{},
     visible: []rl.Matrix = &.{},
@@ -35,7 +37,11 @@ const Cell = struct {
 
 const cell_size: f32 = 32;
 const min_pixels: f32 = 5;
-const lod_pixels: f32 = 100;
+pub var lod_pixels: f32 = 100;
+pub var lod_tolerance: f32 = 1;
+
+var step_pool: [kind_count * 2]rl.Model = undefined;
+var step_used: usize = 0;
 
 pub var tri_count: [kind_count]u64 = @splat(0);
 
@@ -142,10 +148,73 @@ fn buildCells(gpa: std.mem.Allocator, slot: *Slot, scales: []const f32) void {
     slot.cells = cells.toOwnedSlice(gpa) catch &.{};
 }
 
+fn loadSteps(slot: *Slot, dir: []const u8, stem: []const u8, file: []const u8) void {
+    var buf: [512]u8 = undefined;
+    const errs_path = std.fmt.bufPrintSentinel(&buf, "{s}/{s}.lods", .{ dir, stem }, 0) catch return;
+
+    if (!assets.exists(errs_path)) return;
+
+    const text = rl.LoadFileText(errs_path.ptr);
+
+    if (text == null) return;
+
+    defer rl.UnloadFileText(text);
+
+    var it = std.mem.tokenizeAny(u8, std.mem.sliceTo(text, 0), " \n");
+    var k: usize = 0;
+
+    while (it.next()) |tok| : (k += 1) {
+        if (k >= slot.steps.len) break;
+
+        const err = std.fmt.parseFloat(f32, tok) catch break;
+        var path_buf: [512]u8 = undefined;
+        const path = std.fmt.bufPrintSentinel(&path_buf, "{s}/{s}.lod{d}.glb", .{ dir, stem, k + 1 }, 0) catch break;
+
+        if (!assets.exists(path)) break;
+
+        const model = rl.LoadModel(path.ptr);
+
+        if (model.meshCount == 0) break;
+
+        if (step_used == step_pool.len) break;
+
+        tint(model, file);
+        mesh.dropCpu(model);
+        step_pool[step_used] = model;
+        step_used += 1;
+        slot.steps[k] = @intCast(step_used);
+        slot.step_err[k] = err;
+    }
+}
+
+fn pickLevel(slot: *const Slot, flat: f32, lod_from: f32) usize {
+    if (flat >= lod_from) return 3;
+
+    const scale = slot.size / @max(slot.extent, 0.001);
+    const allowed = @max(flat, 0) * gfx.pixelAngle() * lod_tolerance;
+    var level: usize = 0;
+
+    for (slot.steps, slot.step_err, 0..) |step, err, k| {
+        if (step != 0 and err * scale <= allowed) level = k + 1;
+    }
+
+    return level;
+}
+
+fn levelModel(slot: *const Slot, model: rl.Model, level: usize) ?rl.Model {
+    return switch (level) {
+        0 => model,
+        1, 2 => if (slot.steps[level - 1] == 0) null else step_pool[slot.steps[level - 1] - 1],
+        else => slot.lod,
+    };
+}
+
 pub const Props = struct {
     slots: [kind_count]Slot = @splat(.{}),
 
     pub fn load(gpa: std.mem.Allocator, dir: []const u8) Props {
+        step_used = 0;
+
         var p: Props = .{};
         var counts: [kind_count]usize = @splat(0);
 
@@ -166,6 +235,8 @@ pub const Props = struct {
                 var lod_buf: [512]u8 = undefined;
                 const name = std.mem.sliceTo(file, 0);
                 const lod_path = std.fmt.bufPrintSentinel(&lod_buf, "{s}/{s}.lod.glb", .{ dir, name[0 .. name.len - 4] }, 0) catch "";
+
+                loadSteps(slot, dir, name[0 .. name.len - 4], std.mem.sliceTo(file, 0));
 
                 if (lod_path.len > 0 and assets.exists(lod_path)) {
                     const lod = rl.LoadModel(lod_path.ptr);
@@ -278,15 +349,15 @@ pub const Props = struct {
                 const pixel_limit = gfx.pixelAngle() * min_pixels;
                 const lod_from = if (slot.lod != null) slot.size / (gfx.pixelAngle() * lod_pixels) else 1e9;
 
-                for ([_]bool{ false, true }) |far| {
-                    const m = if (far) slot.lod orelse continue else model;
+                for (0..4) |level| {
+                    const m = levelModel(slot, model, level) orelse continue;
                     var run_start: usize = 0;
                     var run_len: usize = 0;
 
                     for (slot.cells) |c| {
                         const d = c.center.sub(eye);
                         const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
-                        const show = flat < limit and slot.size > pixel_limit * @max(flat, 1) and (flat >= lod_from) == far and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius);
+                        const show = flat < limit and slot.size > pixel_limit * @max(flat, 1) and pickLevel(slot, flat, lod_from) == level and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius);
 
                         if (!show) continue;
 
@@ -308,7 +379,7 @@ pub const Props = struct {
                     const d = c.center.sub(eye);
                     const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
 
-                    if (flat < limit and slot.size > pixel_limit * @max(flat, 1) and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius)) tri_count[i] += c.count * modelTris(if (flat >= lod_from) slot.lod.? else model);
+                    if (flat < limit and slot.size > pixel_limit * @max(flat, 1) and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius)) tri_count[i] += c.count * modelTris(levelModel(slot, model, pickLevel(slot, flat, lod_from)) orelse model);
                 }
 
                 r.setMatId(-1);

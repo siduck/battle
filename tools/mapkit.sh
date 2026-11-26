@@ -13,7 +13,7 @@ pf=${2:-$HOME/.cache/polyfork/$map}
 
 [ -f "$script" ] || { echo "missing $script" >&2; exit 1; }
 
-env PATH=/usr/bin:/bin BPYLIB="${BPYLIB:-$HOME/.cache/battle/bpylib}" ROOT="$root" PF="$pf" blender -b --python "$script" 2>&1 | grep -E "^(DONE|TRIS)|Error|Traceback" || true
+env PATH=/usr/bin:/bin OWN="${OWN:-}" ONLY="${ONLY:-}" BPYLIB="${BPYLIB:-$HOME/.cache/battle/bpylib}" ROOT="$root" PF="$pf" blender -b --python "$script" 2>&1 | grep -E "^(DONE|TRIS)|Error|Traceback" || true
 
 ls -la "$root/src/shared/maps/${map}_kit.zig"
 du -sh "$root/src/client/assets/props/$map"

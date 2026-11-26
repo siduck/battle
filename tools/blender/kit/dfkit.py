@@ -156,7 +156,74 @@ PALETTE = [
     ("clay", "#ad6a4e"),
     ("cloth_light", "#ecd6c2"),
     ("tank_black", "#2c2b2d"),
+    ("jp_cream", "#e6dac6"),
+    ("jp_mint", "#bccfc0"),
+    ("jp_mint_dark", "#97ad9b"),
+    ("jp_pink", "#e2bcb1"),
+    ("jp_pink_dark", "#c39a8f"),
+    ("jp_blue", "#b9c7d1"),
+    ("jp_blue_dark", "#94a4b0"),
+    ("jp_ochre", "#e0c18d"),
+    ("jp_ochre_dark", "#bf9f6c"),
+    ("jp_cream_dark", "#c7b79e"),
+    ("jp_cream_light", "#f1e9dc"),
+    ("jp_sand", "#d8c4a2"),
+    ("jp_sand_dark", "#b6a080"),
+    ("jp_grey", "#bfbab0"),
+    ("jp_grey_dark", "#99948a"),
+    ("jp_slate", "#8d999f"),
+    ("jp_slate_dark", "#6f7b82"),
+    ("jp_wood", "#6e4b35"),
+    ("jp_wood_dark", "#4d3426"),
+    ("jp_wood_light", "#93694a"),
+    ("jp_char", "#3e3735"),
+    ("jp_tile", "#505a65"),
+    ("jp_tile_dark", "#3b434d"),
+    ("jp_tile_light", "#65707b"),
+    ("jp_metal", "#6c8480"),
+    ("jp_alu", "#c6c8c5"),
+    ("jp_alu_dark", "#8e9291"),
+    ("jp_glass", "#3d5666"),
+    ("jp_glass_light", "#6f8c9b"),
+    ("jp_red", "#c44a3e"),
+    ("jp_red_dark", "#963a31"),
+    ("jp_indigo", "#3f507a"),
+    ("jp_yellow", "#e1b74c"),
+    ("jp_green", "#4f8a5e"),
+    ("jp_sign", "#f0eadc"),
+    ("jp_concrete", "#aaa69d"),
+    ("jp_leaf", "#6e8f4c"),
+    ("jp_leaf_dark", "#53713a"),
+    ("jp_leaf_light", "#8ca85d"),
+    ("jp_cherry", "#ecb4c1"),
+    ("jp_cherry_light", "#f6d3da"),
+    ("jp_cherry_dark", "#d690a2"),
+    ("jp_maple", "#c75d3d"),
+    ("jp_maple_light", "#dc8a43"),
+    ("jp_bark", "#5b4332"),
     ("sand_dark", "#9c8e6d"),
+    ("car_red", "#b4362d"),
+    ("car_red_dark", "#7f241e"),
+    ("car_orange", "#c46a3a"),
+    ("car_orange_dark", "#93502c"),
+    ("car_yellow", "#d6a62a"),
+    ("car_yellow_dark", "#a17a18"),
+    ("car_blue", "#2e5c99"),
+    ("car_blue_dark", "#1f3f6b"),
+    ("car_green", "#3d7a55"),
+    ("car_green_dark", "#29563b"),
+    ("car_white", "#e2e0da"),
+    ("car_white_dark", "#b9b6ae"),
+    ("car_grey", "#6a6f75"),
+    ("car_grey_dark", "#4a4e53"),
+    ("carbon", "#2b2a2c"),
+    ("tyre", "#232325"),
+    ("tyre_wall", "#2f2f32"),
+    ("rim", "#a4a8ad"),
+    ("rim_dark", "#55595f"),
+    ("headlight", "#efe8d4"),
+    ("taillight", "#c42a2b"),
+    ("tint", "#1f2a33"),
 ]
 
 _INDEX = {n: i for i, (n, _) in enumerate(PALETTE)}
@@ -176,7 +243,19 @@ def reset():
     lpm.reset()
 
 
+MID = False
+
+
+def set_mid(on=True):
+    global MID
+    MID = on
+
+
 def chamfer(ob, width=0.02, angle=30.0, segments=1):
+    if MID:
+        width *= 1.7
+        segments = max(segments, 3)
+
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
@@ -507,8 +586,8 @@ def _keyed(index):
     return tuple(rgb[i] * (1 - t) + KEY[i] * t for i in range(3))
 
 
-def finish(name, parts, budget=None):
-    ob = lpm.finish(name, parts, lpm.Palette([(n, h) for n, h in PALETTE]), budget=budget)
+def finish(name, parts, budget=None, ground=True, center=True):
+    ob = lpm.finish(name, parts, lpm.Palette([(n, h) for n, h in PALETTE]), budget=budget, ground=ground, center=center)
     me = ob.data
     attr = me.attributes.get("lpm_color")
     for uv in list(me.uv_layers):
@@ -527,10 +606,14 @@ def finish(name, parts, budget=None):
         for li in poly.loop_indices:
             col.data[li].color = (rgb[0], rgb[1], rgb[2], 1.0)
 
-        poly.use_smooth = False
+        poly.use_smooth = MID
 
     me.color_attributes.active_color = col
     me.color_attributes.render_color_index = 0
+
+    if MID:
+        me.set_sharp_from_angle(angle=math.radians(38))
+
     mat = bpy.data.materials.new("kit")
     mat.use_nodes = True
 
@@ -799,3 +882,98 @@ def shade_volume(ob, lo, hi, k=0.62):
                 col.data[li].color = (cc[0] * k, cc[1] * k, cc[2] * k * 1.04, 1.0)
 
     return ob
+
+
+def fuse(objs, bevel=0.05, segments=3, angle=30.0):
+    objs = [o for o in objs if o is not None]
+    base = objs[0]
+    coll = bpy.data.collections.new("fuse")
+    bpy.context.scene.collection.children.link(coll)
+
+    for o in objs[1:]:
+        for c in list(o.users_collection):
+            c.objects.unlink(o)
+
+        coll.objects.link(o)
+
+    mod = base.modifiers.new("u", "BOOLEAN")
+    mod.operation = "UNION"
+    mod.solver = "EXACT"
+    mod.operand_type = "COLLECTION"
+    mod.collection = coll
+    mod.use_self = True
+    mod.use_hole_tolerant = True
+
+    for s in bpy.context.scene.objects:
+        s.select_set(s == base)
+
+    bpy.context.view_layer.objects.active = base
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+
+    for o in objs[1:]:
+        bpy.data.objects.remove(o)
+
+    bpy.data.collections.remove(coll)
+
+    bm = bmesh.new()
+    bm.from_mesh(base.data)
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(1), verts=bm.verts, edges=bm.edges, delimit={"NORMAL"})
+    bm.to_mesh(base.data)
+    bm.free()
+
+    if bevel > 0:
+        mod = base.modifiers.new("b", "BEVEL")
+        mod.width = bevel
+        mod.segments = segments
+        mod.limit_method = "ANGLE"
+        mod.angle_limit = math.radians(angle)
+        mod.harden_normals = False
+        bpy.context.view_layer.objects.active = base
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+
+    return base
+
+
+def cull_hidden(ob, gap=0.025, ground=0.005):
+    from mathutils.bvhtree import BVHTree
+
+    me = ob.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.faces.ensure_lookup_table()
+    bm.normal_update()
+    tree = BVHTree.FromBMesh(bm)
+    doomed = []
+
+    for f in bm.faces:
+        n = f.normal
+
+        if n.length < 0.5:
+            continue
+
+        c = f.calc_center_median()
+
+        if n.z < -0.9 and c.z < ground:
+            doomed.append(f)
+            continue
+
+        pts = [c] + [c + (v.co - c) * 0.8 for v in f.verts]
+        hidden = True
+
+        for p in pts:
+            hit = tree.ray_cast(p + n * 0.002, n, gap)
+
+            if hit[0] is None or hit[2] == f.index:
+                hidden = False
+                break
+
+        if hidden:
+            doomed.append(f)
+
+    removed = len(doomed)
+    bmesh.ops.delete(bm, geom=doomed, context="FACES_ONLY")
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+    return removed

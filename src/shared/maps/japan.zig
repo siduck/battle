@@ -66,12 +66,12 @@ pub const def: api.Def = .{
         .sun_dir = .{ 0.52, 0.62, 0.58 },
         .sun_tint = .{ 1.18, 1.02, 0.9 },
         .grade_tint = .{ 1.03, 0.99, 0.98 },
-        .grade_sat = 1.24,
+        .grade_sat = 1.1,
         .fog = 0.0042,
-        .fog_color = .{ 0.82, 0.8, 0.86 },
-        .amb_sky = .{ 0.92, 0.96, 1.14 },
+        .fog_color = .{ 0.86, 0.84, 0.82 },
+        .amb_sky = .{ 1.0, 0.99, 1.04 },
         .amb_ground = .{ 0.82, 0.76, 0.7 },
-        .shade_tint = .{ 0.86, 0.88, 1.08 },
+        .shade_tint = .{ 0.97, 0.95, 1.0 },
         .zenith = .{ 0.12, 0.32, 0.66 },
     },
     .backdrop = .{ 170, 168, 176 },
@@ -138,7 +138,7 @@ fn ground(x: f32, z: f32) api.Rgb {
     const j = cell(z, &zs);
 
     return switch (blockUse(i, j)) {
-        .park => api.shade(mix(.{ 108, 146, 80 }, .{ 96, 132, 72 }, @mod(@floor(x / 4) + @floor(z / 4), 2)), l),
+        .park => api.shade(mix(.{ 112, 140, 84 }, .{ 100, 128, 76 }, @mod(@floor(x / 4) + @floor(z / 4), 2)), l),
         .parking => api.shade(mix(.{ 112, 140, 80 }, .{ 128, 118, 92 }, t.smooth(0.4, 0.6, t.fbm(x * 0.08, z * 0.08))), l),
         .lot => yard(x, z, l, n),
         .row => yard(x, z, l, n),
@@ -314,12 +314,12 @@ fn frontage(b: *Builder, s: Side, e: K, along: f32) void {
 
 fn roofHeight(e: K) f32 {
     return switch (e) {
-        .parlour => 9.42,
-        .apartment => 9.4,
-        .tower => 18.8,
-        .konbini => 3.42,
-        .corner => 9.48,
-        .shop3 => 9.4,
+        .parlour => 8.85,
+        .apartment => 8.45,
+        .tower => 16.85,
+        .konbini => 3.39,
+        .corner => 8.75,
+        .shop3 => 8.75,
         else => 0,
     };
 }
@@ -330,12 +330,6 @@ fn rooftop(b: *Builder, e: K, x: f32, z: f32, yaw: f32) void {
     if (h == 0) return;
 
     const w = width(e);
-
-    if ((e == .shop3 or e == .corner) and chance(b, 0.45)) {
-        b.putAt(kit.of(.roof), vec(x, h - 0.05, z), yaw, 1);
-
-        return;
-    }
 
     const n: usize = @intFromFloat(@max(1, w / 3));
     var i: usize = 0;
@@ -435,7 +429,6 @@ fn lineSide(b: *Builder, s: Side, gap: bool) void {
 
         place(b, e, c[0], c[1], s.yaw);
         rooftop(b, e, c[0], c[1], s.yaw);
-        backWindows(b, s, e, a + w / 2);
         frontage(b, s, e, a + w / 2);
         a += w;
     }

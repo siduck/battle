@@ -117,9 +117,12 @@ pub const Rig = struct {
             }
         }
 
-        inflate(&rig.model, 0.032);
+        const styled = rig.model.meshCount > 0 and rig.model.meshes[0].colors != null;
 
-        if (neck) |n| {
+        if (!styled) inflate(&rig.model, 0.032);
+
+        if (neck != null and !styled) {
+            const n = neck.?;
             const bind = rig.model.skeleton.bindPose;
             const low = bind[n].translation.y - 0.02;
             const high = bind[rig.bones.head].translation.y + 0.035;
@@ -127,7 +130,7 @@ pub const Rig = struct {
             cutNeck(&rig.model, n, low, high);
         }
 
-        rig.gear = rig.model.materialCount > 4;
+        rig.gear = styled or rig.model.materialCount > 4;
 
         if (!rig.gear) {
             for (rig.model.materials[0..@intCast(rig.model.materialCount)], 0..) |*m, i| {
