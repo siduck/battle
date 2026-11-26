@@ -658,6 +658,11 @@ fn indoors(eye: Vec3) bool {
 pub var clean_shot = false;
 
 pub var part_ms: [7]f32 = @splat(0);
+pub var skip: u32 = 0;
+
+fn on(bit: u32) bool {
+    return skip & bit == 0;
+}
 var part_t: f64 = 0;
 
 fn mark(i: usize) void {
@@ -671,20 +676,19 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     mark(0);
     r.ambientBoost(if (indoors(v.eye)) 1.8 else 1);
     r.setSurface(.{ .roughness = 1, .metallic = 0 });
-    r.draw(models.backdrop, mesh.identity, false);
     r.setDetailMode(0);
-    r.draw(models.world, mesh.identity, true);
+    if (on(16)) r.draw(models.world, mesh.identity, true);
 
     for (models_mod.extraMeshes()) |em| r.draw(em, mesh.identity, true);
 
-    if (shared.terrain.current != .courtyard) drawChunks(r, v);
+    if (shared.terrain.current != .courtyard and on(2)) drawChunks(r, v);
     mark(1);
     r.setDetailMode(0);
     r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
     r.setPropDetail(true);
-    scenery.draw(r, v.eye, v.forward);
+    if (on(4)) scenery.draw(r, v.eye, v.forward);
     mark(2);
-    cover.draw(r, v.eye);
+    if (on(8)) cover.draw(r, v.eye);
     mark(3);
     r.setPropDetail(false);
     r.setSurface(.{ .roughness = 0.5 });
@@ -785,7 +789,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
 
     r.setSurface(.{ .roughness = 0.7 });
     mark(4);
-    soldier.draw(r, rig, kit, models, arts, g, g.accumulator / movement.dt, dt);
+    if (on(32)) soldier.draw(r, rig, kit, models, arts, g, g.accumulator / movement.dt, dt);
     mark(5);
     r.setSurface(.{ .roughness = 0.5 });
 
@@ -802,6 +806,12 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
         }
     }
 
+    r.setDetailMode(0);
+    r.setSurface(.{ .roughness = 1, .metallic = 0 });
+
+    if (on(256)) r.draw(models.backdrop, mesh.identity, false);
+
+    if (on(1)) r.drawSky();
     scenery.drawGlass(r, v.eye, v.forward);
 
     if (fx_state == null) fx_state = fx_mod.Fx.init();
@@ -811,7 +821,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     if (r.phase != .shadow) dust(v.eye, g.time);
     mark(6);
 
-    if (driving.driving() or air.flying() or clean_shot) return;
+    if (driving.driving() or air.flying() or clean_shot or !on(64)) return;
 
     r.clearDepth();
     r.viewmodelProjection();

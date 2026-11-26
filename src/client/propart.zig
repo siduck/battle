@@ -9,17 +9,21 @@ const props = shared.props;
 const world = shared.world;
 const Vec3 = shared.math.Vec3;
 const pvs = @import("pvs.zig");
+const assets = @import("assets.zig");
 
 const kind_count = props.kind_capacity;
 
 const Slot = struct {
     model: ?rl.Model = null,
+    lod: ?rl.Model = null,
     all: []rl.Matrix = &.{},
     spots: []Vec3 = &.{},
     visible: []rl.Matrix = &.{},
     count: usize = 0,
     vbo: c_uint = 0,
     cells: []Cell = &.{},
+    size: f32 = 0,
+    extent: f32 = 0,
 };
 
 const Cell = struct {
@@ -30,6 +34,38 @@ const Cell = struct {
 };
 
 const cell_size: f32 = 32;
+const min_pixels: f32 = 5;
+const lod_pixels: f32 = 150;
+
+pub var tri_count: [kind_count]u64 = @splat(0);
+
+fn modelTris(m: rl.Model) u64 {
+    var t: u64 = 0;
+
+    for (m.meshes[0..@intCast(m.meshCount)]) |me| t += @intCast(me.triangleCount);
+
+    return t;
+}
+
+pub fn dumpTris() void {
+    var order: [kind_count]usize = undefined;
+
+    for (&order, 0..) |*o, i| o.* = i;
+
+    std.mem.sort(usize, &order, {}, struct {
+        fn less(_: void, a: usize, b: usize) bool {
+            return tri_count[a] > tri_count[b];
+        }
+    }.less);
+
+    var total: u64 = 0;
+
+    for (tri_count) |t| total += t;
+
+    std.debug.print("props tris total {d}\n", .{total});
+
+    for (order[0..12]) |k| std.debug.print("  {s} {d}\n", .{ props.info(@enumFromInt(k)).file, tri_count[k] });
+}
 
 fn cellKey(p: Vec3) i64 {
     const cx: i64 = @intFromFloat(@floor(p.x / cell_size));
@@ -73,9 +109,9 @@ fn buildCells(gpa: std.mem.Allocator, slot: *Slot, scales: []const f32) void {
         max_scale = @max(max_scale, scales[o]);
     }
 
-    const box = rl.GetModelBoundingBox(slot.model.?);
-    const ext = Vec3{ .x = @max(@abs(box.min.x), @abs(box.max.x)), .y = @max(@abs(box.min.y), @abs(box.max.y)), .z = @max(@abs(box.min.z), @abs(box.max.z)) };
-    const margin = ext.length() * max_scale;
+    const margin = slot.extent * max_scale;
+
+    slot.size = margin;
     var cells: std.ArrayList(Cell) = .empty;
     var i: usize = 0;
 
@@ -124,7 +160,29 @@ pub const Props = struct {
 
             if (model.meshCount == 0) continue;
 
+            const file = props.info(@enumFromInt(i)).file;
+
+            if (std.mem.endsWith(u8, std.mem.sliceTo(file, 0), ".glb")) {
+                var lod_buf: [512]u8 = undefined;
+                const name = std.mem.sliceTo(file, 0);
+                const lod_path = std.fmt.bufPrintSentinel(&lod_buf, "{s}/{s}.lod.glb", .{ dir, name[0 .. name.len - 4] }, 0) catch "";
+
+                if (lod_path.len > 0 and assets.exists(lod_path)) {
+                    const lod = rl.LoadModel(lod_path.ptr);
+
+                    if (lod.meshCount > 0) {
+                        tint(lod, std.mem.sliceTo(file, 0));
+                        mesh.dropCpu(lod);
+                        slot.lod = lod;
+                    }
+                }
+            }
+
             tint(model, std.mem.sliceTo(props.info(@enumFromInt(i)).file, 0));
+
+            const box = rl.GetModelBoundingBox(model);
+
+            slot.extent = (Vec3{ .x = @max(@abs(box.min.x), @abs(box.max.x)), .y = @max(@abs(box.min.y), @abs(box.max.y)), .z = @max(@abs(box.min.z), @abs(box.max.z)) }).length();
             mesh.dropCpu(model);
             slot.model = model;
             slot.all = gpa.alloc(rl.Matrix, counts[i]) catch continue;
@@ -217,24 +275,42 @@ pub const Props = struct {
                 });
                 r.setMatId(kitMaterial(i));
 
-                var run_start: usize = 0;
-                var run_len: usize = 0;
+                const pixel_limit = gfx.pixelAngle() * min_pixels;
+                const lod_from = if (slot.lod != null) slot.size / (gfx.pixelAngle() * lod_pixels) else 1e9;
+
+                for ([_]bool{ false, true }) |far| {
+                    const m = if (far) slot.lod orelse continue else model;
+                    var run_start: usize = 0;
+                    var run_len: usize = 0;
+
+                    for (slot.cells) |c| {
+                        const d = c.center.sub(eye);
+                        const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
+                        const show = flat < limit and slot.size > pixel_limit * @max(flat, 1) and (flat >= lod_from) == far and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius);
+
+                        if (!show) continue;
+
+                        if (run_len > 0 and run_start + run_len == c.start) {
+                            run_len += c.count;
+                        } else {
+                            r.drawStaticRange(m, slot.vbo, run_start, run_len, info.foliage);
+                            run_start = c.start;
+                            run_len = c.count;
+                        }
+                    }
+
+                    r.drawStaticRange(m, slot.vbo, run_start, run_len, info.foliage);
+                }
+
+                tri_count[i] = 0;
 
                 for (slot.cells) |c| {
                     const d = c.center.sub(eye);
                     const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
-                    const show = flat < limit and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius);
 
-                    if (show and run_len > 0 and run_start + run_len == c.start) {
-                        run_len += c.count;
-                    } else if (show) {
-                        r.drawStaticRange(model, slot.vbo, run_start, run_len, info.foliage);
-                        run_start = c.start;
-                        run_len = c.count;
-                    }
+                    if (flat < limit and slot.size > pixel_limit * @max(flat, 1) and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius)) tri_count[i] += c.count * modelTris(if (flat >= lod_from) slot.lod.? else model);
                 }
 
-                r.drawStaticRange(model, slot.vbo, run_start, run_len, info.foliage);
                 r.setMatId(-1);
 
                 continue;

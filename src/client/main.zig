@@ -584,6 +584,7 @@ var auto_scale: f32 = 1;
 var slow_time: f32 = 0;
 var fast_time: f32 = 0;
 
+extern fn __system_property_get(name: [*:0]const u8, value: *[92]u8) callconv(.c) c_int;
 extern fn glInvalidateFramebuffer(target: c_uint, count: c_int, attachments: [*]const c_uint) callconv(.c) void;
 
 fn dropDepth(screen: bool) void {
@@ -624,6 +625,12 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     const parts = std.fmt.bufPrintSentinel(&buf, "parts world {d:.1} props {d:.1} cover {d:.1} cars {d:.1} soldiers {d:.1} fx {d:.1}", .{ pm[0] / stat_n * 1000, pm[1] / stat_n * 1000, pm[2] / stat_n * 1000, pm[3] / stat_n * 1000, pm[4] / stat_n * 1000, pm[5] / stat_n * 1000 }, 0) catch return;
 
     rl.TraceLog(rl.LOG_INFO, "%s", parts.ptr);
+
+    if (assets.mobile) {
+        var prop: [92]u8 = @splat(0);
+
+        if (__system_property_get("debug.df.skip", &prop) > 0) render.skip = std.fmt.parseInt(u32, std.mem.sliceTo(&prop, 0), 10) catch 0 else render.skip = 0;
+    }
     render.part_ms = @splat(0);
     stat_t = 0;
     stat_n = 0;
@@ -1345,7 +1352,7 @@ pub fn main() void {
             const src = rl.Rectangle{ .x = 0, .y = 0, .width = @floatFromInt(rt.texture.width), .height = @floatFromInt(-rt.texture.height) };
             const dst = rl.Rectangle{ .x = 0, .y = 0, .width = @floatFromInt(rl.GetScreenWidth()), .height = @floatFromInt(rl.GetScreenHeight()) };
 
-            rl.DrawTexturePro(rt.texture, src, dst, .{}, 0, rl.WHITE);
+            if (render.skip & 512 == 0) rl.DrawTexturePro(rt.texture, src, dst, .{}, 0, rl.WHITE);
 
             if (shared.terrain.current == .prism) prism_glow.composite();
         } else {
@@ -1355,13 +1362,13 @@ pub fn main() void {
         }
         if (!render.clean_shot) {
             render.overlay(game, now, cam, font);
-            hud.draw(game, font, &icons, playing, pad.active and pad.id != null);
+            if (render.skip & 128 == 0) hud.draw(game, font, &icons, playing, pad.active and pad.id != null);
             hud.vehicleStatus(game, font);
             air.hud(game, font, cam);
             net.draw(game, font, pad.id, touch_mod.active() and playing and !(pad.id != null and pad.active));
         }
 
-        if (touch_mod.active() and playing and !(pad.id != null and pad.active)) touch.draw(font, @floatFromInt(rl.GetScreenWidth()), @floatFromInt(rl.GetScreenHeight()));
+        if (render.skip & 128 == 0 and touch_mod.active() and playing and !(pad.id != null and pad.active)) touch.draw(font, @floatFromInt(rl.GetScreenWidth()), @floatFromInt(rl.GetScreenHeight()));
 
         if (!playing) menu.drawGear(font, pad.active and pad.id != null);
 
@@ -1382,6 +1389,8 @@ pub fn main() void {
         dropDepth(true);
         rl.EndDrawing();
         gputime.endFrame();
+        if (std.c.getenv("DF_TRIS") != null and @mod(rl.GetTime(), 5) < frame_dt) propart.dumpTris();
+
         frameStats(frame_dt, @floatCast(cpu_end - frame_start), @floatCast(rl.GetTime() - cpu_end));
     }
 }

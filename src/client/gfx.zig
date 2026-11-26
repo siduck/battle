@@ -303,7 +303,8 @@ const sky_vs =
     \\out vec3 dir;
     \\void main() {
     \\    dir = vertexPosition;
-    \\    gl_Position = mvp * vec4(vertexPosition, 1.0);
+    \\    vec4 p = mvp * vec4(vertexPosition, 1.0);
+    \\    gl_Position = p.xyww;
     \\}
 ;
 
@@ -450,6 +451,7 @@ fn setFrustum(cam: rl.Camera3D) void {
     const v = @tan(cam.fovy * std.math.pi / 360) * 1.08;
     const hz = v * w / h;
 
+    pixel_angle = 2 * @tan(cam.fovy * std.math.pi / 360) / h / 0.85;
     cull_eye = eye;
     cull_planes = .{
         f.scale(hz).sub(right).normalize(),
@@ -471,6 +473,12 @@ pub fn sphereVisible(c: Vec3, radius: f32) bool {
     }
 
     return true;
+}
+
+var pixel_angle: f32 = 0.001;
+
+pub fn pixelAngle() f32 {
+    return pixel_angle;
 }
 
 pub fn cullOff() void {
@@ -659,6 +667,7 @@ pub const Renderer = struct {
     depth_material: rl.Material,
     sky_material: rl.Material,
     sky_mesh: rl.Mesh,
+    sky_at: rl.Matrix = .{},
     locs: Locs,
     sky_locs: SkyLocs,
     env: rl.Texture2D,
@@ -923,11 +932,7 @@ pub const Renderer = struct {
         r.setLit(r.lit_inst, r.inst_locs, view, sun, texel, env_unit, shadow_unit);
         r.setSurface(.{});
 
-        rlgl.rlDisableBackfaceCulling();
-        rlgl.rlDisableDepthMask();
-        rl.DrawMesh(r.sky_mesh, r.sky_material, sky_at);
-        rlgl.rlEnableDepthMask();
-        rlgl.rlEnableBackfaceCulling();
+        r.sky_at = sky_at;
     }
 
     fn setLit(r: *Renderer, sh: rl.Shader, l: Locs, view: [3]f32, sun: [3]f32, texel: f32, env_unit: c_int, shadow_unit: c_int) void {
@@ -1169,6 +1174,16 @@ pub const Renderer = struct {
         r.lit_material.shader = r.lit;
 
         for (model.materials[0..@intCast(model.materialCount)]) |*m| m.shader = r.lit;
+    }
+
+    pub fn drawSky(r: *Renderer) void {
+        if (r.phase == .shadow) return;
+
+        rlgl.rlDisableBackfaceCulling();
+        rlgl.rlDisableDepthMask();
+        rl.DrawMesh(r.sky_mesh, r.sky_material, r.sky_at);
+        rlgl.rlEnableDepthMask();
+        rlgl.rlEnableBackfaceCulling();
     }
 
     pub fn drawModel(r: *Renderer, model: rl.Model, transform: rl.Matrix) void {
