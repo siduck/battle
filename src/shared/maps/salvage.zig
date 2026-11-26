@@ -46,12 +46,18 @@ const Rect = struct { x0: f32, z0: f32, x1: f32, z1: f32 };
 const Mound = struct { x: f32, z: f32, r: f32, h: f32 };
 
 const heaps = [_]Mound{
-    .{ .x = 96, .z = -30, .r = 11, .h = 4.5 },
-    .{ .x = 124, .z = 20, .r = 13, .h = 6.0 },
-    .{ .x = 84, .z = 36, .r = 9, .h = 3.5 },
-    .{ .x = 132, .z = -50, .r = 10, .h = 5.0 },
-    .{ .x = 108, .z = 52, .r = 8, .h = 3.2 },
-    .{ .x = 76, .z = -52, .r = 7, .h = 3.0 },
+    .{ .x = 84, .z = 20, .r = 8, .h = 0.6 },
+    .{ .x = 110, .z = 23, .r = 7, .h = 0.7 },
+    .{ .x = 133, .z = 22, .r = 8, .h = 0.5 },
+    .{ .x = 82, .z = 47, .r = 8, .h = 0.5 },
+    .{ .x = 108, .z = 49, .r = 8, .h = 0.6 },
+    .{ .x = 131, .z = 48, .r = 7, .h = 0.7 },
+    .{ .x = 82, .z = -22, .r = 7, .h = 0.7 },
+    .{ .x = 109, .z = -21, .r = 8, .h = 0.5 },
+    .{ .x = 133, .z = -26, .r = 8, .h = 0.6 },
+    .{ .x = 85, .z = -48, .r = 8, .h = 0.6 },
+    .{ .x = 110, .z = -48, .r = 7, .h = 0.7 },
+    .{ .x = 134, .z = -50, .r = 8, .h = 0.5 },
 };
 
 fn rot(yaw: f32, x: f32, z: f32) [2]f32 {
@@ -226,7 +232,14 @@ fn ground(x: f32, z: f32) api.Rgb {
         c = if (row < 1.6) mixc(.{ 110, 82, 56 }, .{ 96, 70, 48 }, fine) else mixc(.{ 120, 150, 66 }, .{ 100, 136, 56 }, fine);
     }
 
-    if (x > 70 and @abs(z) < 64) c = mixc(c, mixc(.{ 120, 100, 78 }, .{ 100, 82, 64 }, fine), 0.85);
+    if (x > 70 and @abs(z) < 64) {
+        const oil = t.smooth(0.55, 0.7, t.fbm(x * 0.11 + 5, z * 0.11 - 9));
+        const grit = t.smooth(0.5, 0.65, t.fbm(x * 0.07 - 13, z * 0.07 + 4));
+
+        c = mixc(c, mixc(.{ 120, 100, 78 }, .{ 100, 82, 64 }, fine), 0.85);
+        c = mixc(c, .{ 138, 130, 116 }, grit * 0.55);
+        c = mixc(c, .{ 70, 62, 54 }, oil * 0.6);
+    }
 
     if (z > 106 and @abs(x) < 130) c = mixc(c, mixc(.{ 140, 134, 120 }, .{ 120, 114, 102 }, fine), 0.75);
 
@@ -258,15 +271,19 @@ fn ground(x: f32, z: f32) api.Rgb {
 }
 
 fn structure(b: *Builder, kind: K, sol: []const [7]f32, x: f32, y: f32, z: f32, yaw: f32) void {
-    b.putAt(kit.of(kind), vec(x, y, z), yaw, 1);
+    scaledStructure(b, kind, sol, x, y, z, yaw, 1);
+}
+
+fn scaledStructure(b: *Builder, kind: K, sol: []const [7]f32, x: f32, y: f32, z: f32, yaw: f32, k: f32) void {
+    b.putAt(kit.of(kind), vec(x, y, z), yaw, k);
 
     for (sol) |q| {
-        const a = rot(yaw, q[1], q[3]);
-        const c = rot(yaw, q[4], q[6]);
-        const e = rot(yaw, q[1], q[6]);
-        const f = rot(yaw, q[4], q[3]);
-        const mn = vec(@min(@min(a[0], c[0]), @min(e[0], f[0])) + x, q[2] + y, @min(@min(a[1], c[1]), @min(e[1], f[1])) + z);
-        const mx = vec(@max(@max(a[0], c[0]), @max(e[0], f[0])) + x, q[5] + y, @max(@max(a[1], c[1]), @max(e[1], f[1])) + z);
+        const a = rot(yaw, q[1] * k, q[3] * k);
+        const c = rot(yaw, q[4] * k, q[6] * k);
+        const e = rot(yaw, q[1] * k, q[6] * k);
+        const f = rot(yaw, q[4] * k, q[3] * k);
+        const mn = vec(@min(@min(a[0], c[0]), @min(e[0], f[0])) + x, q[2] * k + y, @min(@min(a[1], c[1]), @min(e[1], f[1])) + z);
+        const mx = vec(@max(@max(a[0], c[0]), @max(e[0], f[0])) + x, q[5] * k + y, @max(@max(a[1], c[1]), @max(e[1], f[1])) + z);
 
         if (q[0] < 0.5) {
             b.solid(.{ .box = .{ .min = mn, .max = mx } });
@@ -301,9 +318,9 @@ fn solidsOf(kind: K) []const [7]f32 {
         .water => &S.water,
         .deck => &S.deck,
         .deck_long => &S.deck_long,
-        .junk_a => &S.junk_a,
-        .junk_b => &S.junk_b,
-        .junk_c => &S.junk_c,
+        .heap_a => &S.heap_a,
+        .heap_b => &S.heap_b,
+        .heap_c => &S.heap_c,
         .plates => &S.plates,
         else => &.{},
     };
@@ -432,83 +449,199 @@ fn town(b: *Builder) void {
     }
 }
 
-fn scrapyard(b: *Builder) void {
-    const piles = [_]Lot{
-        .{ .kind = .junk_a, .x = 80, .z = -8, .yaw = 0.4 },
-        .{ .kind = .junk_b, .x = 92, .z = 12, .yaw = 1.2 },
-        .{ .kind = .junk_c, .x = 104, .z = -12, .yaw = 0 },
-        .{ .kind = .junk_a, .x = 116, .z = -26, .yaw = 2.0 },
-        .{ .kind = .junk_b, .x = 140, .z = -4, .yaw = 0.3 },
-        .{ .kind = .junk_c, .x = 98, .z = -46, .yaw = half_pi },
-        .{ .kind = .junk_a, .x = 118, .z = 44, .yaw = 0.8 },
-        .{ .kind = .junk_b, .x = 96, .z = 34, .yaw = 2.6 },
-        .{ .kind = .junk_c, .x = 136, .z = 40, .yaw = 0 },
-        .{ .kind = .junk_a, .x = 140, .z = -36, .yaw = 1.6 },
-        .{ .kind = .junk_b, .x = 76, .z = 50, .yaw = 0.5 },
-        .{ .kind = .junk_a, .x = 84, .z = -58, .yaw = 2.4 },
-    };
+const pile_scale: f32 = 1.35;
 
+const Pile = struct { kind: K, x: f32, z: f32, yaw: f32 };
+
+const piles = [_]Pile{
+    .{ .kind = .heap_a, .x = 84, .z = 20, .yaw = 0.3 },
+    .{ .kind = .heap_b, .x = 110, .z = 23, .yaw = 1.1 },
+    .{ .kind = .heap_c, .x = 133, .z = 22, .yaw = half_pi },
+    .{ .kind = .heap_c, .x = 82, .z = 47, .yaw = 0.1 },
+    .{ .kind = .heap_a, .x = 108, .z = 49, .yaw = 2.0 },
+    .{ .kind = .heap_b, .x = 131, .z = 48, .yaw = 0.6 },
+    .{ .kind = .heap_b, .x = 82, .z = -22, .yaw = 0.8 },
+    .{ .kind = .heap_c, .x = 109, .z = -21, .yaw = 0.05 },
+    .{ .kind = .heap_a, .x = 133, .z = -26, .yaw = 2.6 },
+    .{ .kind = .heap_a, .x = 85, .z = -48, .yaw = 1.5 },
+    .{ .kind = .heap_b, .x = 110, .z = -48, .yaw = 2.2 },
+    .{ .kind = .heap_c, .x = 134, .z = -50, .yaw = half_pi },
+};
+
+fn boxAt(b: *Builder, x: f32, z: f32, yaw: f32, level: f32, rust: bool) void {
+    const y = t.height(x, z) - 0.05;
+
+    b.putAt(kit.of(if (rust) .box_rust else .box), vec(x, y + level * 2.808, z), yaw + b.rng.range(-0.015, 0.015), 1);
+}
+
+fn boxWall(b: *Builder, x: f32, z0: f32, z1: f32, skip: f32) void {
+    var z = z0;
+    var i: u32 = 0;
+
+    while (z + 5.4 <= z1) : (z += 5.6) {
+        defer i += 1;
+
+        const c = z + 2.7;
+
+        if (@abs(c - skip) < 5) continue;
+
+        const rust = (i * 5 + 1) % 3 != 0;
+
+        boxAt(b, x, c, 0, 0, rust);
+
+        if (i % 3 != 1) boxAt(b, x, c, 0, 1, !rust);
+    }
+}
+
+fn tyrePile(b: *Builder, x: f32, z: f32) void {
+    const n: u32 = 2 + @as(u32, @intFromFloat(b.rng.range(0, 3)));
+    var i: u32 = 0;
+
+    while (i < n) : (i += 1) {
+        const a = b.rng.range(0, std.math.tau);
+        const r = b.rng.range(0.2, 1.4);
+
+        putS(b, .tyres, x + @sin(a) * r, z + @cos(a) * r, b.rng.range(0, 6.28), b.rng.range(0.85, 1.05));
+    }
+
+    i = 0;
+
+    while (i < 4) : (i += 1) {
+        const a = b.rng.range(0, std.math.tau);
+        const r = b.rng.range(1.6, 2.8);
+
+        put(b, .tyre, x + @sin(a) * r, z + @cos(a) * r, b.rng.range(0, 6.28));
+    }
+}
+
+fn barrels(b: *Builder, x: f32, z: f32) void {
+    const kinds = [_]K{ .barrel, .barrel, .barrel_b, .barrel_t };
+    var i: u32 = 0;
+
+    while (i < 6) : (i += 1) {
+        const a = b.rng.range(0, std.math.tau);
+        const r = b.rng.range(0.0, 1.6);
+
+        put(b, b.rng.pick(K, &kinds), x + @sin(a) * r, z + @cos(a) * r, b.rng.range(0, 6.28));
+    }
+}
+
+fn palletStack(b: *Builder, x: f32, z: f32, n: u32) void {
+    const y = t.height(x, z);
+    var i: u32 = 0;
+
+    while (i < n) : (i += 1) b.putAt(kit.of(.pallet), vec(x + b.rng.range(-0.05, 0.05), y + @as(f32, @floatFromInt(i)) * 0.14, z + b.rng.range(-0.05, 0.05)), b.rng.range(-0.1, 0.1), 1);
+
+    b.solid(.{ .box = .{ .min = vec(x - 0.6, y - 0.5, z - 0.6), .max = vec(x + 0.6, y + @as(f32, @floatFromInt(n)) * 0.14, z + 0.6) } });
+}
+
+fn lanePiece(b: *Builder, x: f32, z: f32) void {
+    const roll = b.rng.next();
+    const yaw = b.rng.range(0, 6.28);
+
+    if (roll < 0.2) {
+        tyrePile(b, x, z);
+    } else if (roll < 0.38) {
+        barrels(b, x, z);
+    } else if (roll < 0.5) {
+        put(b, .girders, x, z, @round(yaw / half_pi) * half_pi);
+    } else if (roll < 0.6) {
+        putS(b, .hull, x, z, yaw, 1);
+        put(b, .tyre, x + 2.6, z + 1, 0);
+    } else if (roll < 0.7) {
+        put(b, .wreck, x, z, yaw);
+        barrels(b, x + 2.5, z - 1.5);
+    } else if (roll < 0.78) {
+        put(b, .skip, x, z, @round(yaw / half_pi) * half_pi);
+        put(b, .cable, x + 2.6, z, yaw);
+    } else if (roll < 0.86) {
+        put(b, .sleepers, x, z, @round(yaw / half_pi) * half_pi);
+        palletStack(b, x + 2.4, z + 0.4, 3 + @as(u32, @intFromFloat(b.rng.range(0, 4))));
+    } else if (roll < 0.93) {
+        put(b, .rails, x, z, @round(yaw / half_pi) * half_pi);
+        put(b, .crate, x + 1.8, z + 1.2, yaw);
+    } else {
+        put(b, .crate, x, z, yaw);
+        put(b, .crate, x + 1.3, z + 0.2, yaw + 0.3);
+        palletStack(b, x - 1.6, z, 4);
+    }
+}
+
+fn nearPile(x: f32, z: f32, pad: f32) bool {
+    for (piles) |p| {
+        const info = api.props.info(kit.of(p.kind));
+        const r = @max(info.max[0] - info.min[0], info.max[2] - info.min[2]) * 0.5 * pile_scale;
+        const dx = x - p.x;
+        const dz = z - p.z;
+
+        if (dx * dx + dz * dz < (r + pad) * (r + pad)) return true;
+    }
+
+    return false;
+}
+
+fn scrapyard(b: *Builder) void {
     for (piles) |l| {
         const y = t.height(l.x, l.z);
 
-        structure(b, l.kind, solidsOf(l.kind), l.x, y - 0.2, l.z, l.yaw);
+        scaledStructure(b, l.kind, solidsOf(l.kind), l.x, y - 0.2, l.z, l.yaw, pile_scale);
     }
 
-    house(b, .shed, 110, 6, half_pi);
-    house(b, .shed, 86, -26, 0);
-    house(b, .plates, 100, 22, 0);
-    house(b, .plates, 128, -16, half_pi);
-    house(b, .plates, 112, -40, 0);
-    house(b, .plates, 74, 26, half_pi);
-    put(b, .arm, 128, -2, 2.2);
-    put(b, .platform, 104, 40, 0.6);
-    put(b, .arm, 96, -2, 0.3);
-    put(b, .arm, 124, 30, 2.0);
-    put(b, .platform, 136, 56, half_pi);
-    put(b, .platform, 82, 6, 0);
-    put(b, .platform, 120, -54, half_pi);
-    put(b, .junction, 88, 44, 1.0);
-    put(b, .pipe, 132, 18, 0.4);
+    boxWall(b, 145.5, -62, 62, 0);
+    boxWall(b, 96, 30, 42, 99);
+    boxWall(b, 121.5, -38, -26, 99);
+    boxWall(b, 96, -36, -24, 99);
+    boxWall(b, 121.5, 32, 44, 99);
 
-    var i: u32 = 0;
+    for ([_]f32{ 73, 79, 85, 91, 103, 109, 115, 121, 127, 133, 139 }) |x| {
+        if (b.rng.next() < 0.45) continue;
 
-    while (i < 60) : (i += 1) {
-        const x = b.rng.range(70, 144);
-        const z = b.rng.range(-60, 60);
-
-        if (heapAt(x, z) > 0.5 or @abs(z) < 5) continue;
-
-        const kinds = [_]K{ .crate, .crate, .drum, .pipe, .junction, .butt, .panel, .rock };
-
-        put(b, b.rng.pick(K, &kinds), x, z, b.rng.range(0, 6.28));
+        boxAt(b, x, 61.5, half_pi, 0, b.rng.next() < 0.6);
+        boxAt(b, x, -61.5, half_pi, 0, b.rng.next() < 0.6);
     }
 
-    for (heaps) |m| {
-        var k: u32 = 0;
+    put(b, .crane, 97, 7.5, 0.4);
+    api.box(b, 95.8, t.height(97, 7.5), 6.3, 98.2, t.height(97, 7.5) + 1.6, 8.7);
+    house(b, .shed, 124, 8, half_pi);
+    house(b, .plates, 74, 33, half_pi);
+    house(b, .plates, 146, 0, half_pi);
+    house(b, .plates, 120, -8, 0);
+    put(b, .platform, 104, 35, 0.6);
+    put(b, .platform, 120, -56, half_pi);
+    put(b, .junction, 90, 36, 1.0);
 
-        while (k < 14) : (k += 1) {
-            const a = b.rng.range(0, std.math.tau);
-            const r = b.rng.range(0.2, 0.85) * m.r;
-            const x = m.x + @sin(a) * r;
-            const z = m.z + @cos(a) * r;
-            const kinds = [_]K{ .crate, .drum, .pipe, .butt, .junction, .rock, .panel };
+    var gx: f32 = 72;
 
-            b.putAt(kit.of(b.rng.pick(K, &kinds)), vec(x, t.height(x, z) - 0.15, z), b.rng.range(0, 6.28), b.rng.range(0.9, 1.3));
+    while (gx < 143) : (gx += 6) {
+        var gz: f32 = -58;
+
+        while (gz < 59) : (gz += 6) {
+            const x = gx + b.rng.range(-2, 2);
+            const z = gz + b.rng.range(-2, 2);
+
+            if (@abs(z) < 6 or nearPile(x, z, 2.0) or api.world.covered(b, x, z, 2.0)) continue;
+
+            if (b.rng.next() < 0.2) continue;
+
+            lanePiece(b, x, z);
         }
     }
 
-    const more = [_]Lot{
-        .{ .kind = .junk_c, .x = 90, .z = -36, .yaw = 0.2 },
-        .{ .kind = .junk_a, .x = 110, .z = 24, .yaw = 2.2 },
-        .{ .kind = .junk_b, .x = 142, .z = 20, .yaw = 1.0 },
-        .{ .kind = .junk_c, .x = 122, .z = -6, .yaw = half_pi },
-        .{ .kind = .junk_a, .x = 78, .z = 22, .yaw = 0.7 },
-        .{ .kind = .plates, .x = 88, .z = 0, .yaw = half_pi },
-        .{ .kind = .plates, .x = 136, .z = -22, .yaw = 0 },
-        .{ .kind = .plates, .x = 106, .z = 56, .yaw = 0 },
-    };
+    var i: u32 = 0;
 
-    for (more) |l| structure(b, l.kind, solidsOf(l.kind), l.x, t.height(l.x, l.z) - 0.2, l.z, l.yaw);
+    while (i < 140) : (i += 1) {
+        const x = b.rng.range(70, 144);
+        const z = b.rng.range(-60, 60);
+
+        if (api.world.covered(b, x, z, 0.4)) continue;
+
+        const kinds = [_]K{ .debris, .debris, .debris, .tyre, .pallet, .barrel_t, .gravel };
+        const kk = b.rng.pick(K, &kinds);
+
+        if (@abs(z) < 5 and kk != .debris) continue;
+
+        b.putAt(kit.of(kk), vec(x, t.height(x, z), z), b.rng.range(0, 6.28), 1);
+    }
 
     line(b, .fence, 70, -64, 146, -64, 4);
     line(b, .fence, 70, 64, 146, 64, 4);
@@ -597,7 +730,7 @@ fn industry(b: *Builder) void {
     house(b, .silo, 100, 112, 0);
     house(b, .silo, 106, 112, 0);
     house(b, .deck, 60, 140, pi);
-    house(b, .junk_c, -130, 112, 0);
+    house(b, .heap_c, -130, 112, 0);
     house(b, .plates, 34, 108, 0);
     house(b, .plates, -66, 108, 0);
     put(b, .platform, -26, 140, half_pi);

@@ -86,6 +86,15 @@ const lots = [_][4]f32{
     .{ -188, 28, -176, 106 },
 };
 
+const apron_lanes = [_][4]f32{
+    .{ apron[0], -25.5, apron[2], -17.5 },
+    .{ apron[0], apron[1], apron[2], -105 },
+    .{ -93, -105, -87, -25.5 },
+    .{ -33, -105, -27, -25.5 },
+    .{ 37, -105, 43, -25.5 },
+    .{ 101, -105, 107, -25.5 },
+};
+
 const yards = [_][4]f32{
     .{ -188, -14, -128, 22 },
     .{ 128, 64, 188, 106 },
@@ -133,6 +142,12 @@ fn ground(x: f32, z: f32) api.Rgb {
     }
 
     if (inRect(x, z, .{ hangar[0] - 27, hangar[1] - 23, hangar[0] + 27, hangar[1] + 23 })) return api.shade(slab(x, z, .{ 150, 152, 152 }, 5, 0.03), l);
+
+    if (inRect(x, z, .{ hangar2[0] - 27, hangar2[1] - 23, hangar2[0] + 27, hangar2[1] + 23 })) return api.shade(slab(x, z, .{ 150, 152, 152 }, 5, 0.03), l);
+
+    for (apron_lanes) |r| {
+        if (inRect(x, z, r)) return api.shade(stain(x, z, slab(x, z, .{ 112, 114, 118 }, 7.5, 0.03)), l);
+    }
 
     if (inRect(x, z, apron)) return api.shade(stain(x, z, slab(x, z, .{ 172, 172, 166 }, 7.5, 0.05)), l);
 
@@ -204,10 +219,10 @@ fn build(b: *Builder) void {
     terminal(b);
     roofAccess(b);
     gates(b);
-    service(b);
     cargo(b);
     maintenance(b);
-    clutter(b);
+    apronYard(b);
+    fillApron(b);
     landside(b);
     north(b);
     perimeter(b);
@@ -451,235 +466,461 @@ fn roofAccess(b: *Builder) void {
     b.solid(.{ .box = .{ .min = vec(x0, top, z_hi - 10.1), .max = vec(term[0], top + 1.05, z_hi - 9.9) } });
 }
 
-const Stand = struct { x: f32, nose: f32, len: f32, span: f32, bridge: bool };
+const Stand = struct { x: f32, nose: f32, len: f32, span: f32 };
 
 const stands = [_]Stand{
-    .{ .x = -60, .nose = -36, .len = 38, .span = 36, .bridge = true },
-    .{ .x = 6, .nose = -36, .len = 64, .span = 60, .bridge = true },
-    .{ .x = 72, .nose = -40, .len = 38, .span = 36, .bridge = false },
-    .{ .x = -122, .nose = -42, .len = 27, .span = 27, .bridge = false },
+    .{ .x = -60, .nose = -36, .len = 38, .span = 36 },
+    .{ .x = 6, .nose = -36, .len = 52, .span = 44 },
+    .{ .x = 72, .nose = -40, .len = 38, .span = 36 },
 };
+
+const hangar2 = [3]f32{ -152, -52, pi };
+const box_h: f32 = 2.808;
+const pallet_h: f32 = 0.144;
+
+const Frame = struct {
+    x: f32,
+    z: f32,
+    yaw: f32,
+
+    fn at(f: Frame, lx: f32, lz: f32) [2]f32 {
+        const c = @cos(f.yaw);
+        const s = @sin(f.yaw);
+
+        return .{ f.x + lx * c + lz * s, f.z - lx * s + lz * c };
+    }
+
+    fn sub(f: Frame, lx: f32, lz: f32, yaw: f32) Frame {
+        const p = f.at(lx, lz);
+
+        return .{ .x = p[0], .z = p[1], .yaw = f.yaw + yaw };
+    }
+};
+
+fn fr(x: f32, z: f32, yaw: f32) Frame {
+    return .{ .x = x, .z = z, .yaw = yaw };
+}
+
+fn lput(b: *Builder, f: Frame, e: K, lx: f32, lz: f32, yaw: f32) void {
+    const p = f.at(lx, lz);
+
+    put(b, e, p[0], p[1], f.yaw + yaw);
+}
+
+fn lup(b: *Builder, f: Frame, e: K, lx: f32, lz: f32, yaw: f32, lift: f32) void {
+    const p = f.at(lx, lz);
+
+    b.putAt(kit.of(e), vec(p[0], t.height(p[0], p[1]) + lift, p[1]), f.yaw + yaw, 1);
+}
+
+fn lpaint(b: *Builder, f: Frame, x0: f32, z0: f32, x1: f32, z1: f32, tone: api.Tone) void {
+    const a = f.at(x0, z0);
+    const c = f.at(x1, z1);
+
+    paint(b, @min(a[0], c[0]), @min(a[1], c[1]), @max(a[0], c[0]), @max(a[1], c[1]), tone);
+}
+
+fn boxAt(b: *Builder, f: Frame, lx: f32, lz: f32, level: f32, grey: bool) void {
+    lup(b, f, if (grey) .boxgrey else .box, lx, lz, jitter(b, 0.015), level * box_h);
+}
+
+fn palletStack(b: *Builder, f: Frame, lx: f32, lz: f32, n: usize) void {
+    for (0..n) |i| lup(b, f, .pallet, lx + jitter(b, 0.04), lz + jitter(b, 0.04), jitter(b, 0.08), @as(f32, @floatFromInt(i)) * pallet_h);
+}
+
+fn stairAt(b: *Builder, f: Frame, lx: f32, lz: f32, turn: f32) void {
+    const p = f.at(lx, lz);
+    const yaw = f.yaw + turn;
+    const q: i32 = @mod(@as(i32, @intFromFloat(@round(yaw / hp))), 4);
+    const y = t.height(p[0], p[1]);
+    const long = q == 0 or q == 2;
+    const hx: f32 = if (long) 0.5 else 2.45;
+    const hz: f32 = if (long) 2.45 else 0.5;
+    const rise: api.geom.Rise = switch (q) {
+        0 => .neg_z,
+        1 => .neg_x,
+        2 => .pos_z,
+        else => .pos_x,
+    };
+
+    b.putAt(kit.of(.stair), vec(p[0], y, p[1]), yaw, 1);
+    b.solid(.{ .ramp = .{ .min = vec(p[0] - hx, y, p[1] - hz), .max = vec(p[0] + hx, y + 3.95, p[1] + hz), .rise = rise } });
+}
+
+fn cones(b: *Builder, f: Frame, x0: f32, z0: f32, x1: f32, z1: f32, n: usize) void {
+    for (0..n) |i| {
+        const q = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(@max(n - 1, 1)));
+
+        lput(b, f, .cone, x0 + (x1 - x0) * q, z0 + (z1 - z0) * q, 0);
+    }
+}
+
+fn cargoStack(b: *Builder, f: Frame) void {
+    const g = b.rng.next() < 0.5;
+
+    boxAt(b, f, 0, 0, 0, g);
+    boxAt(b, f, 2.5, 0, 0, !g);
+    boxAt(b, f, 5.0, 0.4, 0, g);
+    boxAt(b, f, 0, 0, 1, !g);
+
+    if (b.rng.next() < 0.6) boxAt(b, f, 2.5, 0, 1, g);
+
+    if (b.rng.next() < 0.35) boxAt(b, f, 0, 0, 2, g);
+
+    for (0..3) |i| {
+        const fi: f32 = @floatFromInt(i);
+
+        lput(b, f, .wrapped, 8 + fi * 1.2, -1.8, jitter(b, 0.1));
+
+        if (i < 2) lput(b, f, .wrapped, 8.4 + fi * 1.3, -0.6, jitter(b, 0.1));
+    }
+
+    lput(b, f, .ibc, 8.2, 1.4, jitter(b, 0.1));
+    lput(b, f, .ibc, 9.5, 1.5, jitter(b, 0.1));
+    palletStack(b, f, 8.8, 3.4, 6);
+    palletStack(b, f, 10.3, 3.2, 3);
+    lput(b, f, .drum, -2.2, -2.0, 0);
+    lput(b, f, .drum, -2.8, -1.3, 0);
+    lput(b, f, .drum, -2.1, -0.6, 0);
+    lput(b, f, .cone, -3.2, 3.4, 0);
+    lput(b, f, .cone, 11.4, -3.4, 0);
+    lpaint(b, f, -3.6, -3.6, 11.8, -3.3, .f_hazard);
+}
+
+fn maintBay(b: *Builder, f: Frame) void {
+    lput(b, f, .engine, 0, 0, 0);
+    stairAt(b, f, 2.5, 0.6, pi);
+    lput(b, f, .vault, -3.6, 2.8, hp);
+    lput(b, f, .genset, -3.8, -2.4, hp);
+    lput(b, f, .cable, 3.8, 4.2, 0.4);
+    lput(b, f, .lighttower, 5.8, -3.8, 0.5);
+    lput(b, f, .drum, -5.2, 0.2, 0);
+    lput(b, f, .drum, -5.7, 0.9, 0);
+    lput(b, f, .drum, -5.0, 1.0, 0);
+    lput(b, f, .wrapped, 4.6, -1.4, 0.1);
+    lput(b, f, .ibc, 4.6, 1.0, -0.1);
+
+    for (0..4) |i| lput(b, f, .rail, -3 + @as(f32, @floatFromInt(i)) * 2.05, -5.4, 0);
+
+    for (0..3) |i| lput(b, f, .rail, -6.6, -3.6 + @as(f32, @floatFromInt(i)) * 2.05, hp);
+
+    lput(b, f, .cone, 6.6, 5.4, 0);
+    lput(b, f, .cone, -6.6, 5.4, 0);
+    lpaint(b, f, -7, -6, 7, -5.7, .f_hazard);
+    lpaint(b, f, -7, 5.7, 7, 6, .f_hazard);
+    lpaint(b, f, -7, -6, -6.7, 6, .f_hazard);
+    lpaint(b, f, 6.7, -6, 7, 6, .f_hazard);
+}
+
+fn uldBlock(b: *Builder, f: Frame) void {
+    for (0..5) |i| {
+        const fi: f32 = @floatFromInt(i);
+
+        lput(b, f, .uld, fi * 2.15, 0, jitter(b, 0.03));
+
+        if (i != 2) lput(b, f, .uld, fi * 2.15, 1.75, pi + jitter(b, 0.03));
+    }
+
+    palletStack(b, f, -2.4, 0.8, 4);
+    lput(b, f, .wrapped, 11.4, 0.2, 0.05);
+    lput(b, f, .wrapped, 11.6, 1.5, -0.08);
+    lput(b, f, .crashbar, 4.3, -2.2, 0);
+    lput(b, f, .cone, -2.8, -2.4, 0);
+    lput(b, f, .cone, 12.6, 3.0, 0);
+}
+
+fn boxWall(b: *Builder, f: Frame, n: usize) void {
+    for (0..n) |i| {
+        const fi: f32 = @floatFromInt(i);
+        const g = i % 3 == 1;
+
+        boxAt(b, f, 0, fi * 5.6, 0, g);
+
+        if (i % 2 == 0) boxAt(b, f, 0, fi * 5.6, 1, !g);
+    }
+
+    lput(b, f, .drum, 1.9, -2.2, 0);
+    lput(b, f, .drum, 2.3, -1.5, 0);
+    lput(b, f, .wrapped, -2.0, @as(f32, @floatFromInt(n)) * 5.6 - 2.4, 0.1);
+}
+
+fn standKit(b: *Builder, s: Stand) void {
+    const tail = s.nose - s.len;
+    const w = s.span / 2;
+    const f = fr(s.x, s.nose, 0);
+
+    paint(b, s.x - 0.18, apron[1], s.x + 0.18, s.nose + 6, .paint_line);
+    paint(b, s.x - 3, s.nose + 5.8, s.x + 3, s.nose + 6.2, .paint_line);
+    paint(b, s.x - w - 2.2, tail - 3, s.x - w - 1.8, s.nose + 4, .cloth_red);
+    paint(b, s.x + w + 1.8, tail - 3, s.x + w + 2.2, s.nose + 4, .cloth_red);
+    paint(b, s.x - w - 2.2, s.nose + 3.8, s.x + w + 2.2, s.nose + 4.2, .cloth_red);
+    b.deco(vec(s.x - 2.2, 0.008, tail + 3), vec(s.x + 2.2, 0.03, s.nose - 2), .blob_soft);
+
+    lput(b, f, .vdgs, 0, 6.6, pi);
+    lput(b, f, .chock, -1.2, -3.5, 0);
+    lput(b, f, .chock, 1.2, -3.5, 0);
+    lput(b, f, .genset, 4, 2.2, 0);
+    lput(b, f, .cable, 6, 2.4, 0.3);
+    lput(b, f, .lighttower, w + 4, 1, 0.3);
+    stairAt(b, f, -6, -10, hp);
+    stairAt(b, f, 6.5, -s.len + 9, -hp);
+    cones(b, f, -w + 1, -s.len * 0.45, -w + 1, -s.len * 0.45 - 4, 2);
+    cones(b, f, w - 1, -s.len * 0.45, w - 1, -s.len * 0.45 - 4, 2);
+    lput(b, f, .cone, 0, -s.len - 2.5, 0);
+    uldBlock(b, f.sub(5, -14, 0));
+    palletStack(b, f, -5, -18, 5);
+    lput(b, f, .wrapped, -6.4, -18, 0.1);
+    lput(b, f, .wrapped, -6.4, -19.3, -0.1);
+    lput(b, f, .ibc, -5, -20.2, 0.1);
+}
+
+fn hangarFill(b: *Builder, hx: f32, hz: f32, yaw: f32) void {
+    const f = fr(hx, hz, yaw);
+
+    maintBay(b, f.sub(-12, 4, 0));
+    maintBay(b, f.sub(12, 6, hp));
+    stairAt(b, f, -2, -4, 0);
+
+    for ([_]f32{ -22, -18, -10, 6, 14, 20 }) |vx| lput(b, f, .vault, vx, -12.6, 0);
+
+    boxAt(b, f, -24.2, -9.5, 0, true);
+    boxAt(b, f, 24.2, -9.5, 0, false);
+    boxAt(b, f, 24.2, -9.5, 1, true);
+
+    for (0..4) |i| {
+        const fi: f32 = @floatFromInt(i);
+
+        lput(b, f, .wrapped, -25, 2 + fi * 1.3, jitter(b, 0.1));
+        lput(b, f, .ibc, 25, 3 + fi * 1.4, jitter(b, 0.1));
+    }
+
+    palletStack(b, f, -25, 9, 7);
+    palletStack(b, f, -23.6, 9.2, 4);
+    lput(b, f, .lighttower, 0, -10, 0);
+    lput(b, f, .genset, 3.5, -10.5, 0);
+    lput(b, f, .cable, -4, -11, 0);
+    lput(b, f, .cabin, -21, 15.5, hp);
+    lput(b, f, .uld, 18, 17, 0.1);
+    lput(b, f, .drum, 22, 16, 0);
+    lput(b, f, .drum, 22.7, 16.6, 0);
+    uldBlock(b, f.sub(-8, 15, 0));
+    smallKit(b, f.sub(6, 16, 0));
+    smallKit(b, f.sub(-19, -4, hp));
+    lpaint(b, f, -26, 20, 26, 20.4, .f_hazard);
+}
 
 fn gates(b: *Builder) void {
     for (stands) |s| {
-        const cz = s.nose - s.len / 2;
-        const tail = s.nose - s.len;
-        const w = s.span / 2;
-        paint(b, s.x - 0.18, apron[1], s.x + 0.18, s.nose + 6, .paint_line);
-        paint(b, s.x - 3, s.nose + 5.8, s.x + 3, s.nose + 6.2, .paint_line);
-        paint(b, s.x - w - 2.2, tail - 3, s.x - w - 1.8, s.nose + 4, .cloth_red);
-        paint(b, s.x + w + 1.8, tail - 3, s.x + w + 2.2, s.nose + 4, .cloth_red);
-        paint(b, s.x - w - 2.2, s.nose + 3.8, s.x + w + 2.2, s.nose + 4.2, .cloth_red);
-        b.deco(vec(s.x - 2.2, 0.008, tail + 3), vec(s.x + 2.2, 0.03, s.nose - 2), .blob_soft);
+        standKit(b, s);
+        place(b, .lounge, s.x - 26, -22, 0);
+        place(b, .bridge, s.x - 18, s.nose - 6, 0);
+        put(b, .seats, s.x - 32, -18, hp);
+    }
+}
 
-        put(b, .barrier, s.x, s.nose + 4.5, pi);
-        put(b, .barrier, s.x + 5, s.nose - 4, 0.25);
-        put(b, .chock, s.x, s.nose - 3.5, 0);
-        put(b, .chock, s.x - 3, cz - 1, 0);
-        put(b, .chock, s.x + 3, cz - 1, 0);
-        put(b, .cone, s.x - w + 1, cz, 0);
-        put(b, .cone, s.x + w - 1, cz, 0);
-        put(b, .cone, s.x, tail - 2.5, 0);
-        put(b, .cone, s.x - w * 0.42, cz + 5, 0);
-        put(b, .cone, s.x + w * 0.42, cz + 5, 0);
-        put(b, .uld, s.x + 4.5, tail + s.len * 0.3, -0.45);
-        put(b, .barrier, s.x + 11, tail + s.len * 0.22, 0);
-        put(b, .uld, s.x + 11, tail + s.len * 0.22 - 4.2, 0);
-        put(b, .uld, s.x + 11, tail + s.len * 0.22 - 8.4, 0);
-        put(b, .uld, s.x + 11, tail + s.len * 0.22 - 12.2, 0);
-        put(b, .uld, s.x + 14.5, tail + s.len * 0.22 - 5, 0);
-        put(b, .uld, s.x + 14.5, tail + s.len * 0.22 - 7, 0);
-        put(b, .uld, s.x + 6.5, s.nose - s.len * 0.78, hp);
-        put(b, .uld, s.x - w * 0.55, cz - s.len * 0.36, 0);
-        put(b, .barrier, s.x - 5.5, tail + s.len * 0.2, 0.35);
+fn boxRow(b: *Builder, x: f32, z0: f32, z1: f32, gap: usize) void {
+    var z = z0;
+    var i: usize = 0;
 
-        if (s.bridge) {
-            place(b, .lounge, s.x - 26, -22, 0);
-            place(b, .bridge, s.x - 18, s.nose - 6, 0);
-            put(b, .seats, s.x - 32, -18, hp);
-            put(b, .uld, s.x - 22, -19, 0.1);
-            put(b, .uld, s.x - 22, -17, 0);
-        } else {
-            put(b, .barrier, s.x - 5, s.nose - 6, -0.3);
-            put(b, .uld, s.x - 15, s.nose - 2, 0);
-            put(b, .barrier, s.x + 10, s.nose + 8, 0.6);
+    while (z + 5.4 <= z1) : (z += 5.6) {
+        defer i += 1;
+
+        if (i == gap) continue;
+
+        const g = (i * 7 + @as(usize, @intFromFloat(@abs(x)))) % 3 == 0;
+        const f = fr(x, z + 2.7, 0);
+
+        boxAt(b, f, 0, 0, 0, g);
+
+        if ((i + @as(usize, @intFromFloat(@abs(x)))) % 3 != 1) boxAt(b, f, 0, 0, 1, !g);
+    }
+}
+
+fn apronYard(b: *Builder) void {
+    boxRow(b, -122, -100, -32, 6);
+    boxRow(b, -119.5, -100, -60, 1);
+    boxRow(b, -108, -98, -34, 3);
+    boxRow(b, -105.5, -70, -40, 9);
+    cargoStack(b, fr(-104, -104, hp));
+    palletStack(b, fr(-114, -50, 0), 0, 0, 5);
+    palletStack(b, fr(-114, -50, 0), 1.4, 0.2, 3);
+    lput(b, fr(-114, -50, 0), .ibc, 0, 2, 0.1);
+    lput(b, fr(-114, -50, 0), .ibc, 0.2, 3.3, -0.1);
+    lput(b, fr(-113, -80, 0), .wrapped, 0, 0, 0.1);
+    lput(b, fr(-113, -80, 0), .wrapped, 1.2, 0.3, -0.1);
+    lput(b, fr(-113, -80, 0), .drum, 0.3, 2, 0);
+    lput(b, fr(-113, -80, 0), .drum, 1, 2.4, 0);
+    lput(b, fr(-99, -60, 0), .lighttower, 0, 0, 0.3);
+    lput(b, fr(-99, -88, 0), .genset, 0, 0, hp);
+    lput(b, fr(-99, -45, 0), .cable, 0, 0, 0);
+
+    maintBay(b, fr(-66, -58, 0));
+    cargoStack(b, fr(-80, -96, 0));
+    boxRow(b, -46, -100, -84, 9);
+    uldBlock(b, fr(-58, -100, 0));
+
+    uldBlock(b, fr(-24, -44, 0));
+    cargoStack(b, fr(-22, -64, 0));
+    boxRow(b, -20, -100, -78, 9);
+    maintBay(b, fr(4, -66, 0));
+    cargoStack(b, fr(-2, -98, 0));
+    boxRow(b, 22, -100, -84, 9);
+    uldBlock(b, fr(26, -64, hp));
+
+    cargoStack(b, fr(46, -96, 0));
+    maintBay(b, fr(70, -62, 0));
+    boxRow(b, 60, -100, -84, 9);
+    uldBlock(b, fr(76, -98, 0));
+    cargoStack(b, fr(94, -44, hp));
+    boxRow(b, 96, -98, -70, 2);
+    lput(b, fr(92, -80, 0), .lighttower, 0, 0, 0.5);
+
+    maintBay(b, fr(122, -52, 0));
+    maintBay(b, fr(160, -54, hp));
+    boxRow(b, 112, -102, -70, 3);
+    boxRow(b, 114.5, -102, -84, 9);
+    cargoStack(b, fr(140, -98, 0));
+    uldBlock(b, fr(160, -80, 0));
+    boxRow(b, 176, -102, -66, 4);
+
+    maintBay(b, fr(-168, -92, 0));
+    cargoStack(b, fr(-150, -102, 0));
+    uldBlock(b, fr(-140, -88, 0));
+    boxRow(b, -185, -100, -36, 7);
+
+    for (0..8) |i| {
+        const f: f32 = @floatFromInt(i);
+
+        put(b, .uld, 53 + f * 2.3, -15.2, 0);
+    }
+
+    for ([_]f32{ -150, -60, 6, 72, 140 }) |x| {
+        for (0..3) |i| put(b, .crashbar, x - 4 + @as(f32, @floatFromInt(i)) * 4, -108.5, 0);
+    }
+}
+
+fn smallKit(b: *Builder, f: Frame) void {
+    palletStack(b, f, 0, 0, 3 + @as(usize, @intFromFloat(b.rng.range(0, 4))));
+    lput(b, f, .wrapped, 1.4, 0.1, jitter(b, 0.1));
+    lput(b, f, .wrapped, 1.5, 1.3, jitter(b, 0.1));
+    lput(b, f, .ibc, -0.1, 1.5, jitter(b, 0.1));
+    lput(b, f, .drum, -1.4, -0.6, 0);
+    lput(b, f, .drum, -1.6, 0.2, 0);
+    lput(b, f, .cone, 2.6, -1.6, 0);
+}
+
+fn boxPair(b: *Builder, f: Frame) void {
+    const g = b.rng.next() < 0.5;
+
+    boxAt(b, f, 0, 0, 0, g);
+    boxAt(b, f, 2.5, 0, 0, !g);
+
+    if (b.rng.next() < 0.7) boxAt(b, f, 0, 0, 1, !g);
+
+    lput(b, f, .drum, 4.4, -2, 0);
+    lput(b, f, .drum, 4.9, -1.3, 0);
+}
+
+fn cabinSet(b: *Builder, f: Frame) void {
+    lput(b, f, .cabin, 0, 0, 0);
+    lput(b, f, .cabin, 4.6, 0, 0);
+    lput(b, f, .cabin, -4.6, 0.4, pi);
+    lput(b, f, .genset, 2.3, -5.6, 0);
+    lput(b, f, .vault, 7.6, -2, hp);
+}
+
+const Fill = struct { x0: f32, z0: f32, x1: f32, z1: f32 };
+
+const fills = [_]Fill{
+    .{ .x0 = -3.6, .z0 = -3.6, .x1 = 11.8, .z1 = 4.2 },
+    .{ .x0 = -7, .z0 = -6, .x1 = 7, .z1 = 6 },
+    .{ .x0 = -7, .z0 = -6.4, .x1 = 9.6, .z1 = 4.4 },
+    .{ .x0 = -3, .z0 = -2.6, .x1 = 13, .z1 = 3 },
+    .{ .x0 = -1.4, .z0 = -2.9, .x1 = 5.4, .z1 = 2.9 },
+    .{ .x0 = -2.2, .z0 = -2.2, .x1 = 3, .z1 = 2.2 },
+};
+
+fn openApron(x: f32, z: f32) bool {
+    if (!inRect(x, z, .{ apron[0] + 2, apron[1] + 9, apron[2] - 2, apron[3] - 6 })) return false;
+
+    for (apron_lanes) |r| {
+        if (inRect(x, z, .{ r[0] - 1, r[1] - 1, r[2] + 1, r[3] + 1 })) return false;
+    }
+
+    for (stands) |s| {
+        if (@abs(x - s.x) < 4 and z < s.nose + 8 and z > s.nose - s.len) return false;
+    }
+
+    return true;
+}
+
+fn fits(b: *Builder, f: Frame, r: Fill) bool {
+    var i: usize = 0;
+
+    while (i <= 4) : (i += 1) {
+        var j: usize = 0;
+
+        while (j <= 4) : (j += 1) {
+            const lx = r.x0 + (r.x1 - r.x0) * @as(f32, @floatFromInt(i)) / 4;
+            const lz = r.z0 + (r.z1 - r.z0) * @as(f32, @floatFromInt(j)) / 4;
+            const p = f.at(lx, lz);
+
+            if (!openApron(p[0], p[1])) return false;
+
+            if (wd.covered(b, p[0], p[1], 1.6)) return false;
         }
     }
+
+    return true;
 }
 
-fn gseRow(b: *Builder, e: K, x: f32, z: f32, n: usize, step: f32, yaw: f32) void {
-    var i: usize = 0;
+fn fillApron(b: *Builder) void {
+    var z: f32 = apron[1] + 14;
+    var line: usize = 0;
 
-    while (i < n) : (i += 1) put(b, e, x + @as(f32, @floatFromInt(i)) * step, z, yaw + jitter(b, 0.04));
-}
+    while (z < apron[3] - 8) : (z += 9.5) {
+        defer line += 1;
 
-fn workZone(b: *Builder, x: f32, z: f32) void {
-    for ([_]f32{ -6, -2, 2, 6 }) |o| {
-        put(b, .crashbar, x + o, z - 8, 0);
-        put(b, .crashbar, x + o, z + 8, 0);
-    }
+        var x: f32 = apron[0] + 6 + @as(f32, @floatFromInt(line % 2)) * 5.5;
 
-    for ([_]f32{ -4, 0, 4 }) |o| {
-        put(b, .crashbar, x - 8, z + o, hp);
-        put(b, .crashbar, x + 8, z + o, hp);
-    }
+        while (x < apron[2] - 6) : (x += 11) {
+            const f = fr(x + jitter(b, 2), z + jitter(b, 2), if (b.rng.next() < 0.5) 0 else pi);
+            const start: usize = @intFromFloat(b.rng.range(0, 3.99));
 
-    put(b, .barrier, x - 2, z, 0.2);
-    put(b, .uld, x + 3, z + 3, 2.2);
-    put(b, .uld, x + 4, z - 4, 0);
-    put(b, .uld, x + 4, z - 5.8, 0);
-    put(b, .cone, x - 10, z - 10, 0);
-    put(b, .cone, x + 10, z + 10, 0);
-    paint(b, x - 9, z - 9, x + 9, z - 8.7, .f_hazard);
-    paint(b, x - 9, z + 8.7, x + 9, z + 9, .f_hazard);
-}
+            for (0..fills.len) |n| {
+                const pick = if (n < 4) (start + n) % 4 else n;
 
-fn train(b: *Builder, x: f32, z: f32, yaw: f32, n: usize) void {
-    const dx = @sin(yaw);
-    const dz = @cos(yaw);
-    var i: usize = 0;
+                if (!fits(b, f, fills[pick])) continue;
 
-    put(b, .barrier, x, z, yaw);
+                switch (pick) {
+                    0 => cargoStack(b, f),
+                    1 => maintBay(b, f),
+                    2 => cabinSet(b, f),
+                    3 => uldBlock(b, f),
+                    4 => boxPair(b, f),
+                    else => smallKit(b, f),
+                }
 
-    while (i < n) : (i += 1) {
-        const d = 3.8 + @as(f32, @floatFromInt(i)) * 4.0;
-
-        put(b, .uld, x - dx * d, z - dz * d, yaw + jitter(b, 0.05));
-    }
-}
-
-fn clutter(b: *Builder) void {
-    var z: f32 = -104;
-
-    while (z < -30) : (z += 15) {
-        var x: f32 = -180;
-
-        while (x < 180) : (x += 17) {
-            const px = x + jitter(b, 4);
-            const pz = z + jitter(b, 4);
-
-            if (wd.covered(b, px, pz, 5)) continue;
-
-            const roll = b.rng.next();
-            const yaw = b.rng.range(0, std.math.tau);
-
-            if (roll < 0.22) {
-                train(b, px, pz, yaw, 2 + @as(usize, @intFromFloat(b.rng.range(0, 3))));
-            } else if (roll < 0.4) {
-                put(b, .uld, px, pz, yaw);
-                put(b, .uld, px + 2.1, pz, yaw);
-                put(b, .uld, px + 1, pz + 2.6, yaw);
-            } else if (roll < 0.55) {
-                put(b, .barrier, px, pz, yaw);
-                put(b, .cone, px + 3, pz + 2, 0);
-            } else if (roll < 0.68) {
-                put(b, .barrier, px, pz, yaw);
-            } else if (roll < 0.8) {
-                put(b, .crashbar, px, pz, yaw);
-                put(b, .crashbar, px + 4 * @cos(yaw), pz - 4 * @sin(yaw), yaw);
-            } else {
-                put(b, .uld, px, pz, yaw);
-                put(b, .cone, px - 2, pz - 3, 0);
+                break;
             }
         }
     }
 }
 
-fn service(b: *Builder) void {
-    workZone(b, -92, -70);
-    workZone(b, 100, -92);
-    train(b, -100, -44, hp, 4);
-    train(b, -20, -104, -hp, 5);
-    train(b, 44, -60, 0, 3);
-    train(b, 120, -40, hp, 3);
-    put(b, .barrier, -84, -100, 0.6);
-    put(b, .uld, 100, -56, 0.1);
-    put(b, .uld, 104, -72, pi);
-    put(b, .barrier, -36, -100, 0.4);
-    put(b, .barrier, 46, -100, -0.8);
-    put(b, .uld, -6, -108, hp);
-
-    for (0..4) |i| {
-        const f: f32 = @floatFromInt(i);
-
-        put(b, .uld, -76 + f * 2.2, -24, 0);
-        put(b, .uld, -76 + f * 2.2, -26.2, 0);
-    }
-
-    gseRow(b, .uld, 40, -18, 8, 2.3, 0);
-    gseRow(b, .uld, 40, -24, 8, 2.3, 0);
-    gseRow(b, .barrier, 62, -18, 3, 2.6, 0);
-    gseRow(b, .barrier, 72, -22, 3, 4, 0);
-    gseRow(b, .uld, 88, -20, 3, 3.2, 0);
-    gseRow(b, .uld, 40, -29, 6, 2.2, 0);
-    gseRow(b, .uld, 40, -31, 6, 2.2, 0);
-    paint(b, 38, -33, 102, -32.7, .paint_line);
-    paint(b, 38, -33, 38.3, -14, .paint_line);
-    paint(b, 101.7, -33, 102, -14, .paint_line);
-
-    var hx: f32 = 40;
-
-    while (hx < 100) : (hx += 6) paint(b, hx, -35, hx + 2.5, -33.5, .f_hazard);
-
-    put(b, .crashbar, 106, -16, hp);
-    put(b, .crashbar, 106, -20, hp);
-    put(b, .crashbar, 106, -24, hp);
-    put(b, .barrier, 104, -40, 0.3);
-    put(b, .barrier, 50, -40, 1.2);
-    put(b, .uld, 30, -108, hp);
-    put(b, .uld, -24, -104, 0.2);
-    put(b, .barrier, -96, -96, 0.4);
-    put(b, .uld, -110, -18, hp);
-    put(b, .uld, -110, -26, hp);
-
-    for (0..5) |i| {
-        const f: f32 = @floatFromInt(i);
-
-        put(b, .uld, -40 + f * 2.2, -16, 0);
-    }
-
-    put(b, .barrier, -46, -16, 0);
-}
-
 fn cargo(b: *Builder) void {
     place(b, .cargo, -160, 4, pi);
-    paint(b, -164.2, apron[1], -163.8, -56, .paint_line);
-    b.deco(vec(-166.2, 0.008, -98), vec(-161.8, 0.03, -64), .blob_soft);
-    put(b, .uld, -156, -60, pi);
-    put(b, .barrier, -164, -57, pi);
-    put(b, .uld, -170, -96, 0.5);
-    put(b, .uld, -178, -84, 0);
-
-    var r: usize = 0;
-
-    while (r < 3) : (r += 1) {
-        const rz = -22 - @as(f32, @floatFromInt(r)) * 6;
-        var c: usize = 0;
-
-        while (c < 7) : (c += 1) {
-            const cxx = -184 + @as(f32, @floatFromInt(c)) * 2.3;
-            if ((c + r) % 3 != 0) put(b, .uld, cxx, rz, hp);
-        }
-
-        put(b, .barrier, -188, rz, hp);
-    }
 
     for (0..9) |i| {
         const f: f32 = @floatFromInt(i);
 
         put(b, .uld, -148 + f * 2.2, -20, 0);
         put(b, .uld, -148 + f * 2.2, -22.2, 0);
-
-        if (i % 2 == 0) b.putAt(kit.of(.uld), vec(-148 + f * 2.2, 1.64, -21.1), 0, 1);
     }
 
     put(b, .uld, -136, -18, 0.6);
     put(b, .uld, -176, -10, -0.4);
     put(b, .uld, -150, -12, 2.6);
-    put(b, .uld, -132, -30, 0);
-    put(b, .barrier, -146, -40, 1.4);
-
-    for ([_]f32{ -146, -146, -146 }, 0..) |cxv, i| put(b, .cone, cxv, -50 - @as(f32, @floatFromInt(i)) * 7, 0);
+    cargoStack(b, fr(-184, -20, hp));
 
     for ([_]f32{ -180, -172, -164, -156, -148, -140 }) |fx| {
         put(b, .uld, fx, 18, 0);
@@ -691,29 +932,14 @@ fn cargo(b: *Builder) void {
 }
 
 fn maintenance(b: *Builder) void {
-    const hx = hangar[0];
-    const hz = hangar[1];
+    place(b, .hangar, hangar[0], hangar[1], hangar[2]);
+    hangarFill(b, hangar[0], hangar[1], hangar[2]);
+    paint(b, hangar[0] - 0.18, apron[1], hangar[0] + 0.18, hangar[1] - 22, .paint_line);
+    place(b, .hangar, hangar2[0], hangar2[1], hangar2[2]);
+    hangarFill(b, hangar2[0], hangar2[1], hangar2[2]);
+    paint(b, hangar2[0] - 0.18, apron[1], hangar2[0] + 0.18, hangar2[1] - 22, .paint_line);
 
-    place(b, .hangar, hx, hz, hangar[2]);
-    put(b, .barrier, hx + 16, hz - 6, hp);
-    put(b, .barrier, hx - 18, hz + 8, pi);
-    put(b, .barrier, hx + 4, hz - 12, pi);
-    put(b, .uld, hx + 20, hz + 14, 0.8);
-    put(b, .uld, hx - 22, hz + 16, 0);
-    put(b, .uld, hx - 20, hz + 16, 0);
-    put(b, .barrier, hx - 4, hz - 4, 0.4);
-    paint(b, hx - 0.18, apron[1], hx + 0.18, hz - 22, .paint_line);
-
-    for (0..4) |i| {
-        const f: f32 = @floatFromInt(i);
-        put(b, .chock, 118 + f * 17, -64, 0);
-        put(b, .cone, 112 + f * 17, -66, 0);
-    }
-    put(b, .barrier, 184, -78, 0.5);
-    put(b, .uld, 114, -96, hp);
-    put(b, .barrier, 174, -88, 0);
-
-    for ([_]f32{ 184, 184, 184, 184 }, 0..) |cxv, i| put(b, .crashbar, cxv, -40 - @as(f32, @floatFromInt(i)) * 4.2, hp);
+    for (0..4) |i| put(b, .crashbar, 184, -40 - @as(f32, @floatFromInt(i)) * 4.2, hp);
 
     put(b, .uld, 178, -30, 0.2);
     put(b, .uld, 180, -30, 0);

@@ -709,59 +709,371 @@ def deck(name, L=8.0, W=4.0, H=3.4, ramp=True):
     return finish(m, name, size=0, reach=1.6, strength=0.75)
 
 
-def junk(name, seed, w=7.0, d=5.0, h=2.8):
+def recolor(m, faces, c):
+    bmesh.ops.recalc_face_normals(m.bm, faces=faces)
+
+    for f in faces:
+        for l in f.loops:
+            l[m.col] = (c[0], c[1], c[2], 1.0)
+
+
+def frame_of(d):
+    d = d.normalized()
+    up = Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))
+    u = d.cross(up).normalized()
+    v = d.cross(u).normalized()
+
+    return d, u, v
+
+
+def tcyl(m, a, b, r, c, seg=8, cap=True):
+    pa = gpos(*a)
+    pb = gpos(*b)
+    d, u, v = frame_of(pb - pa)
+    ra = []
+    rb = []
+
+    for i in range(seg):
+        t = math.tau * i / seg
+        o = (u * math.cos(t) + v * math.sin(t)) * r
+        ra.append(m.bm.verts.new(pa + o))
+        rb.append(m.bm.verts.new(pb + o))
+
+    faces = [m.bm.faces.new([ra[i], ra[(i + 1) % seg], rb[(i + 1) % seg], rb[i]]) for i in range(seg)]
+
+    if cap:
+        faces.append(m.bm.faces.new(list(reversed(ra))))
+        faces.append(m.bm.faces.new(rb))
+
+    recolor(m, faces, c)
+
+
+def torus(m, center, normal, R, r, c, seg=10, sides=4):
+    n, u, v = frame_of(Vector(normal))
+    o = gpos(*center)
+    rings = []
+
+    for i in range(seg):
+        a = math.tau * i / seg
+        radial = u * math.cos(a) + v * math.sin(a)
+        ring = []
+
+        for j in range(sides):
+            b = math.tau * j / sides + math.pi / sides
+            ring.append(m.bm.verts.new(o + radial * (R + r * math.cos(b)) + n * (r * math.sin(b))))
+
+        rings.append(ring)
+
+    faces = []
+
+    for i in range(seg):
+        a = rings[i]
+        b = rings[(i + 1) % seg]
+
+        for j in range(sides):
+            k = (j + 1) % sides
+            faces.append(m.bm.faces.new([a[j], a[k], b[k], b[j]]))
+
+    recolor(m, faces, c)
+
+
+def ibeam_t(m, a, b, size, c):
+    pa = gpos(*a)
+    pb = gpos(*b)
+    d, u, v = frame_of(pb - pa)
+    f = size / 2
+
+    for off, w, h in ((v * f, size, 0.05), (-v * f, size, 0.05), (Vector((0, 0, 0)), 0.05, size)):
+        qa = pa + off
+        qb = pb + off
+        game_a = (qa.x, qa.z, -qa.y)
+        game_b = (qb.x, qb.z, -qb.y)
+        m.beam(game_a, game_b, w, h, c)
+
+
+def tyre(m, x, y, z, rng, flat=True):
+    if flat:
+        nrm = (rng.uniform(-0.25, 0.25), rng.uniform(-0.25, 0.25), 1.0)
+    else:
+        a = rng.uniform(0, math.tau)
+        nrm = (math.cos(a), math.sin(a), rng.uniform(-0.4, 0.4))
+
+    torus(m, (x, y, z), nrm, 0.36, 0.14, rng.choice([BLACK, (0.22, 0.21, 0.2), (0.15, 0.15, 0.15)]))
+
+
+def drum_t(m, a, b, c):
+    tcyl(m, a, b, 0.3, c, seg=10)
+    pa = Vector(a)
+    pb = Vector(b)
+
+    for q in (0.3, 0.7):
+        p = pa + (pb - pa) * q
+        d = (pb - pa).normalized() * 0.04
+        tcyl(m, tuple(p - d), tuple(p + d), 0.32, (c[0] * 0.75, c[1] * 0.75, c[2] * 0.75), seg=10, cap=False)
+
+
+SCRAP = RUST + PLATE + PLATE + MINT + [BRASS, (0.62, 0.6, 0.55), (0.5, 0.54, 0.58), (0.72, 0.62, 0.42), (0.78, 0.74, 0.64), (0.36, 0.46, 0.62), (0.74, 0.58, 0.2), (0.6, 0.24, 0.18)]
+PAINT = [(0.36, 0.46, 0.62), (0.74, 0.58, 0.2), (0.6, 0.24, 0.18), (0.42, 0.66, 0.58), (0.8, 0.76, 0.66), (0.4, 0.5, 0.36)]
+
+
+def heap(name, seed, w=10.0, d=7.0, h=4.0):
     reset()
     m = Mesh()
     rng = random.Random(seed)
-    pal = RUST + RUST + MINT + [BRASS] + [(0.36, 0.38, 0.37), (0.3, 0.32, 0.31)]
+    lobes = [(0.0, 0.0, w / 2, d / 2, h)]
 
-    for i in range(95):
-        r = rng.random()
-        x = rng.uniform(-w / 2, w / 2)
-        z = rng.uniform(-d / 2, d / 2)
-        e = (x / (w / 2)) ** 2 + (z / (d / 2)) ** 2
+    for i in range(2):
+        a = rng.uniform(0, math.tau)
+        lobes.append((math.cos(a) * w * 0.22, math.sin(a) * d * 0.22, w * rng.uniform(0.25, 0.34), d * rng.uniform(0.25, 0.34), h * rng.uniform(0.55, 0.8)))
 
-        if e > 1:
+    def top(x, z):
+        best = 0.0
+
+        for lx, lz, aw, ad, lh in lobes:
+            e = ((x - lx) / aw) ** 2 + ((z - lz) / ad) ** 2
+
+            if e < 1:
+                best = max(best, lh * (1 - e) ** 0.8)
+
+        return best
+
+    def grad(x, z):
+        e = 0.05
+
+        return ((top(x + e, z) - top(x - e, z)) / (2 * e), (top(x, z + e) - top(x, z - e)) / (2 * e))
+
+    for lx, lz, aw, ad, lh in lobes:
+        y = 0.0
+
+        while y < lh - 0.5:
+            y1 = y + 0.6
+            k = max(0.0, 1 - (y1 / lh) ** (1 / 0.8)) ** 0.5
+            m.box((lx - aw * k * 0.78, y, lz - ad * k * 0.78), (lx + aw * k * 0.78, y1, lz + ad * k * 0.78), (0.3, 0.24, 0.19))
+            y = y1
+
+    count = int(w * d * 1.05)
+
+    for i in range(count):
+        a = rng.uniform(0, math.tau)
+        r = math.sqrt(rng.uniform(0.0, 1.0)) * 0.97
+        x = math.cos(a) * w / 2 * r
+        z = math.sin(a) * d / 2 * r
+        y = top(x, z)
+
+        if y < 0.15:
             continue
 
-        top = h * (1 - e) ** 0.7
-        y = rng.uniform(0, max(0.2, top - 0.4))
-        c = rng.choice(pal)
+        gx, gz = grad(x, z)
+        gl = math.hypot(gx, gz)
 
-        if r < 0.45:
-            ang = rng.uniform(0, math.tau)
-            ln = rng.uniform(0.8, 2.6)
-            b = (x + math.cos(ang) * ln, y + rng.uniform(-0.4, 0.6), z + math.sin(ang) * ln)
-            m.beam((x, y, z), b, rng.uniform(0.3, 1.0), rng.uniform(0.05, 0.3), c)
-        elif r < 0.7:
-            cyl(m, (x, y, z), rng.uniform(0.25, 0.45), rng.uniform(0.6, 1.0), rng.choice(["y", "x", "z"]), 10, c)
-        elif r < 0.78:
-            s2 = rng.uniform(0.3, 0.7)
-            m.box((x - s2, y, z - s2), (x + s2, y + s2 * 1.2, z + s2), c, bevel=0.03)
+        if gl > 1e-3 and rng.random() < 0.75:
+            dx, dz = -gx / gl, -gz / gl
         else:
-            cyl(m, (x, y, z), rng.uniform(0.35, 0.5), 0.25, rng.choice(["x", "z"]), 12, BLACK)
+            ang = rng.uniform(0, math.tau)
+            dx, dz = math.cos(ang), math.sin(ang)
 
-    tmp = bmesh.new()
-    col = tmp.loops.layers.float_color.new("Col")
-    bmesh.ops.create_uvsphere(tmp, u_segments=12, v_segments=6, radius=1.0)
-    bmesh.ops.delete(tmp, geom=[v for v in tmp.verts if v.co.z < -0.01], context="VERTS")
-    tmp.transform(Matrix.Diagonal((w / 2 * 0.9, d / 2 * 0.9, h * 0.75, 1.0)))
+        slope = min(gl, 2.0)
+        ln = rng.uniform(1.2, 2.4)
+        twist = rng.uniform(-0.5, 0.5)
+        cx, cz = dx * math.cos(twist) - dz * math.sin(twist), dx * math.sin(twist) + dz * math.cos(twist)
+        pa = (x - cx * ln / 2, y + slope * ln / 2 * 0.8 + rng.uniform(-0.1, 0.15), z - cz * ln / 2)
+        pb = (x + cx * ln / 2, y - slope * ln / 2 * 0.8 + rng.uniform(-0.1, 0.15), z + cz * ln / 2)
+        m.beam(pa, pb, rng.uniform(0.7, 1.5), rng.uniform(0.05, 0.22), rng.choice(SCRAP))
 
-    for f in tmp.faces:
-        for l in f.loops:
-            l[col] = (0.36, 0.24, 0.16, 1.0)
+    for i in range(int(w * d / 4.5)):
+        a = rng.uniform(0, math.tau)
+        r = rng.uniform(0.15, 0.95)
+        x = math.cos(a) * w / 2 * r
+        z = math.sin(a) * d / 2 * r
+        yy = top(x, z)
+        kind = rng.random()
 
-    me = bpy.data.meshes.new("j")
-    tmp.to_mesh(me)
-    tmp.free()
-    m.bm.from_mesh(me)
-    bpy.data.meshes.remove(me)
+        if kind < 0.2:
+            ang = a + rng.uniform(-0.6, 0.6)
+            ln = rng.uniform(3.0, 6.0)
+            rise = rng.uniform(0.2, 0.75)
+            pa = (x - math.cos(ang) * ln * 0.3, yy - 0.3, z - math.sin(ang) * ln * 0.3)
+            pb = (x + math.cos(ang) * ln * 0.7, max(0.2, yy - 0.3 + ln * 0.7 * rise * rng.choice([1, 1, -0.5])), z + math.sin(ang) * ln * 0.7)
+            ibeam_t(m, pa, pb, rng.uniform(0.24, 0.36), rng.choice(RUST + [STEEL, (0.74, 0.58, 0.2)]))
+        elif kind < 0.34:
+            ang = rng.uniform(0, math.tau)
+            ln = rng.uniform(2.0, 4.0)
+            rr = rng.uniform(0.14, 0.34)
+            pa = (x, yy + rr - 0.1, z)
+            pb = (x + math.cos(ang) * ln, max(rr, yy + rr - 0.1 + rng.uniform(-0.8, 0.9)), z + math.sin(ang) * ln)
+            tcyl(m, pa, pb, rr, rng.choice(MINT + [BRASS, STEEL, RUST[2], (0.78, 0.74, 0.64)]))
+        elif kind < 0.56:
+            tyre(m, x, yy + 0.05, z, rng, flat=rng.random() < 0.5)
+        elif kind < 0.7:
+            ang = rng.uniform(0, math.tau)
+            tilt = rng.uniform(0, 1)
+            pa = (x, yy, z)
+            pb = (x + math.cos(ang) * 0.9 * tilt, yy + 0.9 * (1 - tilt) + 0.3 * tilt, z + math.sin(ang) * 0.9 * tilt)
+            drum_t(m, pa, pb, rng.choice(PAINT + [RUST[0]]))
+        elif kind < 0.8:
+            s = rng.uniform(0.6, 1.0)
+            ang = rng.uniform(0, math.tau)
+            m.beam((x - math.cos(ang) * s / 2, yy + s / 2 - 0.15, z - math.sin(ang) * s / 2), (x + math.cos(ang) * s / 2, yy + s / 2 - 0.05, z + math.sin(ang) * s / 2), s, s, rng.choice(BOARD + PAINT))
+        elif kind < 0.9:
+            ang = rng.uniform(0, math.tau)
+            rr = rng.uniform(0.5, 0.85)
+            pa = (x, yy + rr * 0.6, z)
+            pb = (x + math.cos(ang) * 0.2, yy + rr * 0.6, z + math.sin(ang) * 0.2)
+            tcyl(m, pa, pb, rr, rng.choice([STEEL, RUST[3], BRASS]), seg=10)
+            tcyl(m, (x - math.cos(ang) * 0.12, yy + rr * 0.6, z - math.sin(ang) * 0.12), (x + math.cos(ang) * 0.34, yy + rr * 0.6, z + math.sin(ang) * 0.34), rr * 0.3, (0.28, 0.28, 0.28), seg=6)
+        else:
+            ang = rng.uniform(0, math.tau)
+            ln = rng.uniform(2.2, 3.4)
+            pa = (x - math.cos(ang) * ln / 2, yy + 0.2, z - math.sin(ang) * ln / 2)
+            pb = (x + math.cos(ang) * ln / 2, yy + 0.2 + rng.uniform(0.3, 1.2), z + math.sin(ang) * ln / 2)
+            m.beam(pa, pb, rng.uniform(1.1, 1.6), rng.uniform(0.7, 1.0), rng.choice(PAINT))
 
-    for k in range(4):
-        q = 1 - k / 4
-        m.solid((-w / 2 * q * 0.8, 0, -d / 2 * q * 0.8), (w / 2 * q * 0.8, h * 0.75 * (1 - q * q) ** 0.5 + 0.3, d / 2 * q * 0.8))
+    for i in range(11):
+        a = math.tau * i / 11 + rng.uniform(-0.2, 0.2)
+        ex = math.cos(a) * (w / 2 + rng.uniform(0.2, 0.8))
+        ez = math.sin(a) * (d / 2 + rng.uniform(0.2, 0.8))
+        q = rng.uniform(0.5, 0.75)
+        ix = math.cos(a) * w / 2 * q
+        iz = math.sin(a) * d / 2 * q
+        iy = max(0.8, top(ix, iz) * rng.uniform(0.6, 0.9))
+        m.beam((ex, 0.05, ez), (ix, iy, iz), rng.uniform(1.0, 2.0), 0.06, rng.choice(PLATE + PAINT + RUST))
 
-    return finish(m, name, size=0, reach=1.4, strength=0.8)
+    for i in range(9):
+        a = rng.uniform(0, math.tau)
+        x = math.cos(a) * (w / 2 + rng.uniform(0.2, 1.8))
+        z = math.sin(a) * (d / 2 + rng.uniform(0.2, 1.8))
+        r = rng.random()
+
+        if r < 0.4:
+            tyre(m, x, 0.14, z, rng)
+        elif r < 0.6:
+            drum_t(m, (x, 0, z), (x, 0.9, z), rng.choice(PAINT))
+        else:
+            s = rng.uniform(0.5, 1.2)
+            ang = rng.uniform(0, math.tau)
+            m.beam((x - math.cos(ang) * s, 0.05, z - math.sin(ang) * s), (x + math.cos(ang) * s, 0.09, z + math.sin(ang) * s), rng.uniform(0.4, 0.9), 0.08, rng.choice(SCRAP))
+
+    for tier in range(4):
+        y0 = h * tier / 4
+        y1 = h * (tier + 1) / 4
+        k = max(0.0, 1 - (y1 / h) ** (1 / 0.8)) ** 0.5
+        m.solid((-w / 2 * k * 0.7, y0 - 0.5 if tier == 0 else y0, -d / 2 * k * 0.7), (w / 2 * k * 0.7, y1, d / 2 * k * 0.7))
+
+    return finish(m, name, size=0, reach=1.2, strength=0.45)
+
+
+def debris(name, seed):
+    reset()
+    m = Mesh()
+    rng = random.Random(seed)
+
+    for i in range(26):
+        x = rng.uniform(-2.2, 2.2)
+        z = rng.uniform(-2.2, 2.2)
+        ang = rng.uniform(0, math.tau)
+        s = rng.uniform(0.15, 0.7)
+        hh = rng.uniform(0.03, 0.12)
+
+        if rng.random() < 0.25:
+            tcyl(m, (x, 0.07, z), (x + math.cos(ang) * s * 2, 0.07, z + math.sin(ang) * s * 2), 0.07, rng.choice(RUST + [STEEL]), seg=5, cap=False)
+        else:
+            m.beam((x - math.cos(ang) * s, hh / 2, z - math.sin(ang) * s), (x + math.cos(ang) * s, hh / 2 + rng.uniform(-0.03, 0.06), z + math.sin(ang) * s), rng.uniform(0.15, 0.6), hh, rng.choice(SCRAP))
+
+    return finish(m, name, size=0, reach=0.4, strength=0.3)
+
+
+def tyre_stack(name, seed):
+    reset()
+    m = Mesh()
+    rng = random.Random(seed)
+
+    for i in range(5):
+        torus(m, (rng.uniform(-0.06, 0.06), 0.14 + i * 0.27, rng.uniform(-0.06, 0.06)), (rng.uniform(-0.05, 0.05), rng.uniform(-0.05, 0.05), 1.0), 0.36, 0.14, rng.choice([BLACK, (0.22, 0.21, 0.2)]))
+
+    m.solid((-0.45, 0, -0.45), (0.45, 1.5, 0.45))
+
+    return finish(m, name, size=0, reach=0.8, strength=0.5)
+
+
+def tyre_one(name):
+    reset()
+    m = Mesh()
+    torus(m, (0, 0.14, 0), (0.08, 0.0, 1.0), 0.36, 0.14, BLACK)
+
+    return finish(m, name, size=0, reach=0.5, strength=0.4)
+
+
+def pallet(name):
+    reset()
+    m = Mesh()
+    wood = (0.72, 0.56, 0.34)
+
+    for z in (-0.5, 0.0, 0.5):
+        m.box((-0.6, 0.0, z - 0.05), (0.6, 0.1, z + 0.05), (wood[0] * 0.85, wood[1] * 0.85, wood[2] * 0.85))
+
+    for x in (-0.5, -0.25, 0.0, 0.25, 0.5):
+        m.box((x - 0.07, 0.1, -0.6), (x + 0.07, 0.14, 0.6), wood)
+
+    return finish(m, name, size=0, reach=0.5, strength=0.4)
+
+
+def barrel(name, c, tip=False):
+    reset()
+    m = Mesh()
+
+    if tip:
+        drum_t(m, (-0.45, 0.3, 0), (0.45, 0.3, 0), c)
+        m.solid((-0.45, 0, -0.3), (0.45, 0.6, 0.3))
+    else:
+        drum_t(m, (0, 0, 0), (0, 0.9, 0), c)
+        m.solid((-0.3, 0, -0.3), (0.3, 0.9, 0.3))
+
+    return finish(m, name, size=0, reach=0.6, strength=0.4)
+
+
+def girders(name, seed):
+    reset()
+    m = Mesh()
+    rng = random.Random(seed)
+
+    for x in (-2.0, 0.0, 2.0):
+        m.box((x - 0.12, 0, -0.9), (x + 0.12, 0.18, 0.9), BOARD[1])
+
+    for layer in range(3):
+        for i in range(4 - layer):
+            z = -0.6 + i * 0.4 + layer * 0.2
+            y = 0.18 + layer * 0.3
+            ibeam_t(m, (-3.0 + rng.uniform(-0.3, 0.3), y + 0.13, z), (3.0 + rng.uniform(-0.3, 0.3), y + 0.13, z), 0.26, rng.choice(RUST + [STEEL]))
+
+    m.solid((-3.2, 0, -0.9), (3.2, 1.1, 0.9))
+
+    return finish(m, name, size=0, reach=1.0, strength=0.6)
+
+
+def kitx(name, src, scale=1.0, collide="box", sat=1.0, post=None, reach=1.2, group="street"):
+    reset()
+    bm = piece(src)
+    normalize(bm, scale=scale)
+
+    if sat != 1.0 or post:
+        col = bm.loops.layers.float_color["Col"]
+        k = post or (1, 1, 1)
+
+        for f in bm.faces:
+            for l in f.loops:
+                c = l[col]
+                g = (c[0] + c[1] + c[2]) / 3
+                l[col] = tuple(min(1.0, (g + (c[i] - g) * sat) * k[i]) for i in range(3)) + (1.0,)
+
+    bake(bm, reach=reach, strength=0.8, rays=12, grime=0.7)
+    info = export(bm, name)
+    info["kind"] = "prop"
+    info["group"] = group
+    info["collide"] = collide
+    print("DONE", name, info["tris"])
+    bm.free()
+
+    return info
 
 
 def plates(name, seed):
@@ -809,9 +1121,7 @@ PROPS = [
     ("butt", "brass-fitted-water-butt-3bca1b", {}),
     ("lamp", "brass-post-lamp-984201", {"collide": "cylinder"}),
     ("chimney", "cowled-chimney-stack-de5055", {}),
-    ("awning", "corrugated-awning-e758eb", {"collide": "none"}),
     ("panel", "gauge-and-valve-panel-f2164c", {}),
-    ("frame", "glass-cold-frame-3cf74e", {}),
     ("planter", "ledge-planter-box-2f38f5", {}),
     ("crop", "bed-crop-plant-1d5ab7", {"collide": "none", "group": "bush"}),
     ("bale", "straw-bale-56facd", {}),
@@ -821,15 +1131,8 @@ PROPS = [
     ("tuft", "grass-tuft-62e90c", {"collide": "none", "group": "bush", "scale": 1.6}),
     ("flower", "wildflower-plant-cf4279", {"collide": "none", "group": "bush", "scale": 1.6}),
     ("tracker", "tilting-solar-tracker-48051b", {"collide": "cylinder"}),
-    ("solar", "roof-solar-array-c4b996", {}),
     ("spinner", "oil-drum-wind-spinner-7c1a9d", {"collide": "cylinder"}),
     ("washing", "washing-line-06b44e", {"collide": "none"}),
-    ("vine", "wall-vine-curtain-c45b4e", {"collide": "none"}),
-    ("arm", "rooted-gantry-arm-f35c8f", {}),
-    ("t_gravel", "gravel-tile-4a99d0", {"collide": "none", "group": "ground"}),
-    ("t_dirt", "grown-over-dirt-tile-ea4ea0", {"collide": "none", "group": "ground"}),
-    ("t_veg", "vegetable-bed-tile-d66915", {"collide": "none", "group": "ground"}),
-    ("t_concrete", "old-world-concrete-tile-55e7a0", {"collide": "none", "group": "ground"}),
 ]
 
 
@@ -847,9 +1150,26 @@ def main():
     for name, parts in BLD:
         infos[name] = house(name, parts)
 
-    for fn in (lambda: deck("deck"), lambda: deck("deck_long", L=12.0, ramp=False), lambda: junk("junk_a", 3), lambda: junk("junk_b", 8, w=6, d=6, h=3.6), lambda: junk("junk_c", 13, w=10, d=4, h=2.2), lambda: plates("plates", 5)):
+    for fn in (lambda: deck("deck"), lambda: deck("deck_long", L=12.0, ramp=False), lambda: heap("heap_a", 3), lambda: heap("heap_b", 8, w=8, d=8, h=5.0), lambda: heap("heap_c", 13, w=14, d=6, h=3.2), lambda: plates("plates", 5)):
         info = fn()
         infos[info["file"].split("/")[-1][:-4]] = info
+
+    for fn, collide in ((lambda: tyre_stack("tyres", 4), "box"), (lambda: tyre_one("tyre"), "none"), (lambda: debris("debris", 21), "none"), (lambda: pallet("pallet"), "none"), (lambda: barrel("barrel", RUST[0]), "cylinder"), (lambda: barrel("barrel_b", (0.36, 0.44, 0.56)), "cylinder"), (lambda: barrel("barrel_t", MINT[0], tip=True), "box"), (lambda: girders("girders", 6), "box")):
+        info = fn()
+        info["collide"] = collide
+        info["group"] = "street"
+        infos[info["file"].split("/")[-1][:-4]] = info
+
+    infos["debris"]["group"] = "ground"
+    infos["box"] = kitx("box", "x/cargo-container-fd73bc", scale=2.4, group="building")
+    infos["box_rust"] = kitx("box_rust", "x/cargo-container-fd73bc", scale=2.4, sat=0.0, post=(1.3, 0.66, 0.42), group="building")
+    infos["crane"] = kitx("crane", "x/yard-crane-316e4a", scale=2.2, collide="none", reach=2.0, group="building")
+    infos["hull"] = kitx("hull", "x/salvaged-machine-hull-section-e18dc6", scale=2.0, reach=2.0, group="building")
+    infos["wreck"] = kitx("wreck", "x/wreckage-chunk-39ddf9", scale=1.6, reach=1.6)
+    infos["cable"] = kitx("cable", "x/signal-cable-drum-88e3f8")
+    infos["skip"] = kitx("skip", "x/builder-s-skip-191d35")
+    infos["rails"] = kitx("rails", "x/spare-rail-stack-99d443")
+    infos["sleepers"] = kitx("sleepers", "x/sleeper-stack-67628e")
 
     for name, kind in (("puddle", "puddle"), ("gravel", "gravel")):
         infos[name] = decal(name, kind)

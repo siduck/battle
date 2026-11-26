@@ -341,7 +341,7 @@ def build(name, src, skip=None, scale=1.0, k=None, dist=4.0, strength=0.55, spli
     return finish(bm, name, extra)
 
 
-def prop(name, src, scale=1.0, k=None, group="street", collide="box", dist=1.5, strength=0.5, skip=None, sat=1.0, spin=0.0, sky=0.12, glass=False):
+def prop(name, src, scale=1.0, k=None, group="street", collide="box", dist=1.5, strength=0.5, skip=None, sat=1.0, spin=0.0, sky=0.12, glass=False, post=None):
     bm = load_skip(src_path(src), skip, glass)
 
     if k:
@@ -349,6 +349,10 @@ def prop(name, src, scale=1.0, k=None, group="street", collide="box", dist=1.5, 
 
     normalize(bm, scale=scale, rot=spin)
     grade(bm, sat=sat)
+
+    if post:
+        grade(bm, k=post)
+
     ao(bm, dist, strength, sky=sky)
 
     return finish(bm, name, {"kind": "prop", "group": group, "collide": collide})
@@ -437,6 +441,21 @@ def main():
         ("kiosk", lambda: prop("kiosk", "self-check-in-kiosk-3fe1c1")),
         ("arch", lambda: prop("arch", "walk-through-security-arch-5c2a43", collide="none")),
         ("depboard", lambda: prop("depboard", "departures-board-7b85c8")),
+        ("pallet", lambda: prop("pallet", ex("timber-eur-pallet-a1f655"), collide="none")),
+        ("wrapped", lambda: prop("wrapped", ex("stretch-wrapped-pallet-load-b4169b"))),
+        ("ibc", lambda: prop("ibc", ex("ibc-tote-88385a"))),
+        ("lighttower", lambda: prop("lighttower", ex("site-lighting-tower-674c45"), collide="cylinder", group="building")),
+        ("genset", lambda: prop("genset", ex("site-generator-298792"))),
+        ("box", lambda: prop("box", ex("cargo-container-fd73bc"), dist=2.5, scale=2.4, group="building")),
+        ("boxgrey", lambda: prop("boxgrey", ex("cargo-container-fd73bc"), dist=2.5, scale=2.4, sat=0.0, post=(1.5, 0.82, 0.5), group="building")),
+        ("stair", lambda: prop("stair", ex("mezzanine-steel-stair-6477c4"), collide="none")),
+        ("drum", lambda: prop("drum", ex("oil-drum-386c30"), collide="cylinder")),
+        ("cable", lambda: prop("cable", ex("signal-cable-drum-88e3f8"))),
+        ("vault", lambda: prop("vault", ex("site-tool-vault-200e38"))),
+        ("engine", lambda: prop("engine", "spare-engine-on-transport-db14e5", group="building")),
+        ("vdgs", lambda: prop("vdgs", "stand-docking-guidance-display-2a0b05")),
+        ("rail", lambda: prop("rail", ex("pedestrian-safety-barrier-run-2afeca"))),
+        ("cabin", lambda: prop("cabin", ex("site-cabin-e9ee10"), dist=2.5, group="building")),
     ]
 
     for name, fn in jobs:

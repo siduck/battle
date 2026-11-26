@@ -13,10 +13,27 @@ pub const K = enum {
     water,
     deck,
     deck_long,
-    junk_a,
-    junk_b,
-    junk_c,
+    heap_a,
+    heap_b,
+    heap_c,
     plates,
+    tyres,
+    tyre,
+    debris,
+    pallet,
+    barrel,
+    barrel_b,
+    barrel_t,
+    girders,
+    box,
+    box_rust,
+    crane,
+    hull,
+    wreck,
+    cable,
+    skip,
+    rails,
+    sleepers,
     puddle,
     gravel,
     crate,
@@ -30,9 +47,7 @@ pub const K = enum {
     butt,
     lamp,
     chimney,
-    awning,
     panel,
-    frame,
     planter,
     crop,
     bale,
@@ -42,15 +57,8 @@ pub const K = enum {
     tuft,
     flower,
     tracker,
-    solar,
     spinner,
     washing,
-    vine,
-    arm,
-    t_gravel,
-    t_dirt,
-    t_veg,
-    t_concrete,
 };
 
 pub const kit = api.Kit(K);
@@ -68,10 +76,27 @@ pub const table = [_]api.Info{
     .{ .file = "salvage/water.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.300, -1.200, -2.300 }, .max = .{ 2.300, 13.018, 2.300 } },
     .{ .file = "salvage/deck.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -4.050, -0.066, -11.024 }, .max = .{ 4.050, 4.520, 2.050 } },
     .{ .file = "salvage/deck_long.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -6.050, 0.000, -2.050 }, .max = .{ 6.050, 4.520, 2.050 } },
-    .{ .file = "salvage/junk_a.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -3.668, -0.464, -2.875 }, .max = .{ 3.588, 2.669, 3.731 } },
-    .{ .file = "salvage/junk_b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -3.480, -0.425, -4.718 }, .max = .{ 4.118, 3.215, 3.087 } },
-    .{ .file = "salvage/junk_c.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -6.061, -0.477, -2.873 }, .max = .{ 5.979, 2.037, 3.481 } },
+    .{ .file = "salvage/heap_a.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -5.938, -1.312, -4.345 }, .max = .{ 6.621, 5.350, 5.761 } },
+    .{ .file = "salvage/heap_b.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -5.817, -0.899, -5.487 }, .max = .{ 5.251, 5.897, 5.373 } },
+    .{ .file = "salvage/heap_c.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -8.293, -1.384, -3.844 }, .max = .{ 9.355, 4.107, 5.788 } },
     .{ .file = "salvage/plates.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -5.980, 0.000, -0.350 }, .max = .{ 5.980, 2.542, 0.110 } },
+    .{ .file = "salvage/tyres.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.496, 0.025, -0.510 }, .max = .{ 0.474, 1.329, 0.513 } },
+    .{ .file = "salvage/tyre.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.443, 0.007, -0.459 }, .max = .{ 0.443, 0.273, 0.459 } },
+    .{ .file = "salvage/debris.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -3.081, -0.027, -2.482 }, .max = .{ 2.610, 0.142, 2.734 } },
+    .{ .file = "salvage/pallet.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.600, 0.000, -0.600 }, .max = .{ 0.600, 0.140, 0.600 } },
+    .{ .file = "salvage/barrel.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.304, 0.000, -0.320 }, .max = .{ 0.304, 0.900, 0.320 } },
+    .{ .file = "salvage/barrel_b.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.304, 0.000, -0.320 }, .max = .{ 0.304, 0.900, 0.320 } },
+    .{ .file = "salvage/barrel_t.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.450, -0.004, -0.320 }, .max = .{ 0.450, 0.604, 0.320 } },
+    .{ .file = "salvage/girders.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -3.184, 0.000, -0.900 }, .max = .{ 3.193, 1.065, 0.900 } },
+    .{ .file = "salvage/box.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -1.188, 0.000, -2.700 }, .max = .{ 1.188, 2.808, 2.700 } },
+    .{ .file = "salvage/box_rust.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -1.188, 0.000, -2.700 }, .max = .{ 1.188, 2.808, 2.700 } },
+    .{ .file = "salvage/crane.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -5.438, 0.000, -2.640 }, .max = .{ 5.438, 14.197, 2.640 } },
+    .{ .file = "salvage/hull.glb", .scale = 1.00, .collide = .box, .group = .building, .foliage = false, .min = .{ -2.051, 0.000, -1.884 }, .max = .{ 2.051, 2.422, 1.884 } },
+    .{ .file = "salvage/wreck.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.728, 0.000, -2.362 }, .max = .{ 1.728, 2.514, 2.362 } },
+    .{ .file = "salvage/cable.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.578, 0.000, -0.559 }, .max = .{ 0.578, 1.100, 0.559 } },
+    .{ .file = "salvage/skip.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.801, 0.000, -0.850 }, .max = .{ 1.801, 1.316, 0.850 } },
+    .{ .file = "salvage/rails.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.656, 0.000, -4.168 }, .max = .{ 0.656, 0.378, 4.168 } },
+    .{ .file = "salvage/sleepers.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.351, 0.000, -1.345 }, .max = .{ 1.351, 1.260, 1.345 } },
     .{ .file = "salvage/puddle.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -2.090, 0.030, -1.880 }, .max = .{ 2.577, 0.040, 1.708 } },
     .{ .file = "salvage/gravel.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -1.775, 0.000, -1.772 }, .max = .{ 1.808, 0.062, 1.543 } },
     .{ .file = "salvage/crate.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.482, 0.000, -0.483 }, .max = .{ 0.482, 0.960, 0.483 } },
@@ -85,9 +110,7 @@ pub const table = [_]api.Info{
     .{ .file = "salvage/butt.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.447, 0.000, -0.493 }, .max = .{ 0.447, 1.155, 0.493 } },
     .{ .file = "salvage/lamp.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -0.307, 0.000, -0.399 }, .max = .{ 0.307, 2.600, 0.399 } },
     .{ .file = "salvage/chimney.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.800, 0.000, -0.800 }, .max = .{ 0.800, 3.978, 0.800 } },
-    .{ .file = "salvage/awning.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -0.690 }, .max = .{ 2.000, 2.372, 0.690 } },
     .{ .file = "salvage/panel.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.600, 0.000, -0.188 }, .max = .{ 0.600, 0.600, 0.188 } },
-    .{ .file = "salvage/frame.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.033, 0.000, -0.682 }, .max = .{ 1.033, 1.399, 0.682 } },
     .{ .file = "salvage/planter.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.611, 0.000, -0.274 }, .max = .{ 0.611, 0.488, 0.274 } },
     .{ .file = "salvage/crop.glb", .scale = 1.00, .collide = .none, .group = .bush, .foliage = false, .min = .{ -0.399, 0.000, -0.389 }, .max = .{ 0.399, 0.777, 0.389 } },
     .{ .file = "salvage/bale.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -0.652, 0.000, -0.651 }, .max = .{ 0.652, 1.000, 0.651 } },
@@ -97,15 +120,8 @@ pub const table = [_]api.Info{
     .{ .file = "salvage/tuft.glb", .scale = 1.00, .collide = .none, .group = .bush, .foliage = false, .min = .{ -0.271, 0.000, -0.226 }, .max = .{ 0.271, 0.473, 0.226 } },
     .{ .file = "salvage/flower.glb", .scale = 1.00, .collide = .none, .group = .bush, .foliage = false, .min = .{ -0.113, 0.000, -0.100 }, .max = .{ 0.113, 0.661, 0.100 } },
     .{ .file = "salvage/tracker.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -2.188, 0.000, -1.088 }, .max = .{ 2.188, 6.981, 1.088 } },
-    .{ .file = "salvage/solar.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -2.000 }, .max = .{ 2.000, 2.817, 2.000 } },
     .{ .file = "salvage/spinner.glb", .scale = 1.00, .collide = .cylinder, .group = .street, .foliage = false, .min = .{ -1.548, 0.000, -0.738 }, .max = .{ 1.548, 6.038, 0.738 } },
     .{ .file = "salvage/washing.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -0.406 }, .max = .{ 2.000, 2.962, 0.406 } },
-    .{ .file = "salvage/vine.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -1.169, 0.000, -0.251 }, .max = .{ 1.169, 3.135, 0.251 } },
-    .{ .file = "salvage/arm.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.000, 0.000, -1.497 }, .max = .{ 1.000, 3.935, 1.497 } },
-    .{ .file = "salvage/t_gravel.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -2.000, 0.000, -2.000 }, .max = .{ 2.000, 0.078, 2.000 } },
-    .{ .file = "salvage/t_dirt.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -2.000, 0.000, -2.000 }, .max = .{ 2.000, 0.050, 2.000 } },
-    .{ .file = "salvage/t_veg.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -2.000, 0.000, -2.000 }, .max = .{ 2.000, 0.050, 2.000 } },
-    .{ .file = "salvage/t_concrete.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -2.000, 0.000, -2.000 }, .max = .{ 2.000, 0.050, 2.000 } },
 };
 
 pub const buildings = [_]api.Building{
@@ -212,23 +228,23 @@ pub const solids = struct {
         .{ 0.000, -2.100, 3.400, 1.000, -1.300, 4.200, 1.800 },
         .{ 0.000, 0.300, 3.400, 1.000, 1.100, 4.200, 1.800 },
     };
-    pub const junk_a = [_][7]f32{
-        .{ 0.000, -2.800, 0.000, -2.000, 2.800, 0.300, 2.000 },
-        .{ 0.000, -2.100, 0.000, -1.500, 2.100, 1.689, 1.500 },
-        .{ 0.000, -1.400, 0.000, -1.000, 1.400, 2.119, 1.000 },
-        .{ 0.000, -0.700, 0.000, -0.500, 0.700, 2.333, 0.500 },
+    pub const heap_a = [_][7]f32{
+        .{ 0.000, -3.176, -0.500, -2.223, 3.176, 1.000, 2.223 },
+        .{ 0.000, -2.664, 1.000, -1.865, 2.664, 2.000, 1.865 },
+        .{ 0.000, -1.924, 2.000, -1.346, 1.924, 3.000, 1.346 },
+        .{ 0.000, -0.000, 3.000, -0.000, 0.000, 4.000, 0.000 },
     };
-    pub const junk_b = [_][7]f32{
-        .{ 0.000, -2.400, 0.000, -2.400, 2.400, 0.300, 2.400 },
-        .{ 0.000, -1.800, 0.000, -1.800, 1.800, 2.086, 1.800 },
-        .{ 0.000, -1.200, 0.000, -1.200, 1.200, 2.638, 1.200 },
-        .{ 0.000, -0.600, 0.000, -0.600, 0.600, 2.914, 0.600 },
+    pub const heap_b = [_][7]f32{
+        .{ 0.000, -2.540, -0.500, -2.540, 2.540, 1.250, 2.540 },
+        .{ 0.000, -2.132, 1.250, -2.132, 2.132, 2.500, 2.132 },
+        .{ 0.000, -1.539, 2.500, -1.539, 1.539, 3.750, 1.539 },
+        .{ 0.000, -0.000, 3.750, -0.000, 0.000, 5.000, 0.000 },
     };
-    pub const junk_c = [_][7]f32{
-        .{ 0.000, -4.000, 0.000, -1.600, 4.000, 0.300, 1.600 },
-        .{ 0.000, -3.000, 0.000, -1.200, 3.000, 1.391, 1.200 },
-        .{ 0.000, -2.000, 0.000, -0.800, 2.000, 1.729, 0.800 },
-        .{ 0.000, -1.000, 0.000, -0.400, 1.000, 1.898, 0.400 },
+    pub const heap_c = [_][7]f32{
+        .{ 0.000, -4.446, -0.500, -1.905, 4.446, 0.800, 1.905 },
+        .{ 0.000, -3.730, 0.800, -1.599, 3.730, 1.600, 1.599 },
+        .{ 0.000, -2.693, 1.600, -1.154, 2.693, 2.400, 1.154 },
+        .{ 0.000, -0.000, 2.400, -0.000, 0.000, 3.200, 0.000 },
     };
     pub const plates = [_][7]f32{
         .{ 0.000, -6.000, 0.000, -0.100, -4.000, 2.223, 0.100 },
@@ -237,6 +253,27 @@ pub const solids = struct {
         .{ 0.000, 0.000, 0.000, -0.100, 2.000, 2.252, 0.100 },
         .{ 0.000, 2.000, 0.000, -0.100, 4.000, 1.629, 0.100 },
         .{ 0.000, 4.000, 0.000, -0.100, 6.000, 2.376, 0.100 },
+    };
+    pub const tyres = [_][7]f32{
+        .{ 0.000, -0.450, 0.000, -0.450, 0.450, 1.500, 0.450 },
+    };
+    pub const tyre = [_][7]f32{
+    };
+    pub const debris = [_][7]f32{
+    };
+    pub const pallet = [_][7]f32{
+    };
+    pub const barrel = [_][7]f32{
+        .{ 0.000, -0.300, 0.000, -0.300, 0.300, 0.900, 0.300 },
+    };
+    pub const barrel_b = [_][7]f32{
+        .{ 0.000, -0.300, 0.000, -0.300, 0.300, 0.900, 0.300 },
+    };
+    pub const barrel_t = [_][7]f32{
+        .{ 0.000, -0.450, 0.000, -0.300, 0.450, 0.600, 0.300 },
+    };
+    pub const girders = [_][7]f32{
+        .{ 0.000, -3.200, 0.000, -0.900, 3.200, 1.100, 0.900 },
     };
     pub const puddle = [_][7]f32{
     };
