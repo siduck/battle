@@ -4,6 +4,7 @@ const ui = @import("ui.zig");
 const settings = @import("settings.zig");
 const assets = @import("assets.zig");
 const game_mod = @import("game.zig");
+const net = @import("net.zig");
 
 const Controls = game_mod.Controls;
 
@@ -13,6 +14,7 @@ const Button = enum { fire, aim, jump, reload, swap, grenade, fireball, use };
 const Role = union(enum) {
     move,
     look,
+    board,
     button: Button,
 };
 
@@ -94,6 +96,10 @@ pub const Touch = struct {
     }
 
     fn roleAt(p: rl.Vector2, w: f32, h: f32) Role {
+        if (net.board_rect) |r| {
+            if (rl.CheckCollisionPointRec(p, r)) return .board;
+        }
+
         for (std.enums.values(Button)) |b| {
             if (hit(place(b, w, h), p)) return .{ .button = b };
         }
@@ -107,15 +113,16 @@ pub const Touch = struct {
         const s = h / 720;
         const reach = 90 * s;
         var out: Result = .{};
-        const count: usize = @intCast(rl.GetTouchPointCount());
+        const emulate = !assets.mobile and rl.GetTouchPointCount() == 0 and rl.IsMouseButtonDown(rl.MOUSE_BUTTON_LEFT);
+        const count: usize = if (emulate) 1 else @intCast(rl.GetTouchPointCount());
 
         for (&t.fingers) |*f| {
             if (f.*) |*finger| finger.seen = false;
         }
 
         for (0..count) |i| {
-            const id = rl.GetTouchPointId(@intCast(i));
-            const p = rl.GetTouchPosition(@intCast(i));
+            const id = if (emulate) 0 else rl.GetTouchPointId(@intCast(i));
+            const p = if (emulate) rl.GetMousePosition() else rl.GetTouchPosition(@intCast(i));
 
             if (t.find(id)) |finger| {
                 const dx = p.x - finger.last.x;
@@ -126,6 +133,7 @@ pub const Touch = struct {
 
                 switch (finger.role) {
                     .move => t.knob = p,
+                    .board => {},
                     .look => {
                         out.look_x += dx;
                         out.look_y += dy;
@@ -149,6 +157,7 @@ pub const Touch = struct {
                     t.knob = p;
                 },
                 .look => {},
+                .board => net.board_open = !net.board_open,
                 .button => |b| switch (b) {
                     .fire => out.controls.fire_pressed = true,
                     .aim => t.aiming = !t.aiming,
@@ -177,7 +186,7 @@ pub const Touch = struct {
 
             switch (finger.role) {
                 .move => moving = true,
-                .look => {},
+                .look, .board => {},
                 .button => |b| switch (b) {
                     .fire => out.controls.fire_down = true,
                     .jump => out.controls.jump = true,

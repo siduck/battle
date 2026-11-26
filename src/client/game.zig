@@ -35,6 +35,13 @@ pub const Difficulty = enum { easy, normal, hard };
 pub var difficulty: Difficulty = .normal;
 pub var online = false;
 pub var net_hit: ?*const fn (index: usize, amount: f32, at: Vec3, head: bool, splash: bool) void = null;
+pub var net_fire: ?*const fn (p: Projectile) void = null;
+pub var net_boom: ?*const fn (p: Projectile, at: Vec3) void = null;
+pub const local_owner: u8 = 255;
+
+var next_shot: u16 = 1;
+var blasted: [32]struct { owner: u8, id: u16 } = @splat(.{ .owner = local_owner, .id = 0 });
+var blasted_at: usize = 0;
 
 var splash_hit = false;
 
@@ -173,6 +180,17 @@ pub const Projectile = struct {
     stuck: bool = false,
     heading: Vec3 = .{ .z = -1 },
     item: ?Held = null,
+    owner: u8 = local_owner,
+    net_id: u16 = 0,
+    boom: ?Vec3 = null,
+
+    pub fn remote(p: Projectile) bool {
+        return p.owner != local_owner;
+    }
+
+    pub fn synced(kind: ProjectileKind) bool {
+        return kind == .rocket or kind == .grenade or kind == .fireball;
+    }
 };
 
 pub const Swing = enum { none, light, heavy };
@@ -257,6 +275,8 @@ pub const Bot = struct {
     stagger: f32 = 0,
     melee_cd: f32 = 0,
     remote: bool = false,
+    riding: bool = false,
+    seat: ?u8 = null,
 
     pub fn alive(b: Bot) bool {
         return b.active and b.dead < 0;
@@ -1067,7 +1087,7 @@ pub const Game = struct {
 
         switch (spec.fire) {
             .hitscan => g.fireHitscan(v, spec, damage),
-            .rocket => g.projectiles.spawn(.{
+            .rocket => g.launch(.{
                 .kind = .rocket,
                 .pos = v.eye.add(v.forward.scale(0.3)),
                 .vel = v.forward.scale(spec.speed),
@@ -1618,7 +1638,7 @@ pub const Game = struct {
     }
 
     fn throwGrenade(g: *Game, v: View, spec: weapons.Spec, lift: f32, damage_scale: f32) void {
-        g.projectiles.spawn(.{
+        g.launch(.{
             .kind = .grenade,
             .pos = v.eye.add(v.forward.scale(0.4)).add(v.right.scale(0.1)),
             .vel = v.forward.scale(spec.speed).add(.{ .y = lift }).add(g.player.vel.scale(0.5)),
@@ -1809,7 +1829,7 @@ pub const Game = struct {
         g.fire_hold = 0;
         g.fire_charges -= 1;
         g.fire_cd = 0.18;
-        g.projectiles.spawn(.{
+        g.launch(.{
             .kind = .fireball,
             .pos = v.eye.add(v.forward.scale(0.45)),
             .vel = v.forward.scale(fire_speed).add(g.player.vel.scale(0.35)),
@@ -1873,6 +1893,12 @@ pub const Game = struct {
         for (&g.projectiles.items) |*p| {
             if (!p.active) continue;
 
+            if (p.remote()) {
+                g.ghost(p, dt);
+
+                continue;
+            }
+
             p.life -= dt;
             p.spin += dt * 12;
 
@@ -1883,9 +1909,15 @@ pub const Game = struct {
                     if (p.item) |item| g.drops.spawn(.{ .held = item, .pos = p.pos, .life = 40, .phase = 0 });
                 }
 
-                if (p.kind == .grenade) g.explode(p.pos, p.splash, p.damage, p.knockback);
+                if (p.kind == .grenade) {
+                    announce(p.*, p.pos);
+                    g.explode(p.pos, p.splash, p.damage, p.knockback);
+                }
 
-                if (p.kind == .fireball) g.fireballBlast(p.pos, p.splash, p.knockback);
+                if (p.kind == .fireball) {
+                    announce(p.*, p.pos);
+                    g.fireballBlast(p.pos, p.splash, p.knockback);
+                }
 
                 continue;
             }
@@ -1939,8 +1971,11 @@ pub const Game = struct {
                 .gun => {},
                 .fireball => {
                     if (wall != null or struck != null) {
+                        const at = p.pos.add(dir.scale(@max(0, limit - 0.1)));
+
                         p.active = false;
-                        g.fireballBlast(p.pos.add(dir.scale(@max(0, limit - 0.1))), p.splash, p.knockback);
+                        announce(p.*, at);
+                        g.fireballBlast(at, p.splash, p.knockback);
 
                         continue;
                     }
@@ -1949,8 +1984,11 @@ pub const Game = struct {
                 },
                 .rocket => {
                     if (wall != null or struck != null) {
+                        const at = p.pos.add(dir.scale(@max(0, limit - 0.15)));
+
                         p.active = false;
-                        g.explode(p.pos.add(dir.scale(@max(0, limit - 0.15))), p.splash, p.damage, p.knockback);
+                        announce(p.*, at);
+                        g.explode(at, p.splash, p.damage, p.knockback);
 
                         continue;
                     }
@@ -1959,8 +1997,11 @@ pub const Game = struct {
                 },
                 .grenade => {
                     if (struck != null) {
+                        const at = p.pos.add(dir.scale(limit));
+
                         p.active = false;
-                        g.explode(p.pos.add(dir.scale(limit)), p.splash, p.damage, p.knockback);
+                        announce(p.*, at);
+                        g.explode(at, p.splash, p.damage, p.knockback);
 
                         continue;
                     }
@@ -2017,6 +2058,188 @@ pub const Game = struct {
                 },
             }
         }
+    }
+
+    pub fn launch(g: *Game, p: Projectile) void {
+        var shot = p;
+
+        if (online and Projectile.synced(shot.kind)) {
+            shot.net_id = next_shot;
+            next_shot +%= 1;
+
+            if (next_shot == 0) next_shot = 1;
+
+            if (net_fire) |send| send(shot);
+        }
+
+        g.projectiles.spawn(shot);
+    }
+
+    fn announce(p: Projectile, at: Vec3) void {
+        if (!online or p.net_id == 0 or p.remote()) return;
+
+        if (net_boom) |send| send(p, at);
+    }
+
+    fn markBlast(owner: u8, id: u16) void {
+        blasted[blasted_at] = .{ .owner = owner, .id = id };
+        blasted_at = (blasted_at + 1) % blasted.len;
+    }
+
+    fn wasBlasted(owner: u8, id: u16) bool {
+        for (blasted) |b| {
+            if (b.owner == owner and b.id == id) return true;
+        }
+
+        return false;
+    }
+
+    pub fn remoteFire(g: *Game, p: Projectile) void {
+        if (!p.remote() or wasBlasted(p.owner, p.net_id)) return;
+
+        g.projectiles.spawn(p);
+    }
+
+    pub fn remoteBoom(g: *Game, owner: u8, id: u16, kind: ProjectileKind, at: Vec3, radius: f32, damage: f32, knockback: f32) void {
+        if (wasBlasted(owner, id)) return;
+
+        markBlast(owner, id);
+
+        for (&g.projectiles.items) |*p| {
+            if (!p.active or p.owner != owner or p.net_id != id) continue;
+
+            const speed = @max(p.vel.length(), 1);
+            const eta = p.pos.distance(at) / speed;
+
+            if (eta < 2.5) {
+                p.boom = at;
+                p.life = @min(p.life, eta);
+
+                return;
+            }
+
+            p.active = false;
+        }
+
+        g.blastVisual(kind, at, radius, damage, knockback);
+    }
+
+    fn ghost(g: *Game, p: *Projectile, dt: f32) void {
+        p.life -= dt;
+        p.spin += dt * 12;
+
+        if (p.life <= 0) {
+            p.active = false;
+
+            if (p.boom) |at| g.ghostBlast(p.*, at) else if (p.kind != .rocket) g.ghostBlast(p.*, p.pos);
+
+            return;
+        }
+
+        p.vel.y -= p.gravity * dt;
+
+        const travel = p.vel.scale(dt);
+        const len = travel.length();
+
+        if (len < 1e-6) return;
+
+        const dir = travel.scale(1 / len);
+        const wall = movement.raycast(pieces, p.pos, dir, len);
+        var limit = if (wall) |h| h.t else len;
+        var struck = false;
+
+        for (g.bots.items, 0..) |b, i| {
+            if (i == p.owner or !b.alive() or b.riding) continue;
+
+            const t = geom.raySphere(p.pos, dir, limit, b.chest(), 0.6) orelse continue;
+
+            limit = t;
+            struck = true;
+        }
+
+        if (g.dead <= 0) {
+            const reach: f32 = if (driving.driving() or air.flying()) 1.6 else 0.6;
+
+            if (geom.raySphere(p.pos, dir, limit, g.player.center(), reach)) |t| {
+                limit = t;
+                struck = true;
+            }
+        }
+
+        if (driving.hitVehicle(g, p.pos, dir, limit)) |h| {
+            const seat = if (p.owner < g.bots.items.len) g.bots.items[p.owner].seat else null;
+            const own = if (seat) |k| k == h.index else false;
+
+            if (!own) {
+                limit = h.t;
+                struck = true;
+            }
+        }
+
+        if (p.kind == .rocket) p.heading = dir;
+
+        if (p.kind == .grenade and !struck) {
+            if (wall) |h| {
+                const vn = p.vel.dot(h.normal);
+
+                p.pos = p.pos.add(dir.scale(@max(0, h.t - 0.02))).add(h.normal.scale(0.12));
+                p.vel = p.vel.sub(h.normal.scale(vn * 1.55)).scale(0.62);
+            } else {
+                p.pos = p.pos.add(travel);
+            }
+
+            return;
+        }
+
+        if (wall != null or struck) {
+            p.active = false;
+            g.ghostBlast(p.*, p.pos.add(dir.scale(@max(0, limit - 0.15))));
+
+            return;
+        }
+
+        p.pos = p.pos.add(travel);
+    }
+
+    fn ghostBlast(g: *Game, p: Projectile, at: Vec3) void {
+        markBlast(p.owner, p.net_id);
+        g.blastVisual(p.kind, at, p.splash, p.damage, p.knockback);
+    }
+
+    pub fn blastVisual(g: *Game, kind: ProjectileKind, at: Vec3, radius: f32, damage: f32, knockback: f32) void {
+        const fire = kind == .fireball;
+        const life: f32 = if (fire) 2.0 else 1.8;
+
+        g.explosions.spawn(.{ .pos = at, .radius = radius, .life = life, .total = life, .fire = fire });
+        g.blastShake(at, radius);
+
+        const near = math.clamp01(1 - g.player.center().distance(at) / 25);
+
+        if (near > 0) g.buzz.add(near, near * 0.6, 0.3 * near);
+
+        if (!fire) driving.splash(g, at, radius, damage);
+
+        if (g.dead > 0 or driving.driving() or air.flying()) return;
+
+        const center = g.player.center();
+
+        if (fire) {
+            const f = fireFalloff(center.distance(at), radius);
+
+            if (f > 0) fling(&g.player, center.sub(at), knockback * f);
+
+            return;
+        }
+
+        const f = weapons.splashFalloff(center.distance(at), radius);
+
+        if (f <= 0) return;
+
+        var dir = center.sub(at).normalize();
+
+        if (dir.length() < 0.5) dir = math.up;
+
+        movement.launch(&g.player, dir.scale(knockback * f * 1.15).add(.{ .y = knockback * f * 0.55 }));
     }
 
     fn botWeapon(g: *Game) u8 {

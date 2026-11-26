@@ -956,6 +956,8 @@ pub fn main() void {
     if (net.active) {
         game_mod.online = true;
         game_mod.net_hit = &net.hit;
+        game_mod.net_fire = &net.fire;
+        game_mod.net_boom = &net.boom;
         game.wave_break = 1e9;
     }
 
@@ -1093,6 +1095,8 @@ pub fn main() void {
         }
 
         if (assets.mobile and playing and !rl.IsWindowFocused()) playing = false;
+
+        if (!assets.mobile and touch_mod.active() and rl.IsCursorHidden()) rl.EnableCursor();
 
         if (rl.IsKeyPressed(rl.KEY_F11)) settings.fullscreen = !rl.IsWindowFullscreen();
 
@@ -1301,7 +1305,7 @@ pub fn main() void {
             hud.draw(game, font, &icons, playing, pad.active and pad.id != null);
             hud.vehicleStatus(game, font);
             air.hud(game, font, cam);
-            net.draw(game, font, pad.id);
+            net.draw(game, font, pad.id, touch_mod.active() and playing and !(pad.id != null and pad.active));
         }
 
         if (touch_mod.active() and playing and !(pad.id != null and pad.active)) touch.draw(font, @floatFromInt(rl.GetScreenWidth()), @floatFromInt(rl.GetScreenHeight()));

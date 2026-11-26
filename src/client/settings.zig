@@ -35,6 +35,8 @@ pub var touch_size: f32 = 1;
 pub var touch_opacity: f32 = 1;
 pub var touch_look: f32 = 1;
 
+pub var player_name: [16]u8 = @splat(0);
+
 pub const crosshair_styles = [_][:0]const u8{ "Classic", "Dot", "Circle", "Cross" };
 pub const crosshair_names = [_][:0]const u8{ "White", "Green", "Yellow", "Cyan", "Red" };
 pub const crosshair_colors = [_]rl.Color{
@@ -147,10 +149,10 @@ fn writePath() ?[:0]const u8 {
 
 const Field = struct {
     name: []const u8,
-    ptr: union(enum) { f: *f32, b: *bool, u: *u8 },
+    ptr: union(enum) { f: *f32, b: *bool, u: *u8, s: *[16]u8 },
 };
 
-fn fields() [24]Field {
+fn fields() [25]Field {
     return .{
         .{ .name = "master", .ptr = .{ .f = &master } },
         .{ .name = "sfx", .ptr = .{ .f = &sfx } },
@@ -176,6 +178,7 @@ fn fields() [24]Field {
         .{ .name = "touch_size", .ptr = .{ .f = &touch_size } },
         .{ .name = "touch_opacity", .ptr = .{ .f = &touch_opacity } },
         .{ .name = "touch_look", .ptr = .{ .f = &touch_look } },
+        .{ .name = "name", .ptr = .{ .s = &player_name } },
     };
 }
 
@@ -215,6 +218,18 @@ pub fn load() void {
                 .f => |p| p.* = std.fmt.parseFloat(f32, val) catch p.*,
                 .b => |p| p.* = std.mem.eql(u8, val, "1") or std.mem.eql(u8, val, "true"),
                 .u => |p| p.* = std.fmt.parseInt(u8, val, 10) catch p.*,
+                .s => |p| {
+                    p.* = @splat(0);
+
+                    var n: usize = 0;
+
+                    for (val) |ch| {
+                        if (n >= 12 or ch < 32 or ch >= 127) continue;
+
+                        p[n] = ch;
+                        n += 1;
+                    }
+                },
             }
         }
     }
@@ -238,6 +253,7 @@ pub fn save() void {
             .f => |p| std.fmt.bufPrint(buf[len..], "{s}={d:.3}\n", .{ f.name, p.* }),
             .b => |p| std.fmt.bufPrint(buf[len..], "{s}={d}\n", .{ f.name, @intFromBool(p.*) }),
             .u => |p| std.fmt.bufPrint(buf[len..], "{s}={d}\n", .{ f.name, p.* }),
+            .s => |p| std.fmt.bufPrint(buf[len..], "{s}={s}\n", .{ f.name, std.mem.sliceTo(p, 0) }),
         } catch return;
 
         len += line.len;

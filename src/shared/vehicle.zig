@@ -133,6 +133,7 @@ pub const Vehicle = struct {
     paved: bool = true,
     tilt_time: f32 = 0,
     righting: f32 = 0,
+    remote: bool = false,
 
     pub fn hasNitro(v: Vehicle) bool {
         return v.spec().class != .cycle and v.spec().class != .tank;

@@ -131,6 +131,7 @@ pub const Craft = struct {
     since_hurt: f32 = 99,
     respawn: f32 = 0,
     active: bool = false,
+    remote: bool = false,
 
     pub fn spec(c: Craft) Spec {
         return specs[c.kind];
@@ -544,7 +545,7 @@ fn nearest(g: *Game) ?usize {
     var best_d: f32 = 1e9;
 
     for (crafts, 0..) |a, i| {
-        if (!a.alive()) continue;
+        if (!a.alive() or a.remote) continue;
 
         const d = at.distance(a.center());
 
@@ -561,7 +562,7 @@ pub fn tick(g: *Game, c: Controls) void {
     const dt = movement.dt;
 
     for (&crafts, 0..) |*a, i| {
-        if (!a.alive()) continue;
+        if (!a.alive() or a.remote) continue;
 
         a.prev = a.pos;
 
@@ -792,7 +793,7 @@ fn collideWorld(g: *Game, a: *Craft, i: usize) void {
 pub fn damage(g: *Game, i: usize, amount: f32) void {
     const a = &crafts[i];
 
-    if (!a.alive()) return;
+    if (!a.alive() or a.remote) return;
 
     a.hp -= amount;
     a.since_hurt = 0;
@@ -816,6 +817,22 @@ fn destroy(g: *Game, i: usize) void {
 
     if (seat == i) exit(g);
 
+    a.pos.y = groundAt(a.pos.x, a.pos.z);
+    a.vel = .{};
+    a.speed = 0;
+    a.lift = 0;
+}
+
+pub fn wreckRemote(g: *Game, i: usize) void {
+    const a = &crafts[i];
+
+    if (!a.alive()) return;
+
+    a.remote = false;
+    a.hp = 0;
+    a.wreck = wreck_time;
+    a.respawn = respawn_time;
+    g.explosions.spawn(.{ .pos = a.center(), .radius = a.spec().radius * 0.8, .life = 2.2, .total = 2.2, .fire = true });
     a.pos.y = groundAt(a.pos.x, a.pos.z);
     a.vel = .{};
     a.speed = 0;
@@ -891,7 +908,7 @@ fn rocketSalvo(g: *Game, a: *Craft) void {
     const side: f32 = if (a.rockets % 2 == 0) 1 else -1;
     const from = muzzle(a.*).add(b.x.scale(side * 1.4)).sub(b.y.scale(0.4));
 
-    g.projectiles.spawn(.{
+    g.launch(.{
         .kind = .rocket,
         .pos = from,
         .vel = dir.scale(140).add(a.vel),

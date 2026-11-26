@@ -4,6 +4,9 @@ const shared = @import("shared");
 const game_mod = @import("game.zig");
 const ui = @import("ui.zig");
 const assets = @import("assets.zig");
+const settings = @import("settings.zig");
+const driving = @import("driving.zig");
+const air = @import("air.zig");
 
 const c = std.c;
 const net = shared.net;
@@ -22,6 +25,8 @@ const resend_every: f64 = 0.3;
 const give_up: f64 = 6;
 const lost_after: f64 = 4;
 const ring = 32;
+const settle_after_exit: f64 = 3;
+const event_repeats: u8 = 4;
 
 pub const Status = enum { idle, waiting, joined, rejected, timeout };
 
@@ -29,6 +34,11 @@ const Ask = enum { create, join };
 
 const Claim = struct {
     hit: net.Hit,
+    sent: u8 = 0,
+};
+
+const Outgoing = struct {
+    ev: net.Event,
     sent: u8 = 0,
 };
 
@@ -82,6 +92,22 @@ var kill_count: usize = 0;
 var prng = std.Random.DefaultPrng.init(0x5eed);
 var rejoin_at: f64 = 0;
 var in_match = false;
+var outbox: [24]Outgoing = undefined;
+var outbox_count: usize = 0;
+var next_event: u16 = 1;
+var inbox: [32]net.Event = undefined;
+var inbox_count: usize = 0;
+var ev_last: u16 = 0;
+var ev_known = false;
+var parked: [net.max_parked]net.Ride = undefined;
+var parked_count: usize = 0;
+var parked_fresh = false;
+var ground_was: [net.max_ground]bool = @splat(false);
+var air_was: [net.max_air]bool = @splat(false);
+var last_ride: net.Ride = .{};
+var left_at: f64 = -100;
+pub var board_open = false;
+pub var board_rect: ?rl.Rectangle = null;
 
 fn now() f64 {
     var ts: c.timespec = undefined;
@@ -113,24 +139,51 @@ fn resolve() void {
     server = .{ .port = std.mem.nativeToBig(u16, port), .addr = inet_addr(&host_buf) };
 }
 
-fn pickName() void {
-    if (c.getenv("DF_NAME")) |n| {
-        my_name = net.nameOf(std.mem.sliceTo(n, 0));
+pub fn savedName() []const u8 {
+    return std.mem.sliceTo(&settings.player_name, 0);
+}
 
-        return;
-    }
+pub fn defaultName() [net.name_len]u8 {
+    if (c.getenv("DF_NAME")) |n| return net.nameOf(std.mem.sliceTo(n, 0));
+
+    if (savedName().len > 0) return net.nameOf(savedName());
 
     if (!assets.mobile) {
         if (c.getenv("USER")) |n| {
-            my_name = net.nameOf(std.mem.sliceTo(n, 0));
+            var name = net.nameOf(std.mem.sliceTo(n, 0));
 
-            if (my_name[0] >= 'a' and my_name[0] <= 'z') my_name[0] -= 32;
+            if (name[0] >= 'a' and name[0] <= 'z') name[0] -= 32;
 
-            return;
+            return name;
         }
     }
 
-    my_name = net.nameOf("Player");
+    return net.nameOf("Player");
+}
+
+pub fn setName(text: []const u8) void {
+    my_name = net.nameOf(std.mem.trim(u8, text, " "));
+
+    if (my_name[0] == 0) my_name = net.nameOf("Player");
+
+    settings.player_name = @splat(0);
+    @memcpy(settings.player_name[0..net.name_len], &my_name);
+    named = true;
+    settings.save();
+}
+
+var named = false;
+
+pub fn nameText() []const u8 {
+    if (my_name[0] == 0) pickName();
+
+    return net.nameSlice(&my_name);
+}
+
+fn pickName() void {
+    if (named) return;
+
+    my_name = defaultName();
 }
 
 pub fn open() bool {
@@ -225,6 +278,9 @@ fn resetMatch() void {
     claim_count = 0;
     my_known = false;
     known = @splat(false);
+    ev_known = false;
+    inbox_count = 0;
+    parked_count = 0;
 }
 
 fn onJoined(r: *net.Reader, h: net.Header) void {
@@ -309,6 +365,25 @@ fn onSnapshot(r: *net.Reader, h: net.Header) void {
 
     claim_count = keep;
     store(s);
+
+    for (s.events[0..s.event_count]) |e| {
+        if (ev_known and !net.newer(e.seq, ev_last)) continue;
+
+        const first = !ev_known;
+
+        ev_last = e.seq;
+        ev_known = true;
+
+        if (first or e.slot == slot or !e.valid()) continue;
+
+        if (inbox_count == inbox.len) {
+            std.mem.copyForwards(net.Event, inbox[0 .. inbox.len - 1], inbox[1..]);
+            inbox_count -= 1;
+        }
+
+        inbox[inbox_count] = e;
+        inbox_count += 1;
+    }
 }
 
 fn onRoster(r: *net.Reader, h: net.Header) void {
@@ -326,6 +401,23 @@ fn onRoster(r: *net.Reader, h: net.Header) void {
         names[s] = n;
         is_bot[s] = bot;
     }
+
+    const n = @min(r.u8v(), net.max_parked);
+    var got: usize = 0;
+
+    for (0..n) |_| {
+        const d = net.Ride.read(r);
+
+        if (!r.ok) break;
+
+        if (!d.valid()) continue;
+
+        parked[got] = d;
+        got += 1;
+    }
+
+    parked_count = got;
+    parked_fresh = true;
 }
 
 pub fn pump() void {
@@ -409,6 +501,296 @@ pub fn hit(index: usize, amount: f32, at: Vec3, head: bool, splash: bool) void {
     next_hit +%= 1;
 }
 
+fn shotOf(kind: game_mod.ProjectileKind) u8 {
+    return switch (kind) {
+        .grenade => net.Shot.grenade,
+        .fireball => net.Shot.fireball,
+        else => net.Shot.rocket,
+    };
+}
+
+fn kindOf(what: u8) game_mod.ProjectileKind {
+    return switch (what) {
+        net.Shot.grenade => .grenade,
+        net.Shot.fireball => .fireball,
+        else => .rocket,
+    };
+}
+
+fn queue(e: net.Event) void {
+    if (status != .joined) return;
+
+    var ev = e;
+
+    ev.seq = next_event;
+    next_event +%= 1;
+
+    if (outbox_count == outbox.len) {
+        std.mem.copyForwards(Outgoing, outbox[0 .. outbox.len - 1], outbox[1..]);
+        outbox_count -= 1;
+    }
+
+    outbox[outbox_count] = .{ .ev = ev };
+    outbox_count += 1;
+}
+
+pub fn fire(p: game_mod.Projectile) void {
+    queue(.{ .kind = .fire, .id = p.net_id, .what = shotOf(p.kind), .pos = p.pos, .vel = p.vel, .radius = p.splash, .gravity = p.gravity, .life = p.life, .damage = p.damage, .knockback = p.knockback });
+}
+
+pub fn boom(p: game_mod.Projectile, at: Vec3) void {
+    queue(.{ .kind = .boom, .id = p.net_id, .what = shotOf(p.kind), .pos = at, .radius = p.splash, .damage = p.damage, .knockback = p.knockback });
+}
+
+fn deliver(g: *Game) void {
+    for (inbox[0..inbox_count]) |e| {
+        const kind = kindOf(e.what);
+
+        switch (e.kind) {
+            .fire => g.remoteFire(.{
+                .kind = kind,
+                .pos = e.pos,
+                .vel = e.vel,
+                .life = @max(0.1, e.life),
+                .damage = e.damage,
+                .splash = e.radius,
+                .knockback = e.knockback,
+                .gravity = e.gravity,
+                .heading = e.vel.normalize(),
+                .owner = e.slot,
+                .net_id = e.id,
+            }),
+            .boom => g.remoteBoom(e.slot, e.id, kind, e.pos, e.radius, e.damage, e.knockback),
+            _ => {},
+        }
+    }
+
+    inbox_count = 0;
+}
+
+fn rideOf(e: net.Ent) ?net.Ride {
+    if (e.flags & net.EntFlag.riding == 0 or !e.ride.valid()) return null;
+
+    return e.ride;
+}
+
+fn blendRide(a: ?net.Ride, z: ?net.Ride, k: f32) ?net.Ride {
+    const to = z orelse return a;
+    const from = a orelse return to;
+
+    if (from.kind != to.kind or from.index != to.index or from.pos.distance(to.pos) > 40) return to;
+
+    var out = to;
+
+    out.pos = from.pos.lerp(to.pos, k);
+    out.yaw = lerpAngle(from.yaw, to.yaw, k);
+    out.pitch = lerpAngle(from.pitch, to.pitch, k);
+    out.roll = lerpAngle(from.roll, to.roll, k);
+    out.speed = from.speed + (to.speed - from.speed) * k;
+    out.steer = from.steer + (to.steer - from.steer) * k;
+    out.turret = lerpAngle(from.turret, to.turret, k);
+    out.gun = from.gun + (to.gun - from.gun) * k;
+
+    return out;
+}
+
+fn applyRide(g: *Game, d: net.Ride, dt: f32) void {
+    switch (d.kind) {
+        net.RideKind.ground => {
+            if (d.index >= g.vehicles.len or driving.seat == d.index) return;
+
+            const v = &g.vehicles[d.index];
+
+            if (d.flags & net.RideFlag.wrecked != 0) {
+                if (v.alive()) driving.wreckRemote(g, d.index);
+
+                return;
+            }
+
+            if (v.wreck > 1e8) return;
+
+            if (!v.alive()) {
+                v.wreck = 0;
+                v.hp = v.spec().hp;
+            }
+
+            v.remote = true;
+            v.pos = d.pos;
+            v.prev = d.pos;
+            v.yaw = d.yaw;
+            v.pitch = d.pitch;
+            v.roll = d.roll;
+            v.lean = 0;
+            v.speed = d.speed;
+            v.side = 0;
+            v.vy = 0;
+            v.steer = d.steer;
+            v.turret = d.turret;
+            v.gun = d.gun;
+            v.occupied = d.flags & net.RideFlag.occupied != 0;
+            v.boosting = d.flags & net.RideFlag.boosting != 0;
+            v.grounded = d.flags & net.RideFlag.grounded != 0;
+            v.spin += d.speed * dt / @max(v.spec().wheel, 0.1);
+            ground_was[d.index] = true;
+        },
+        net.RideKind.air => {
+            if (d.index >= air.crafts.len or air.seat == d.index) return;
+
+            const a = &air.crafts[d.index];
+
+            if (!a.active) return;
+
+            if (d.flags & net.RideFlag.wrecked != 0) {
+                if (a.alive()) air.wreckRemote(g, d.index);
+
+                return;
+            }
+
+            if (a.hp <= 0) {
+                a.hp = a.spec().hp;
+                a.wreck = 0;
+            }
+
+            a.remote = true;
+            a.pos = d.pos;
+            a.prev = d.pos;
+            a.yaw = d.yaw;
+            a.pitch = d.pitch;
+            a.roll = d.roll;
+            a.speed = d.speed;
+            a.vel = math.lookDir(d.yaw, d.pitch).scale(d.speed);
+            a.lift = d.steer;
+            a.throttle = math.clamp01(d.gun * 2);
+            a.grounded = d.flags & net.RideFlag.grounded != 0;
+            air_was[d.index] = true;
+        },
+        else => {},
+    }
+}
+
+fn applyParked(g: *Game) void {
+    if (!parked_fresh) return;
+
+    parked_fresh = false;
+
+    for (parked[0..parked_count]) |d| {
+        if (d.kind == last_ride.kind and d.index == last_ride.index and now() - left_at < settle_after_exit * 2) continue;
+
+        switch (d.kind) {
+            net.RideKind.ground => {
+                if (d.index >= g.vehicles.len or driving.seat == d.index) continue;
+
+                const v = &g.vehicles[d.index];
+
+                if (v.remote or !v.alive()) continue;
+
+                if (v.pos.distance(d.pos) < 1 and @abs(lerpAngle(v.yaw, d.yaw, 1) - v.yaw) < 0.2) continue;
+
+                v.pos = d.pos;
+                v.prev = d.pos;
+                v.yaw = d.yaw;
+                v.pitch = d.pitch;
+                v.roll = d.roll;
+                v.speed = 0;
+                v.side = 0;
+                v.vy = 0;
+            },
+            net.RideKind.air => {
+                if (d.index >= air.crafts.len or air.seat == d.index) continue;
+
+                const a = &air.crafts[d.index];
+
+                if (a.remote or !a.alive()) continue;
+
+                if (a.pos.distance(d.pos) < 1) continue;
+
+                a.pos = d.pos;
+                a.prev = d.pos;
+                a.yaw = d.yaw;
+                a.pitch = d.pitch;
+                a.roll = d.roll;
+                a.speed = 0;
+                a.vel = .{};
+                a.grounded = d.flags & net.RideFlag.grounded != 0;
+            },
+            else => {},
+        }
+    }
+}
+
+fn releaseRides(g: *Game) void {
+    for (&g.vehicles, 0..) |*v, i| {
+        if (i >= ground_was.len) break;
+
+        if (v.remote and !ground_was[i]) {
+            v.remote = false;
+            v.occupied = false;
+            v.speed = 0;
+            v.side = 0;
+            v.vy = 0;
+        }
+    }
+
+    for (&air.crafts, 0..) |*a, i| {
+        if (i >= air_was.len) break;
+
+        if (a.remote and !air_was[i]) {
+            a.remote = false;
+
+            if (a.grounded) {
+                a.speed = 0;
+                a.vel = .{};
+            }
+        }
+    }
+}
+
+fn ownRide(g: *Game) net.Ride {
+    var d: net.Ride = .{};
+
+    if (driving.seat) |i| {
+        d = groundRide(g, i);
+        d.flags |= net.RideFlag.occupied;
+    } else if (air.seat) |i| {
+        d = airRide(i);
+        d.flags |= net.RideFlag.occupied;
+    } else if (last_ride.kind != net.RideKind.none and now() - left_at < settle_after_exit) {
+        d = if (last_ride.kind == net.RideKind.ground) groundRide(g, last_ride.index) else airRide(last_ride.index);
+    }
+
+    if (d.kind != net.RideKind.none and (driving.seat != null or air.seat != null)) {
+        last_ride = d;
+        left_at = now();
+    }
+
+    return d;
+}
+
+fn groundRide(g: *Game, i: usize) net.Ride {
+    if (i >= g.vehicles.len or i >= net.max_ground) return .{};
+
+    const v = g.vehicles[i];
+    var d: net.Ride = .{ .kind = net.RideKind.ground, .index = @intCast(i), .pos = v.pos, .yaw = v.yaw, .pitch = v.pitch, .roll = v.roll + v.lean, .speed = v.speed, .steer = v.steer, .turret = v.turret, .gun = v.gun };
+
+    if (v.grounded) d.flags |= net.RideFlag.grounded;
+    if (v.boosting) d.flags |= net.RideFlag.boosting;
+    if (!v.alive()) d.flags |= net.RideFlag.wrecked;
+
+    return d;
+}
+
+fn airRide(i: usize) net.Ride {
+    if (i >= air.crafts.len or i >= net.max_air) return .{};
+
+    const a = air.crafts[i];
+    var d: net.Ride = .{ .kind = net.RideKind.air, .index = @intCast(i), .pos = a.pos, .yaw = a.yaw, .pitch = a.pitch, .roll = a.roll, .speed = a.speed, .steer = a.lift, .gun = a.throttle * 0.5 };
+
+    if (a.grounded) d.flags |= net.RideFlag.grounded;
+    if (!a.alive()) d.flags |= net.RideFlag.wrecked;
+
+    return d;
+}
+
 fn findEnt(s: *const net.Snapshot, which: u8) ?net.Ent {
     for (s.ents[0..s.count]) |e| {
         if (e.slot == which) return e;
@@ -478,6 +860,7 @@ fn applySelf(g: *Game, me: net.Ent, latest: *const net.Snapshot) void {
 
     if (me.deaths != my_deaths) {
         my_deaths = me.deaths;
+        feedKill(me.attacker, slot);
 
         if (g.dead <= 0) {
             g.hp = 0;
@@ -517,8 +900,14 @@ fn applyOthers(g: *Game, dt: f32) void {
     const latest = newest() orelse return;
     const span = bracket(@as(f64, @floatFromInt(renderTime())));
 
+    ground_was = @splat(false);
+    air_was = @splat(false);
+
     for (&g.bots.items, 0..) |*b, i| {
         const s: u8 = @intCast(i);
+
+        b.riding = false;
+        b.seat = null;
 
         if (s == slot or s >= net.max_slots) {
             b.active = false;
@@ -535,6 +924,16 @@ fn applyOthers(g: *Game, dt: f32) void {
         const a = findEnt(span.a, s) orelse now_e;
         const z = findEnt(span.b, s) orelse a;
         const pos = a.pos.lerp(z.pos, span.k);
+
+        if (blendRide(rideOf(a), rideOf(z), span.k)) |d| {
+            applyRide(g, d, dt);
+
+            if (d.flags & net.RideFlag.occupied != 0 and d.flags & net.RideFlag.wrecked == 0) {
+                b.riding = true;
+
+                if (d.kind == net.RideKind.ground) b.seat = d.index;
+            }
+        }
 
         if (!known[i]) {
             known[i] = true;
@@ -586,6 +985,9 @@ fn applyOthers(g: *Game, dt: f32) void {
             }
         }
     }
+
+    releaseRides(g);
+    applyParked(g);
 }
 
 pub fn frame(g: *Game, dt: f32) void {
@@ -621,6 +1023,7 @@ pub fn frame(g: *Game, dt: f32) void {
         if (findEnt(latest, slot)) |me| applySelf(g, me, latest);
     }
 
+    deliver(g);
     applyOthers(g, dt);
 
     if (t - send_at < send_every) return;
@@ -641,6 +1044,25 @@ pub fn frame(g: *Game, dt: f32) void {
     if (g.dead <= 0) in.flags |= net.InFlag.alive;
     if (g.ads > 0.5) in.flags |= net.InFlag.aiming;
     if (g.player.grounded) in.flags |= net.InFlag.grounded;
+
+    in.ride = ownRide(g);
+
+    var keep: usize = 0;
+
+    for (outbox[0..outbox_count]) |*o| {
+        if (in.event_count < net.max_out_events) {
+            in.events[in.event_count] = o.ev;
+            in.event_count += 1;
+            o.sent += 1;
+        }
+
+        if (o.sent < event_repeats) {
+            outbox[keep] = o.*;
+            keep += 1;
+        }
+    }
+
+    outbox_count = keep;
 
     for (claims[0..claim_count]) |*cl| {
         if (in.hit_count >= net.max_hits) break;
@@ -669,10 +1091,80 @@ fn reconnect(t: f64) void {
     join(code);
 }
 
-const Drive = enum { unset, off, shoot, walk };
+const Drive = enum { unset, off, shoot, walk, watch, rocket, nade, cruise };
 
 var drive_mode: Drive = .unset;
 var drive_t: f32 = 0;
+var placed = false;
+
+fn humanTarget(g: *Game) ?Vec3 {
+    const eye = g.player.eye();
+    var best: ?Vec3 = null;
+    var best_d: f32 = 1e9;
+
+    for (g.bots.items, 0..) |b, i| {
+        if (!b.remote or !b.active or b.dead >= 0 or is_bot[i]) continue;
+
+        var at = b.chest();
+
+        if (b.seat) |k| at = g.vehicles[k].center();
+
+        const d = at.distance(eye);
+
+        if (d < best_d) {
+            best_d = d;
+            best = at;
+        }
+    }
+
+    return best;
+}
+
+fn placeNear(g: *Game) void {
+    if (placed) return;
+
+    placed = true;
+
+    var at: ?Vec3 = null;
+    var face: f32 = 0;
+
+    if (c.getenv("DF_WATCHCAR")) |t| {
+        const i = std.fmt.parseInt(usize, std.mem.sliceTo(t, 0), 10) catch 0;
+
+        if (i < g.vehicles.len) {
+            const v = g.vehicles[i];
+
+            at = v.pos.add(v.right().scale(-9)).add(v.forward().scale(-6));
+            face = v.yaw;
+        }
+    }
+
+    if (c.getenv("DF_WATCHAIR")) |t| {
+        const kind = std.fmt.parseInt(u8, std.mem.sliceTo(t, 0), 10) catch 0;
+
+        for (air.crafts) |a| {
+            if (a.active and a.kind == kind) {
+                at = a.pos.add(math.flatDir(a.yaw + 1.3).scale(a.spec().radius + 14));
+                face = a.yaw;
+            }
+        }
+    }
+
+    if (c.getenv("DF_WATCHRUNWAY")) |t| {
+        const r = shared.terrain.runway;
+        const along = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 30;
+
+        at = .{ .x = r[0] + along, .y = 0, .z = r[1] + 9 };
+        face = std.math.pi;
+    }
+
+    const p = at orelse return;
+    const ground = shared.terrain.height(p.x, p.z);
+
+    g.player = shared.movement.Player.spawn(.{ .x = p.x, .y = @max(p.y, ground) + 0.5, .z = p.z });
+    g.prev_pos = g.player.pos;
+    g.yaw = face;
+}
 
 pub fn drive(g: *Game, controls: *game_mod.Controls) void {
     if (drive_mode == .unset) {
@@ -691,6 +1183,65 @@ pub fn drive(g: *Game, controls: *game_mod.Controls) void {
 
         return;
     }
+
+    if (drive_mode == .cruise) {
+        if (!placed) {
+            placed = true;
+
+            if (driving.seat) |i| {
+                const r = shared.terrain.runway;
+                const v = &g.vehicles[i];
+
+                v.pos = .{ .x = r[0], .y = shared.terrain.height(r[0], r[1]), .z = r[1] };
+                v.yaw = std.math.pi * 0.5;
+                shared.vehicle.settle(v, shared.world.pieces);
+                g.yaw = v.yaw;
+            }
+        }
+
+        if (humanTarget(g) == null) return;
+
+        controls.forward = if (@mod(drive_t, 12) < 6) 0.3 else -0.3;
+
+        return;
+    }
+
+    if (drive_mode == .watch or drive_mode == .rocket or drive_mode == .nade) {
+        placeNear(g);
+
+        if (drive_mode == .rocket) {
+            g.gunEquip("Boomer");
+            g.arsenal.held().reserve = 12;
+        }
+
+        const seen = humanTarget(g) orelse return;
+        const eye = g.player.eye();
+        const side = seen.sub(eye).cross(math.up).normalize().scale(12);
+        const aim = switch (drive_mode) {
+            .rocket => seen.add(side).add(.{ .y = -1.4 }),
+            .nade => eye.lerp(seen.add(side), 0.6),
+            else => if (c.getenv("DF_WATCHSIDE") != null) seen.lerp(eye.sub(side), 0.5) else seen,
+        };
+        const to = aim.sub(g.player.eye()).normalize();
+
+        g.yaw = std.math.atan2(to.x, to.z);
+        g.pitch = std.math.asin(std.math.clamp(to.y, -1, 1));
+
+        if (drive_mode == .rocket) {
+            controls.fire_down = @mod(drive_t, 2.5) < 0.6;
+            controls.fire_pressed = controls.fire_down;
+        }
+
+        if (drive_mode == .nade) {
+            g.pitch += 0.25;
+            g.arsenal.grenades = 3;
+            controls.grenade = @mod(drive_t, 3) < 0.5;
+        }
+
+        return;
+    }
+
+    placeNear(g);
 
     const eye = g.player.eye();
     var best: ?Vec3 = null;
@@ -736,7 +1287,9 @@ pub fn scoreboardHeld(pad: ?c_int) bool {
     return false;
 }
 
-pub fn draw(g: Game, font: rl.Font, pad: ?c_int) void {
+pub fn draw(g: Game, font: rl.Font, pad: ?c_int, touch_ui: bool) void {
+    board_rect = null;
+
     if (!active) return;
 
     const w: f32 = @floatFromInt(rl.GetScreenWidth());
@@ -768,11 +1321,30 @@ pub fn draw(g: Game, font: rl.Font, pad: ?c_int) void {
     rl.DrawRectangleRec(.{ .x = x - gap / 2, .y = y + 10 * u, .width = 1, .height = 14 * u }, ui.fade(ui.white, 0.25));
     ui.caps(font, score, x, y + 9 * u, size, ui.fade(ui.white, 0.75));
 
+    if (touch_ui) boardButton(w / 2 + total / 2 + 30 * u, y + 17 * u, u);
+
     drawKills(font, u);
 
-    if (scoreboardHeld(pad)) drawBoard(font, u, w, h);
+    if (scoreboardHeld(pad) or board_open) drawBoard(font, u, w, h);
 
     if (lost) drawLost(font, u, w, h);
+}
+
+fn boardButton(cx: f32, cy: f32, u: f32) void {
+    const r = 24 * u;
+    const op = settings.touch_opacity;
+    const k = r * 0.46;
+    const t = @max(2, k * 0.2);
+    const ink = ui.fade(ui.white, 0.92 * @max(op, 0.5));
+
+    board_rect = .{ .x = cx - r * 1.5, .y = cy - r * 1.5, .width = r * 3, .height = r * 3 };
+    rl.DrawCircleV(.{ .x = cx, .y = cy }, r, ui.fade(if (board_open) ui.white else ui.ink, (if (board_open) @as(f32, 0.45) else 0.32) * op));
+    rl.DrawCircleLinesV(.{ .x = cx, .y = cy }, r, ui.fade(ui.white, 0.55 * op));
+
+    for ([_]f32{ -0.55, 0, 0.55 }) |dy| {
+        rl.DrawCircleV(.{ .x = cx - k * 0.75, .y = cy + dy * k }, t * 0.75, ink);
+        rl.DrawRectangleRounded(.{ .x = cx - k * 0.4, .y = cy + dy * k - t / 2, .width = k * 1.2, .height = t }, 1, 4, ink);
+    }
 }
 
 fn drawKills(font: rl.Font, u: f32) void {

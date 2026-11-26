@@ -8,8 +8,9 @@ const game_mod = @import("game.zig");
 const audio = @import("audio.zig");
 
 const Map = shared.terrain.Map;
+const net_shared = shared.net;
 
-const Screen = enum { home, difficulty, online, join, connecting, code };
+const Screen = enum { home, difficulty, name, online, join, connecting, code };
 
 const Option = struct {
     name: [:0]const u8,
@@ -38,6 +39,142 @@ const online_options = [_]Option{
 
 const keypad = [_][:0]const u8{ "1", "2", "3", "4", "5", "6", "7", "8", "9", "DEL", "0", "JOIN" };
 
+const KeyAction = enum { char, shift, space, erase, done };
+
+const Key = struct {
+    label: [:0]const u8,
+    row: u8,
+    col: u8,
+    span: u8 = 1,
+    action: KeyAction = .char,
+};
+
+const key_rows = [_][]const u8{ "1234567890", "QWERTYUIOP", "ASDFGHJKL-", "ZXCVBNM._!" };
+const key_cols = 10;
+
+const keyboard = blk: {
+    var keys: [44]Key = undefined;
+    var n: usize = 0;
+
+    for (key_rows, 0..) |row, r| {
+        for (row, 0..) |ch, col| {
+            keys[n] = .{ .label = &[_:0]u8{ch}, .row = @intCast(r), .col = @intCast(col) };
+            n += 1;
+        }
+    }
+
+    keys[n] = .{ .label = "SHIFT", .row = 4, .col = 0, .span = 2, .action = .shift };
+    keys[n + 1] = .{ .label = "SPACE", .row = 4, .col = 2, .span = 4, .action = .space };
+    keys[n + 2] = .{ .label = "DEL", .row = 4, .col = 6, .span = 2, .action = .erase };
+    keys[n + 3] = .{ .label = "DONE", .row = 4, .col = 8, .span = 2, .action = .done };
+
+    break :blk keys;
+};
+
+const done_key = keyboard.len - 1;
+
+const NameEntry = struct {
+    text: [net_shared.name_len]u8 = @splat(0),
+    len: usize = 0,
+    upper: bool = true,
+    focus: usize = 0,
+    age: f32 = 0,
+
+    fn load(e: *NameEntry) void {
+        const n = net.defaultName();
+
+        e.text = n;
+        e.len = net_shared.nameSlice(&n).len;
+        e.upper = e.len == 0;
+        e.focus = done_key;
+        e.age = 0;
+    }
+
+    fn put(e: *NameEntry, ch: u8) void {
+        if (e.len >= e.text.len or ch < 32 or ch >= 127) return;
+
+        if (ch == ' ' and e.len == 0) return;
+
+        var c = ch;
+
+        if (std.ascii.isAlphabetic(c)) c = if (e.upper) std.ascii.toUpper(c) else std.ascii.toLower(c);
+
+        e.text[e.len] = c;
+        e.len += 1;
+
+        if (std.ascii.isAlphabetic(c)) e.upper = false;
+    }
+
+    fn typed(e: *NameEntry, ch: u8) void {
+        if (e.len >= e.text.len or ch < 32 or ch >= 127) return;
+
+        if (ch == ' ' and e.len == 0) return;
+
+        e.text[e.len] = ch;
+        e.len += 1;
+        e.upper = false;
+    }
+
+    fn erase(e: *NameEntry) void {
+        if (e.len == 0) return;
+
+        e.len -= 1;
+        e.text[e.len] = 0;
+
+        if (e.len == 0) e.upper = true;
+    }
+
+    fn ready(e: NameEntry) bool {
+        return std.mem.trim(u8, e.text[0..e.len], " ").len > 0;
+    }
+
+    fn move(e: *NameEntry, dx: i32, dy: i32) void {
+        const k = keyboard[e.focus];
+
+        if (dx != 0) {
+            var i: i32 = @intCast(e.focus);
+
+            while (true) {
+                i = @mod(i + dx, @as(i32, keyboard.len));
+
+                if (keyboard[@intCast(i)].row == k.row) break;
+            }
+
+            e.focus = @intCast(i);
+        }
+
+        if (dy != 0) {
+            const rows: i32 = key_rows.len + 1;
+            const row: u8 = @intCast(@mod(@as(i32, k.row) + dy, rows));
+            const center = @as(f32, @floatFromInt(k.col)) + @as(f32, @floatFromInt(k.span)) / 2;
+
+            for (keyboard, 0..) |o, i| {
+                if (o.row != row) continue;
+
+                if (center >= @as(f32, @floatFromInt(o.col)) and center < @as(f32, @floatFromInt(o.col + o.span))) {
+                    e.focus = i;
+
+                    return;
+                }
+            }
+        }
+    }
+
+    fn press(e: *NameEntry, i: usize) bool {
+        const k = keyboard[i];
+
+        switch (k.action) {
+            .char => e.put(k.label[0]),
+            .shift => e.upper = !e.upper,
+            .space => e.put(' '),
+            .erase => e.erase(),
+            .done => return e.ready(),
+        }
+
+        return false;
+    }
+};
+
 const Input = struct {
     dx: i32 = 0,
     dy: i32 = 0,
@@ -45,9 +182,13 @@ const Input = struct {
     back: bool = false,
     erase: bool = false,
     digit: ?u8 = null,
+    enter: bool = false,
+    start: bool = false,
+    shift: bool = false,
 };
 
 var cool: f32 = 0;
+var name_draw: [32]u8 = undefined;
 
 fn padId() ?c_int {
     var i: c_int = 0;
@@ -59,22 +200,23 @@ fn padId() ?c_int {
     return null;
 }
 
-fn readInput(dt: f32) Input {
+fn readInput(dt: f32, typing: bool) Input {
     var in: Input = .{};
 
     cool = @max(0, cool - dt);
 
-    if (rl.IsKeyPressed(rl.KEY_RIGHT) or rl.IsKeyPressed(rl.KEY_D)) in.dx = 1;
-    if (rl.IsKeyPressed(rl.KEY_LEFT) or rl.IsKeyPressed(rl.KEY_A)) in.dx = -1;
-    if (rl.IsKeyPressed(rl.KEY_DOWN) or rl.IsKeyPressed(rl.KEY_S)) in.dy = 1;
-    if (rl.IsKeyPressed(rl.KEY_UP) or rl.IsKeyPressed(rl.KEY_W)) in.dy = -1;
-    if (rl.IsKeyPressed(rl.KEY_ENTER) or rl.IsKeyPressed(rl.KEY_KP_ENTER) or rl.IsKeyPressed(rl.KEY_SPACE)) in.ok = true;
+    if (rl.IsKeyPressed(rl.KEY_RIGHT) or (!typing and rl.IsKeyPressed(rl.KEY_D))) in.dx = 1;
+    if (rl.IsKeyPressed(rl.KEY_LEFT) or (!typing and rl.IsKeyPressed(rl.KEY_A))) in.dx = -1;
+    if (rl.IsKeyPressed(rl.KEY_DOWN) or (!typing and rl.IsKeyPressed(rl.KEY_S))) in.dy = 1;
+    if (rl.IsKeyPressed(rl.KEY_UP) or (!typing and rl.IsKeyPressed(rl.KEY_W))) in.dy = -1;
+    if (rl.IsKeyPressed(rl.KEY_ENTER) or rl.IsKeyPressed(rl.KEY_KP_ENTER) or (!typing and rl.IsKeyPressed(rl.KEY_SPACE))) in.ok = true;
+    if (rl.IsKeyPressed(rl.KEY_ENTER) or rl.IsKeyPressed(rl.KEY_KP_ENTER)) in.enter = true;
     if (rl.IsKeyPressed(rl.KEY_ESCAPE) or rl.IsKeyPressed(rl.KEY_BACK)) in.back = true;
     if (rl.IsKeyPressed(rl.KEY_BACKSPACE) or rl.IsKeyPressed(rl.KEY_DELETE)) in.erase = true;
 
     var k: u8 = 0;
 
-    while (k < 10) : (k += 1) {
+    while (k < 10 and !typing) : (k += 1) {
         if (rl.IsKeyPressed(rl.KEY_ZERO + @as(c_int, k)) or rl.IsKeyPressed(rl.KEY_KP_0 + @as(c_int, k))) in.digit = k;
     }
 
@@ -89,6 +231,8 @@ fn readInput(dt: f32) Input {
         if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_DOWN) or rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_MIDDLE_RIGHT)) in.ok = true;
         if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) in.back = true;
         if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_LEFT)) in.erase = true;
+        if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_MIDDLE_RIGHT)) in.start = true;
+        if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_UP)) in.shift = true;
 
         if ((@abs(ax) > 0.6 or @abs(ay) > 0.6) and cool == 0) cool = 0.22;
     }
@@ -279,13 +423,19 @@ pub fn run(font: rl.Font, ui_dir: []const u8) ?Map {
     var focus: usize = 0;
     var err: ?[:0]const u8 = null;
     var joining = false;
+    var entry: NameEntry = .{};
+
+    if (std.c.getenv("DF_LOBBY")) |start| {
+        screen = std.meta.stringToEnum(Screen, std.mem.sliceTo(start, 0)) orelse .home;
+        entry.load();
+    }
 
     while (!rl.WindowShouldClose()) {
         const dt = rl.GetFrameTime();
         const w: f32 = @floatFromInt(rl.GetScreenWidth());
         const h: f32 = @floatFromInt(rl.GetScreenHeight());
         const u = h / 900;
-        const in = readInput(dt);
+        const in = readInput(dt, screen == .name);
 
         if (rl.IsCursorHidden()) rl.EnableCursor();
         net.pump();
@@ -302,8 +452,10 @@ pub fn run(font: rl.Font, ui_dir: []const u8) ?Map {
 
                 if (click or in.ok) {
                     audio.ui(.toast);
-                    screen = if (sel == 0) .difficulty else .online;
+                    screen = if (sel == 0) .difficulty else .name;
                     err = null;
+
+                    if (screen == .name) entry.load();
                 }
             },
             .difficulty => {
@@ -343,10 +495,15 @@ pub fn run(font: rl.Font, ui_dir: []const u8) ?Map {
 
                 if (err) |e| centered(font, e, w / 2, h * 0.32 + 340 * u * 0.72 + 40 * u, 16 * u, ui.red);
 
+                var label_buf: [48]u8 = undefined;
+                const playing_as = std.fmt.bufPrintSentinel(&label_buf, "Playing as {s}", .{net.nameText()}, 0) catch "";
+
+                hint(font, playing_as, w, h, u);
                 rl.EndDrawing();
 
                 if (in.back or back) {
-                    screen = .home;
+                    screen = .name;
+                    entry.load();
 
                     continue;
                 }
@@ -372,6 +529,123 @@ pub fn run(font: rl.Font, ui_dir: []const u8) ?Map {
                     net.create(@backingInt(m));
                     joining = false;
                     screen = .connecting;
+                }
+
+                continue;
+            },
+            .name => {
+                const back = backButton(font, u);
+                const kw = 64 * u;
+                const kh = 54 * u;
+                const kgap = 10 * u;
+                const span = kw * key_cols + kgap * (key_cols - 1);
+                const kx = w / 2 - span / 2;
+                const fy = h * 0.27;
+                const fh = 86 * u;
+                const ky = fy + fh + 30 * u;
+                const mouse = rl.GetMousePosition();
+                const moved = entry.age > 0.3 and (rl.GetMouseDelta().x != 0 or rl.GetMouseDelta().y != 0);
+                var press: ?usize = null;
+
+                entry.age += dt;
+                heading(font, kx, h, u, "ONLINE", "YOUR NAME", "Other players see it on the scoreboard and kill feed");
+
+                const field: rl.Rectangle = .{ .x = kx, .y = fy, .width = span, .height = fh };
+                const ts = 40 * u;
+                const shown = std.fmt.bufPrintSentinel(&name_draw, "{s}", .{entry.text[0..entry.len]}, 0) catch "";
+                const tw = ui.width(font, shown, ts);
+                const blink = @mod(rl.GetTime(), 1.0) < 0.55;
+
+                rl.DrawRectangleRounded(field, 0.14, 8, ui.rgba(22, 26, 38, 255));
+                rl.DrawRectangleRoundedLinesEx(field, 0.14, 8, 2 * u, ui.fade(ui.accent, 0.9));
+
+                if (entry.len == 0) ui.text(font, "Type your name", field.x + 28 * u, field.y + fh / 2 - ts / 2, ts, ui.fade(ui.white, 0.25));
+
+                ui.text(font, shown, field.x + 28 * u, field.y + fh / 2 - ts / 2, ts, ui.white);
+
+                if (blink) rl.DrawRectangleRec(.{ .x = field.x + 30 * u + tw, .y = field.y + fh / 2 - ts * 0.45, .width = 3 * u, .height = ts * 0.9 }, ui.accent);
+
+                var count_buf: [16]u8 = undefined;
+                const count = std.fmt.bufPrintSentinel(&count_buf, "{d} / {d}", .{ entry.len, entry.text.len }, 0) catch "";
+
+                ui.caps(font, count, field.x + span - 28 * u - ui.capsWidth(font, count, 13 * u), field.y + fh / 2 - 6.5 * u, 13 * u, ui.fade(ui.white, 0.4));
+
+                if (in.dx != 0 or in.dy != 0) entry.move(in.dx, in.dy);
+
+                for (keyboard, 0..) |k, i| {
+                    const r: rl.Rectangle = .{
+                        .x = kx + (kw + kgap) * @as(f32, @floatFromInt(k.col)),
+                        .y = ky + (kh + kgap) * @as(f32, @floatFromInt(k.row)),
+                        .width = kw * @as(f32, @floatFromInt(k.span)) + kgap * @as(f32, @floatFromInt(k.span - 1)),
+                        .height = kh,
+                    };
+
+                    if (rl.CheckCollisionPointRec(mouse, r)) {
+                        if (moved) entry.focus = i;
+
+                        if (rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT)) {
+                            entry.focus = i;
+                            press = i;
+                        }
+                    }
+
+                    const on = i == entry.focus;
+                    const is_done = k.action == .done;
+                    const lit = (is_done and entry.ready()) or (k.action == .shift and entry.upper);
+                    const fill = if (is_done and entry.ready()) ui.fade(ui.accent, if (on) 1 else 0.8) else if (lit) ui.fade(ui.white, 0.16) else ui.rgba(22, 26, 38, 255);
+
+                    rl.DrawRectangleRounded(r, 0.2, 8, fill);
+                    rl.DrawRectangleRoundedLinesEx(r, 0.2, 8, if (on) 2 * u else 1, if (on) ui.fade(ui.white, 0.85) else ui.edge);
+
+                    var one = [2:0]u8{ k.label[0], 0 };
+                    const label: [:0]const u8 = if (k.action != .char) k.label else if (entry.upper or !std.ascii.isAlphabetic(k.label[0])) k.label else blk: {
+                        one[0] = std.ascii.toLower(k.label[0]);
+
+                        break :blk one[0..1 :0];
+                    };
+                    const size = if (k.action != .char) 14 * u else 22 * u;
+                    const ink = if (is_done and entry.ready()) ui.ink else if (is_done) ui.fade(ui.white, 0.35) else ui.white;
+
+                    if (k.action == .char) {
+                        centered(font, label, r.x + r.width / 2, r.y + kh / 2 - size / 2, size, ink);
+                    } else {
+                        centeredCaps(font, label, r.x + r.width / 2, r.y + kh / 2 - size / 2, size, ink);
+                    }
+                }
+
+                hint(font, "Type or use the keys    Enter or Start when done    Esc or B to go back", w, h, u);
+                rl.EndDrawing();
+
+                if (in.back or back) {
+                    screen = .home;
+
+                    continue;
+                }
+
+                var ch = rl.GetCharPressed();
+
+                while (ch > 0) : (ch = rl.GetCharPressed()) {
+                    if (ch < 127) entry.typed(@intCast(ch));
+                }
+
+                if (in.erase) entry.erase();
+
+                if (in.shift) entry.upper = !entry.upper;
+
+                var finish = (in.enter or in.start) and entry.ready();
+
+                if (in.ok and !in.enter and !in.start) press = entry.focus;
+
+                if (press) |i| {
+                    if (entry.press(i)) finish = true;
+
+                    audio.ui(.toast);
+                }
+
+                if (finish) {
+                    net.setName(entry.text[0..entry.len]);
+                    screen = .online;
+                    err = null;
                 }
 
                 continue;

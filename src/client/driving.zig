@@ -85,7 +85,7 @@ pub fn tick(g: *Game, c: Controls) void {
             boost_view = v.boosting;
             speed_fov = math.clamp01(@abs(v.speed) / @max(s.top_speed, 1)) * 8;
             cam_shake = @max(cam_shake * @exp(-dt * 7), @max(v.impact * 0.6, if (v.boosting) 0.05 + v.boost_start * 0.35 else 0));
-        } else if (@abs(v.speed) > 0.4 or @abs(v.side) > 0.4 or v.vy < -0.8 or v.vy > 0.8 or v.righting > 0) {
+        } else if (!v.remote and (@abs(v.speed) > 0.4 or @abs(v.side) > 0.4 or v.vy < -0.8 or v.vy > 0.8 or v.righting > 0)) {
             vehicle.step(v, .{}, world.pieces, dt);
         }
     }
@@ -220,7 +220,7 @@ fn runOver(g: *Game) void {
     for (g.vehicles, 0..) |v, i| {
         run_cd[i] = @max(0, run_cd[i] - movement.dt);
 
-        if (!v.alive() or @abs(v.speed) < 4 or run_cd[i] > 0) continue;
+        if (!v.alive() or v.remote or @abs(v.speed) < 4 or run_cd[i] > 0) continue;
 
         const fwd = v.forward();
         const half = v.spec().length * 0.5;
@@ -370,7 +370,7 @@ fn enter(g: *Game) void {
     var best_d: f32 = 1e9;
 
     for (g.vehicles, 0..) |v, i| {
-        if (!v.alive() or !vehicle.usableBy(at, v) or !vehicle.inView(at, g.yaw, v)) continue;
+        if (!v.alive() or v.remote or !vehicle.usableBy(at, v) or !vehicle.inView(at, g.yaw, v)) continue;
 
         const d = at.distance(v.pos);
 
@@ -380,8 +380,10 @@ fn enter(g: *Game) void {
         }
     }
 
-    const i = best orelse return;
+    board(g, best orelse return);
+}
 
+fn board(g: *Game, i: usize) void {
     seat = i;
     g.vehicles[i].occupied = true;
     cam_ready = false;
@@ -691,6 +693,19 @@ pub fn damage(g: *Game, i: usize, amount: f32, at: Vec3) void {
     _ = at;
 }
 
+pub fn wreckRemote(g: *Game, i: usize) void {
+    const v = &g.vehicles[i];
+
+    if (!v.alive()) return;
+
+    v.hp = 0;
+    v.wreck = vehicle.wreck_time;
+    v.speed = 0;
+    v.occupied = false;
+    v.remote = false;
+    g.explosions.spawn(.{ .pos = v.center(), .radius = if (v.spec().class == .car) 6 else 4, .life = 1.8, .total = 1.8 });
+}
+
 pub fn splash(g: *Game, at: Vec3, radius: f32, amount: f32) void {
     for (g.vehicles, 0..) |v, i| {
         if (!v.alive()) continue;
@@ -737,7 +752,7 @@ pub fn tankFire(g: *Game, c: Controls) void {
     const m = vehicleart.muzzle(v.*) orelse return;
 
     v.reload = 3;
-    g.projectiles.spawn(.{ .kind = .rocket, .pos = m.pos, .vel = m.dir.scale(95), .life = 3, .damage = 240, .splash = 7, .knockback = 16, .gravity = 4, .heading = m.dir });
+    g.launch(.{ .kind = .rocket, .pos = m.pos, .vel = m.dir.scale(95), .life = 3, .damage = 240, .splash = 7, .knockback = 16, .gravity = 4, .heading = m.dir });
     g.explosions.spawn(.{ .pos = m.pos, .radius = 1.4, .life = 0.25, .total = 0.25, .fire = true });
     v.speed -= 1.5;
 }
@@ -772,7 +787,7 @@ pub fn start(g: *Game, index: usize) void {
         g.yaw = v2.yaw;
     }
 
-    enter(g);
+    if (g.vehicles[index].alive()) board(g, index);
 }
 
 const plain_names = [_][]const u8{ "Ranger Jeep", "Conquer Pickup", "Utility Truck", "Box Truck", "Armored Car", "Ace Hatchback", "Kiri Sedan", "Traveller Van", "Enforcer SUV", "Taxi", "Lifted Truck", "Fire Wagon", "El Alamo", "Urus" };

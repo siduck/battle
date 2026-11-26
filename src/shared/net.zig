@@ -5,7 +5,7 @@ const Vec3 = math.Vec3;
 
 pub const port: u16 = 27015;
 pub const magic: u16 = 0xDF1E;
-pub const version: u8 = 1;
+pub const version: u8 = 2;
 pub const max_slots = 16;
 pub const max_humans = 12;
 pub const max_packet = 1200;
@@ -16,6 +16,11 @@ pub const tick_ms: f64 = 1000.0 / @as(f64, tick_hz);
 pub const max_hits = 6;
 pub const respawn_s: f32 = 3;
 pub const none: u8 = 255;
+pub const max_events = 10;
+pub const max_out_events = 6;
+pub const max_ground = 64;
+pub const max_air = 32;
+pub const max_parked = 20;
 
 pub const Kind = enum(u8) { create, join, input, leave, joined, reject, snapshot, roster, probe, probe_reply, _ };
 
@@ -206,6 +211,162 @@ pub fn dvel(v: i8) f32 {
     return @as(f32, @floatFromInt(v)) / 4;
 }
 
+pub fn qangle(a: f32) i16 {
+    const tau = std.math.pi * 2;
+    const wrapped = @mod(a + std.math.pi, tau) - std.math.pi;
+
+    return @intFromFloat(std.math.clamp(@round(wrapped / std.math.pi * 32767), -32767, 32767));
+}
+
+pub fn dangle(v: i16) f32 {
+    return @as(f32, @floatFromInt(v)) / 32767 * std.math.pi;
+}
+
+fn qsmall(v: f32, scale: f32) i8 {
+    return @intFromFloat(std.math.clamp(@round(v * scale), -127, 127));
+}
+
+fn qbyte(v: f32, scale: f32) u8 {
+    return @intFromFloat(std.math.clamp(@round(v * scale), 0, 255));
+}
+
+pub const RideKind = struct {
+    pub const none: u8 = 0;
+    pub const ground: u8 = 1;
+    pub const air: u8 = 2;
+};
+
+pub const RideFlag = struct {
+    pub const occupied: u8 = 1;
+    pub const grounded: u8 = 2;
+    pub const boosting: u8 = 4;
+    pub const wrecked: u8 = 8;
+};
+
+pub const Ride = struct {
+    kind: u8 = RideKind.none,
+    index: u8 = 0,
+    flags: u8 = 0,
+    pos: Vec3 = .{},
+    yaw: f32 = 0,
+    pitch: f32 = 0,
+    roll: f32 = 0,
+    speed: f32 = 0,
+    steer: f32 = 0,
+    turret: f32 = 0,
+    gun: f32 = 0,
+
+    pub fn write(d: Ride, w: *Writer) void {
+        w.u8v(d.kind);
+
+        if (d.kind == RideKind.none) return;
+
+        w.u8v(d.index);
+        w.u8v(d.flags);
+        w.vec(d.pos);
+        w.u16v(qyaw(d.yaw));
+        w.i16v(qangle(d.pitch));
+        w.i16v(qangle(d.roll));
+        w.i16v(@intFromFloat(std.math.clamp(@round(d.speed * 64), -32767, 32767)));
+        w.i8v(qsmall(d.steer, 100));
+        w.i16v(qangle(d.turret));
+        w.i8v(qsmall(d.gun, 200));
+    }
+
+    pub fn read(r: *Reader) Ride {
+        var d: Ride = .{ .kind = r.u8v() };
+
+        if (d.kind == RideKind.none) return d;
+
+        d.index = r.u8v();
+        d.flags = r.u8v();
+        d.pos = r.vec();
+        d.yaw = dyaw(r.u16v());
+        d.pitch = dangle(r.i16v());
+        d.roll = dangle(r.i16v());
+        d.speed = @as(f32, @floatFromInt(r.i16v())) / 64;
+        d.steer = @as(f32, @floatFromInt(r.i8v())) / 100;
+        d.turret = dangle(r.i16v());
+        d.gun = @as(f32, @floatFromInt(r.i8v())) / 200;
+
+        if (d.kind > RideKind.air) d.kind = RideKind.none;
+
+        return d;
+    }
+
+    pub fn valid(d: Ride) bool {
+        return switch (d.kind) {
+            RideKind.ground => d.index < max_ground,
+            RideKind.air => d.index < max_air,
+            else => false,
+        };
+    }
+};
+
+pub const EventKind = enum(u8) { fire, boom, _ };
+
+pub const Shot = struct {
+    pub const rocket: u8 = 0;
+    pub const grenade: u8 = 1;
+    pub const fireball: u8 = 2;
+    pub const count: u8 = 3;
+};
+
+pub const Event = struct {
+    seq: u16 = 0,
+    kind: EventKind = .fire,
+    slot: u8 = 0,
+    id: u16 = 0,
+    what: u8 = 0,
+    pos: Vec3 = .{},
+    vel: Vec3 = .{},
+    radius: f32 = 0,
+    gravity: f32 = 0,
+    life: f32 = 0,
+    damage: f32 = 0,
+    knockback: f32 = 0,
+
+    pub fn write(e: Event, w: *Writer) void {
+        w.u16v(e.seq);
+        w.u8v(@backingInt(e.kind));
+        w.u8v(e.slot);
+        w.u16v(e.id);
+        w.u8v(e.what);
+        w.vec(e.pos);
+        w.i16v(@intFromFloat(std.math.clamp(@round(e.vel.x * 16), -32767, 32767)));
+        w.i16v(@intFromFloat(std.math.clamp(@round(e.vel.y * 16), -32767, 32767)));
+        w.i16v(@intFromFloat(std.math.clamp(@round(e.vel.z * 16), -32767, 32767)));
+        w.u8v(qbyte(e.radius, 10));
+        w.u8v(qbyte(e.gravity, 4));
+        w.u8v(qbyte(e.life, 20));
+        w.u16v(@intFromFloat(std.math.clamp(@round(e.damage), 0, 65535)));
+        w.u8v(qbyte(e.knockback, 4));
+    }
+
+    pub fn read(r: *Reader) Event {
+        var e: Event = .{};
+
+        e.seq = r.u16v();
+        e.kind = @fromBackingInt(@intCast(r.u8v()));
+        e.slot = r.u8v();
+        e.id = r.u16v();
+        e.what = r.u8v();
+        e.pos = r.vec();
+        e.vel = .{ .x = @as(f32, @floatFromInt(r.i16v())) / 16, .y = @as(f32, @floatFromInt(r.i16v())) / 16, .z = @as(f32, @floatFromInt(r.i16v())) / 16 };
+        e.radius = @as(f32, @floatFromInt(r.u8v())) / 10;
+        e.gravity = @as(f32, @floatFromInt(r.u8v())) / 4;
+        e.life = @as(f32, @floatFromInt(r.u8v())) / 20;
+        e.damage = @floatFromInt(r.u16v());
+        e.knockback = @as(f32, @floatFromInt(r.u8v())) / 4;
+
+        return e;
+    }
+
+    pub fn valid(e: Event) bool {
+        return (e.kind == .fire or e.kind == .boom) and e.what < Shot.count;
+    }
+};
+
 pub const Hit = struct {
     id: u16,
     target: u8,
@@ -255,6 +416,9 @@ pub const Input = struct {
     shots: u8 = 0,
     hits: [max_hits]Hit = undefined,
     hit_count: u8 = 0,
+    ride: Ride = .{},
+    events: [max_out_events]Event = undefined,
+    event_count: u8 = 0,
 
     pub fn write(in: Input, w: *Writer) void {
         w.u32v(in.time);
@@ -271,6 +435,11 @@ pub const Input = struct {
         w.u8v(in.hit_count);
 
         for (in.hits[0..in.hit_count]) |h| h.write(w);
+
+        in.ride.write(w);
+        w.u8v(in.event_count);
+
+        for (in.events[0..in.event_count]) |e| e.write(w);
     }
 
     pub fn read(r: *Reader) Input {
@@ -289,6 +458,11 @@ pub const Input = struct {
 
         for (in.hits[0..in.hit_count]) |*h| h.* = Hit.read(r);
 
+        in.ride = Ride.read(r);
+        in.event_count = @min(r.u8v(), max_out_events);
+
+        for (in.events[0..in.event_count]) |*e| e.* = Event.read(r);
+
         return in;
     }
 };
@@ -298,6 +472,7 @@ pub const EntFlag = struct {
     pub const bot: u8 = 2;
     pub const aiming: u8 = 4;
     pub const grounded: u8 = 8;
+    pub const riding: u8 = 16;
 };
 
 pub const Ent = struct {
@@ -314,6 +489,7 @@ pub const Ent = struct {
     deaths: u8 = 0,
     attacker: u8 = none,
     warp: u8 = 0,
+    ride: Ride = .{},
 
     pub fn write(e: Ent, w: *Writer) void {
         w.u8v(e.slot);
@@ -332,6 +508,8 @@ pub const Ent = struct {
         w.u8v(e.deaths);
         w.u8v(e.attacker);
         w.u8v(e.warp);
+
+        if (e.flags & EntFlag.riding != 0) e.ride.write(w);
     }
 
     pub fn read(r: *Reader) Ent {
@@ -354,6 +532,8 @@ pub const Ent = struct {
         e.attacker = r.u8v();
         e.warp = r.u8v();
 
+        if (e.flags & EntFlag.riding != 0) e.ride = Ride.read(r);
+
         return e;
     }
 };
@@ -366,6 +546,8 @@ pub const Snapshot = struct {
     you: u8 = 0,
     count: u8 = 0,
     ents: [max_slots]Ent = undefined,
+    events: [max_events]Event = undefined,
+    event_count: u8 = 0,
 
     pub fn write(s: Snapshot, w: *Writer) void {
         w.u32v(s.time);
@@ -376,6 +558,10 @@ pub const Snapshot = struct {
         w.u8v(s.count);
 
         for (s.ents[0..s.count]) |e| e.write(w);
+
+        w.u8v(s.event_count);
+
+        for (s.events[0..s.event_count]) |e| e.write(w);
     }
 
     pub fn read(r: *Reader) Snapshot {
@@ -389,6 +575,10 @@ pub const Snapshot = struct {
         s.count = @min(r.u8v(), max_slots);
 
         for (s.ents[0..s.count]) |*e| e.* = Ent.read(r);
+
+        s.event_count = @min(r.u8v(), max_events);
+
+        for (s.events[0..s.event_count]) |*e| e.* = Event.read(r);
 
         return s;
     }
@@ -438,4 +628,31 @@ test "roundtrip" {
     try std.testing.expectEqual(@as(u16, 7), out.hits[0].id);
     try std.testing.expect(@abs(out.yaw - 1.2) < 0.001);
     try std.testing.expect(newer(2, 65535));
+}
+
+test "snapshot rides and events" {
+    var s: Snapshot = .{ .time = 9, .count = 1 };
+
+    s.ents[0] = .{ .slot = 2, .flags = EntFlag.riding, .ride = .{ .kind = RideKind.air, .index = 5, .flags = RideFlag.occupied, .pos = .{ .x = 10, .y = 700, .z = -3 }, .yaw = 1, .pitch = -0.3, .roll = 0.5, .speed = 80 } };
+    s.events[0] = .{ .seq = 4, .kind = .boom, .slot = 2, .id = 77, .what = Shot.grenade, .pos = .{ .x = 1, .y = 2, .z = 3 }, .radius = 6.5, .damage = 120 };
+    s.event_count = 1;
+
+    var w: Writer = .{};
+
+    w.start(.{ .kind = .snapshot, .code = 1, .token = 1 });
+    s.write(&w);
+
+    var r: Reader = .{ .data = w.bytes() };
+
+    _ = r.header().?;
+
+    const out = Snapshot.read(&r);
+
+    try std.testing.expect(r.ok);
+    try std.testing.expectEqual(@as(u8, 5), out.ents[0].ride.index);
+    try std.testing.expect(@abs(out.ents[0].ride.pos.y - 700) < 0.01);
+    try std.testing.expect(@abs(out.ents[0].ride.roll - 0.5) < 0.001);
+    try std.testing.expectEqual(@as(u16, 77), out.events[0].id);
+    try std.testing.expectEqual(EventKind.boom, out.events[0].kind);
+    try std.testing.expect(@abs(out.events[0].radius - 6.5) < 0.01);
 }

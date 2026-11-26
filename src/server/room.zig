@@ -23,6 +23,8 @@ const human_timeout: f64 = 20;
 const room_idle: f64 = 45;
 const history = 64;
 const bot_reaction: f32 = 0.45;
+const event_ring = 64;
+const event_ticks = 12;
 
 const Sample = struct {
     time: u32 = 0,
@@ -70,6 +72,9 @@ const Ent = struct {
     stuck: f32 = 0,
     mag: u16 = 0,
     reload: f32 = 0,
+    ride: net.Ride = .{},
+    ev_ack: u16 = 0,
+    ev_known: bool = false,
 
     fn center(e: Ent) Vec3 {
         return e.pos.add(.{ .y = movement.height / 2 });
@@ -89,6 +94,38 @@ const Room = struct {
     fill: u8,
     hits_ok: u32 = 0,
     hits_bad: u32 = 0,
+    events: [event_ring]net.Event = undefined,
+    event_tick: [event_ring]u64 = @splat(0),
+    event_total: u32 = 0,
+    ground: [net.max_ground]?net.Ride = @splat(null),
+    air: [net.max_air]?net.Ride = @splat(null),
+    park_cursor: usize = 0,
+    park_next: usize = 0,
+
+    fn pushEvent(r: *Room, e: net.Event) void {
+        const at = r.event_total % event_ring;
+        var copy = e;
+
+        copy.seq = @truncate(r.event_total +% 1);
+        r.events[at] = copy;
+        r.event_tick[at] = r.tick;
+        r.event_total +%= 1;
+    }
+
+    fn park(r: *Room, ride: net.Ride) void {
+        if (!ride.valid()) return;
+
+        var rest = ride;
+
+        rest.flags &= ~net.RideFlag.occupied;
+
+        const keep: ?net.Ride = if (ride.flags & net.RideFlag.wrecked != 0) null else rest;
+
+        switch (ride.kind) {
+            net.RideKind.ground => r.ground[ride.index] = keep,
+            else => r.air[ride.index] = keep,
+        }
+    }
 
     fn rand(r: *Room) f32 {
         return r.prng.random().float(f32);
@@ -305,7 +342,25 @@ const Room = struct {
             }
         }
 
+        for (in.events[0..in.event_count]) |ev| {
+            if (e.ev_known and !net.newer(ev.seq, e.ev_ack)) continue;
+
+            e.ev_ack = ev.seq;
+            e.ev_known = true;
+
+            if (!ev.valid()) continue;
+
+            var out = ev;
+
+            out.slot = @intCast(slot);
+            r.pushEvent(out);
+        }
+
         if (in.flags & net.InFlag.loading != 0) return;
+
+        e.ride = if (in.ride.valid()) in.ride else .{};
+
+        if (e.ride.kind != net.RideKind.none) r.park(e.ride);
 
         if (!e.spawned) {
             e.spawned = true;
@@ -580,6 +635,7 @@ const Room = struct {
             if (e.bot) flags |= net.EntFlag.bot;
             if (e.aiming) flags |= net.EntFlag.aiming;
             if (e.grounded) flags |= net.EntFlag.grounded;
+            if (e.ride.kind != net.RideKind.none) flags |= net.EntFlag.riding;
 
             s.ents[s.count] = .{
                 .slot = @intCast(i),
@@ -595,8 +651,24 @@ const Room = struct {
                 .deaths = e.deaths,
                 .attacker = e.attacker,
                 .warp = e.warp,
+                .ride = e.ride,
             };
             s.count += 1;
+        }
+
+        const first = r.event_total -| @min(r.event_total, event_ring);
+        var k = first;
+
+        while (k < r.event_total) : (k += 1) {
+            if (r.tick - r.event_tick[k % event_ring] > event_ticks) continue;
+
+            if (s.event_count == net.max_events) {
+                std.mem.copyForwards(net.Event, s.events[0 .. net.max_events - 1], s.events[1..]);
+                s.event_count -= 1;
+            }
+
+            s.events[s.event_count] = r.events[k % event_ring];
+            s.event_count += 1;
         }
 
         const roster = r.tick % (net.tick_hz / 2) == 0;
@@ -618,6 +690,8 @@ const Room = struct {
 
             if (roster) r.sendRoster(udp, e);
         }
+
+        if (roster) r.park_cursor = r.park_next;
     }
 
     fn sendRoster(r: *Room, udp: c_int, to: Ent) void {
@@ -639,6 +713,30 @@ const Room = struct {
             w.u8v(@intFromBool(e.bot));
             w.name(e.name);
         }
+
+        var parked: [net.max_parked]net.Ride = undefined;
+
+        r.park_next = r.park_cursor;
+
+        var n: usize = 0;
+        const total = net.max_ground + net.max_air;
+        var seen: usize = 0;
+
+        while (seen < total and n < parked.len) : (seen += 1) {
+            const at = (r.park_cursor + seen) % total;
+            const ride = if (at < net.max_ground) r.ground[at] else r.air[at - net.max_ground];
+
+            if (ride) |p| {
+                parked[n] = p;
+                n += 1;
+
+                if (n == parked.len) r.park_next = (at + 1) % total;
+            }
+        }
+
+        w.u8v(@intCast(n));
+
+        for (parked[0..n]) |p| p.write(&w);
 
         server.sendTo(udp, to.addr, w.bytes());
     }

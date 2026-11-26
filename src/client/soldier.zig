@@ -330,7 +330,7 @@ pub fn draw(r: *gfx.Renderer, rig: *Rig, kit: Kit, models: *const models_mod.Mod
     if (!rig.ok) return;
 
     for (g.bots.items, 0..) |b, i| {
-        if (!b.active) continue;
+        if (!b.active or b.riding) continue;
 
         const track = &rig.tracks[i % rig.tracks.len];
 

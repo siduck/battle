@@ -755,6 +755,23 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
         }
     }
 
+    for (g.bots.items) |b| {
+        if (!b.active or !b.riding) continue;
+
+        const k = b.seat orelse continue;
+
+        if (k >= g.vehicles.len) continue;
+
+        const car = g.vehicles[k];
+        const s = car.spec();
+
+        if (s.class == .tank) continue;
+
+        const drop: f32 = if (s.class == .car) 0.82 else 0.5;
+
+        soldier.drawRider(r, rig, kit, models, arts, vehicleart.seatPoint(car, 1), vehicleart.bodyBasis(car), drop, b.weapon, null, 0, 0);
+    }
+
     r.setSurface(.{ .roughness = 0.7 });
     mark(4);
     soldier.draw(r, rig, kit, models, arts, g, g.accumulator / movement.dt, dt);
