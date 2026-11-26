@@ -323,6 +323,12 @@ const AndroidApp = extern struct {
     on_app_cmd: ?*anyopaque,
     on_input_event: ?*anyopaque,
     activity: ?*anyopaque,
+    config: ?*anyopaque,
+    saved_state: ?*anyopaque,
+    saved_state_size: usize,
+    looper: ?*anyopaque,
+    input_queue: ?*anyopaque,
+    window: ?*anyopaque,
 };
 
 extern fn GetAndroidApp() ?*AndroidApp;
@@ -376,6 +382,18 @@ fn keepScreenOn() void {
     const app = GetAndroidApp() orelse return;
 
     ANativeActivity_setWindowFlags(app.activity, 0x80, 0);
+    askFullRefresh(app);
+}
+
+fn askFullRefresh(app: *AndroidApp) void {
+    const window = app.window orelse return;
+    const sym = std.c.dlsym(null, "ANativeWindow_setFrameRate") orelse return;
+    const setRate: *const fn (?*anyopaque, f32, i8) callconv(.c) i32 = @ptrCast(@alignCast(sym));
+
+    var buf: [64]u8 = undefined;
+    const line = std.fmt.bufPrintSentinel(&buf, "set frame rate {d}", .{setRate(window, 144, 0)}, 0) catch return;
+
+    rl.TraceLog(rl.LOG_INFO, "%s", line.ptr);
 }
 
 fn placeCamera(game: *Game, spec: []const u8) void {
@@ -561,6 +579,31 @@ var prism_glow: gfx.Glow = .{};
 var auto_scale: f32 = 1;
 var slow_time: f32 = 0;
 var fast_time: f32 = 0;
+
+var stat_t: f32 = 0;
+var stat_n: f32 = 0;
+var stat_cpu: f32 = 0;
+var stat_swap: f32 = 0;
+
+fn frameStats(dt: f32, cpu: f32, swap: f32) void {
+    if (!assets.mobile) return;
+
+    stat_t += dt;
+    stat_n += 1;
+    stat_cpu += cpu;
+    stat_swap += swap;
+
+    if (stat_t < 2) return;
+
+    var buf: [128]u8 = undefined;
+    const line = std.fmt.bufPrintSentinel(&buf, "frame fps {d:.0} cpu {d:.1} ms swap {d:.1} ms scale {d:.2}", .{ stat_n / stat_t, stat_cpu / stat_n * 1000, stat_swap / stat_n * 1000, sceneScale() }, 0) catch return;
+
+    rl.TraceLog(rl.LOG_INFO, "%s", line.ptr);
+    stat_t = 0;
+    stat_n = 0;
+    stat_cpu = 0;
+    stat_swap = 0;
+}
 
 fn sceneScale() f32 {
     return settings.render_scale * auto_scale;
@@ -987,6 +1030,8 @@ pub fn main() void {
 
         if (rl.IsKeyPressed(rl.KEY_F5)) restart(app_dir);
 
+        const frame_start = rl.GetTime();
+
         if (boom_test) {
             boom_timer -= frame_dt;
 
@@ -1249,6 +1294,9 @@ pub fn main() void {
             pad_toast -= frame_dt;
             padToast(font, pad_seen, pad_name[0..pad_name_len :0], pad_toast);
         }
+        const cpu_end = rl.GetTime();
+
         rl.EndDrawing();
+        frameStats(frame_dt, @floatCast(cpu_end - frame_start), @floatCast(rl.GetTime() - cpu_end));
     }
 }
