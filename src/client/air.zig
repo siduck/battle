@@ -265,6 +265,28 @@ pub fn load() void {
     }
 }
 
+pub fn dropUnused() void {
+    var used: [count]bool = @splat(false);
+
+    for (crafts) |c| {
+        if (c.active) used[c.kind] = true;
+    }
+
+    for (&art, 0..) |*slot, i| {
+        if (used[i]) continue;
+
+        const a = slot.* orelse continue;
+
+        rl.UnloadModel(a.body);
+
+        if (a.rotor) |m| rl.UnloadModel(m);
+
+        if (a.tail) |m| rl.UnloadModel(m);
+
+        slot.* = null;
+    }
+}
+
 fn place(slot: usize, kind: u8, pos: Vec3, yaw: f32) void {
     const s = specs[kind];
 

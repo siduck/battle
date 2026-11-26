@@ -28,10 +28,12 @@ const HeroArt = struct {
 pub const Art = struct {
     models: [vehicle.count]?HeroArt = @splat(null),
 
-    pub fn build(cars_dir: []const u8) Art {
+    pub fn build(cars_dir: []const u8, want: *const [vehicle.count]bool) Art {
         var a: Art = .{};
 
         for (heroes) |h| {
+            if (!want[h.kind]) continue;
+
             if (tick) |t| t();
 
             const body = load(cars_dir, h.dir, "body") orelse continue;

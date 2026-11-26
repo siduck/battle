@@ -989,8 +989,6 @@ pub fn main() void {
     var cars_buf: [512]u8 = undefined;
     const cars_dir = assets.dir(&cars_buf, "cars");
     loadStep("Loading vehicles", 0.9);
-    const cars = vehicleart.Art.build(cars_dir);
-
     air.load();
     const font = loadFont(font_data);
     var game = Game.init(@intFromFloat(rl.GetTime() * 1000 + 7));
@@ -1000,6 +998,17 @@ pub fn main() void {
     var touch: touch_mod.Touch = .{};
 
     game.parkVehicles();
+
+    var want_cars: [shared.vehicle.count]bool = @splat(true);
+    const any_car = std.c.getenv("DF_GARAGE") != null or std.c.getenv("DF_CAR") != null or std.c.getenv("DF_DRIVE") != null or std.c.getenv("DF_SHOWCASE") != null;
+
+    if (!any_car) {
+        for (game.vehicles, 0..) |v, i| want_cars[i] = v.wreck < 1e8;
+
+        air.dropUnused();
+    }
+
+    const cars = vehicleart.Art.build(cars_dir, &want_cars);
 
     if (net.active) {
         game_mod.online = true;
