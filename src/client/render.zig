@@ -676,6 +676,8 @@ fn indoors(eye: Vec3) bool {
 pub var clean_shot = false;
 
 pub var part_ms: [7]f32 = @splat(0);
+pub var test_models: [6]?rl.Model = @splat(null);
+pub var test_spots: [6]rl.Matrix = undefined;
 pub var skip: u32 = 0;
 
 fn on(bit: u32) bool {
@@ -705,6 +707,10 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
     r.setPropDetail(true);
     if (on(4)) scenery.draw(r, v.eye, v.forward);
+
+    for (test_models, test_spots) |m, at| {
+        if (m) |model| r.drawModel(model, at);
+    }
     mark(2);
     if (on(8)) cover.draw(r, v.eye);
     mark(3);

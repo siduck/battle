@@ -31,6 +31,13 @@ Performance is a feature here, not a later pass. These rules are permanent:
   - no hardcoded resolution caps
   - lighting stays sun plus hemisphere fill, with no shadows, reflections or post effects
 
+## Making assets
+
+New buildings, props, weapons and vehicles are made with the project's own Blender toolkit, not
+downloaded packs: load the `dronefire-assets` skill. Every asset is a recipe in
+`tools/blender/assets/`, built from `tools/blender/kit/dfkit.py`, previewed, checked against its
+triangle budget, and verified in the game with `DF_ASSET`.
+
 ## Other rules
 
 - Test on hidden Xvfb displays only, never the user's display. Kill only processes you started.
