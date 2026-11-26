@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, json, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ["DIR"] = "pirate"
 import pf
@@ -22,6 +22,124 @@ def src_of(src):
             return p
 
     return os.path.join(P, src + ".glb")
+
+
+X = os.path.expanduser("~/.cache/polyfork/cprc_x")
+
+
+def xp(i):
+    return os.path.join(X, i + ".glb")
+
+
+def squeeze(path):
+    raw = open(path, "rb").read()
+    jlen = struct.unpack("<I", raw[12:16])[0]
+    doc = json.loads(raw[20:20 + jlen])
+    bin0 = raw[20 + jlen + 8:]
+    acc = doc["accessors"]
+    views = doc["bufferViews"]
+    sizes = {5126: 4, 5123: 2, 5125: 4, 5121: 1}
+    comps = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}
+
+    def read(i):
+        a = acc[i]
+        v = views[a["bufferView"]]
+        n = comps[a["type"]]
+        ct = a["componentType"]
+        fmt = {5126: "f", 5123: "H", 5125: "I", 5121: "B"}[ct]
+        off = v.get("byteOffset", 0) + a.get("byteOffset", 0)
+        stride = v.get("byteStride", sizes[ct] * n)
+        out = []
+
+        for k in range(a["count"]):
+            out.append(struct.unpack_from("<%d%s" % (n, fmt), bin0, off + k * stride))
+
+        if a.get("normalized"):
+            d = {5123: 65535.0, 5121: 255.0}[ct]
+            out = [tuple(x / d for x in t) for t in out]
+
+        return out
+
+    blob = bytearray()
+    new_views = []
+    new_acc = []
+
+    def push(data, target):
+        while len(blob) % 4:
+            blob.append(0)
+
+        new_views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": len(data), "target": target})
+        blob.extend(data)
+
+        return len(new_views) - 1
+
+    for mesh in doc["meshes"]:
+        for prim in mesh["primitives"]:
+            at = prim["attributes"]
+            pos = read(at["POSITION"])
+            nor = read(at["NORMAL"]) if "NORMAL" in at else [(0.0, 1.0, 0.0)] * len(pos)
+            col = read(at["COLOR_0"]) if "COLOR_0" in at else [(1.0, 1.0, 1.0, 1.0)] * len(pos)
+            idx = [t[0] for t in read(prim["indices"])] if "indices" in prim else list(range(len(pos)))
+            seen = {}
+            vp, vn, vc, out = [], [], [], []
+
+            for i in idx:
+                p = pos[i]
+                n = nor[i]
+                c = tuple(max(0, min(255, int(round(x * 255)))) for x in col[i][:3])
+                key = (round(p[0], 4), round(p[1], 4), round(p[2], 4), round(n[0], 2), round(n[1], 2), round(n[2], 2), c)
+                j = seen.get(key)
+
+                if j is None:
+                    j = len(vp)
+                    seen[key] = j
+                    vp.append(p)
+                    vn.append(n)
+                    vc.append(c)
+
+                out.append(j)
+
+            big = len(vp) > 65535
+            base = len(new_acc)
+            pv = push(b"".join(struct.pack("<3f", *p) for p in vp), 34962)
+            nv = push(b"".join(struct.pack("<3f", *n) for n in vn), 34962)
+            cv = push(b"".join(struct.pack("<4B", c[0], c[1], c[2], 255) for c in vc), 34962)
+            iv = push(struct.pack("<%d%s" % (len(out), "I" if big else "H"), *out), 34963)
+            mn = [min(p[k] for p in vp) for k in range(3)]
+            mx = [max(p[k] for p in vp) for k in range(3)]
+            new_acc.append({"bufferView": pv, "componentType": 5126, "count": len(vp), "type": "VEC3", "min": mn, "max": mx})
+            new_acc.append({"bufferView": nv, "componentType": 5126, "count": len(vp), "type": "VEC3"})
+            new_acc.append({"bufferView": cv, "componentType": 5121, "normalized": True, "count": len(vp), "type": "VEC4"})
+            new_acc.append({"bufferView": iv, "componentType": 5125 if big else 5123, "count": len(out), "type": "SCALAR"})
+            prim["attributes"] = {"POSITION": base, "NORMAL": base + 1, "COLOR_0": base + 2}
+            prim["indices"] = base + 3
+
+    while len(blob) % 4:
+        blob.append(0)
+
+    doc["accessors"] = new_acc
+    doc["bufferViews"] = new_views
+    doc["buffers"] = [{"byteLength": len(blob)}]
+    js = json.dumps(doc, separators=(",", ":")).encode()
+
+    while len(js) % 4:
+        js += b" "
+
+    total = 12 + 8 + len(js) + 8 + len(blob)
+
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, total))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A))
+        f.write(js)
+        f.write(struct.pack("<II", len(blob), 0x004E4942))
+        f.write(blob)
+
+
+def squeeze_dir(d):
+    for f in sorted(os.listdir(d)):
+        if f.endswith(".glb"):
+            squeeze(os.path.join(d, f))
+
 
 
 def fresh():
@@ -55,6 +173,18 @@ def swap(src, dst, tol=0.09):
                     l[col] = (min(1, dst[0] * k), min(1, dst[1] * k), min(1, dst[2] * k), 1.0)
 
     return go
+
+
+def woodify(bm):
+    col = bm.loops.layers.float_color["Col"]
+
+    for f in bm.faces:
+        for l in f.loops:
+            c = l[col]
+
+            if max(c[:3]) - min(c[:3]) < 0.1:
+                g = (c[0] + c[1] + c[2]) / 3
+                l[col] = (g * 0.62, g * 0.42, g * 0.26, 1.0)
 
 
 def hemisphere(n):
@@ -181,9 +311,6 @@ PIECES = [
     p("hull", "pirate-sloop-hull-89cd04", group="building", collide="none"),
     p("wreck", "wrecked-hull-section-ca6755", 1.4, group="building", collide="none"),
     p("pier", "pier-deck-section-7047d7", group="building", collide="none"),
-    p("pcorner", "pier-deck-corner-c56248", group="building", collide="none"),
-    p("pstair", "pier-access-stair-7369dc", collide="none"),
-    p("railing", "pier-rope-railing-616f5d", collide="none"),
     p("gangplank", "gangplank-572d4e", collide="none"),
     p("mooring", "mooring-post-2b83a4", collide="cylinder"),
     p("lantern", "dock-lantern-post-5e58a4", collide="cylinder"),
@@ -200,7 +327,6 @@ PIECES = [
     p("wheel", "ship-s-wheel-7e7426", collide="none"),
     p("rope", "rope-coil-776dcc", collide="none"),
     p("netrack", "drying-net-rack-93ec3b", collide="none"),
-    p("signpost", "signpost-ed3d77", collide="cylinder"),
     p("signboard", "hanging-signboard-c10e01", collide="cylinder"),
     p("palisade", "palisade-fence-section-471b1b", collide="none"),
     p("campfire", "campfire-4390aa", collide="none"),
@@ -220,7 +346,12 @@ PIECES = [
     p("spire", "rock-spire-13819c", 2.0, group="rock"),
     p("karst", "karst-limestone-peak-ee1b76", 3.0, group="building", collide="none", k=(0.84, 0.82, 0.76)),
     p("stack", "sea-stack-369791", 2.6, group="building", collide="none"),
-    p("stone", "large-path-stone-1b0844", 1.4, group="ground", collide="none", ao=False),
+    p("tent", xp("canvas-ridge-tent-f0df0d"), 1.5, group="building", collide="none"),
+    p("walltent", xp("canvas-wall-tent-de8a04"), 1.4, group="building", collide="none"),
+    p("bigtent", xp("soldiers-tent-4bd5b9"), 1.5, group="building", collide="none"),
+    p("flag", xp("flagpole-7b7806"), 1.4, collide="cylinder", post=woodify),
+    p("tarp", xp("camouflage-net-canopy-ce6249"), 1.4, group="building", collide="none", k=(1.05, 0.92, 0.78)),
+    p("freight", xp("freight-crate-and-sack-f49cbb"), 1.0),
     g("foam", lambda: foam(7.0, 0.9, 1), "ground", "none", ao=False),
     g("ripple", lambda: ripple(9.0, 4), "ground", "none", ao=False),
 ]
@@ -265,6 +396,7 @@ def main():
         print("DONE", name, info["tris"], [round(v, 2) for v in info["min"]], [round(v, 2) for v in info["max"]], len(blocks))
 
     emit_zig("pirate", infos, os.path.join(root, "src/shared/maps/pirate_kit.zig"))
+    squeeze_dir(pf.OUT)
 
 
 main()

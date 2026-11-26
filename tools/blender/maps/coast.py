@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, json, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ["DIR"] = "coast"
 import pf
@@ -211,6 +211,124 @@ def road_line():
     return bm
 
 
+X = os.path.expanduser("~/.cache/polyfork/cprc_x")
+
+
+def xp(i):
+    return os.path.join(X, i + ".glb")
+
+
+def squeeze(path):
+    raw = open(path, "rb").read()
+    jlen = struct.unpack("<I", raw[12:16])[0]
+    doc = json.loads(raw[20:20 + jlen])
+    bin0 = raw[20 + jlen + 8:]
+    acc = doc["accessors"]
+    views = doc["bufferViews"]
+    sizes = {5126: 4, 5123: 2, 5125: 4, 5121: 1}
+    comps = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}
+
+    def read(i):
+        a = acc[i]
+        v = views[a["bufferView"]]
+        n = comps[a["type"]]
+        ct = a["componentType"]
+        fmt = {5126: "f", 5123: "H", 5125: "I", 5121: "B"}[ct]
+        off = v.get("byteOffset", 0) + a.get("byteOffset", 0)
+        stride = v.get("byteStride", sizes[ct] * n)
+        out = []
+
+        for k in range(a["count"]):
+            out.append(struct.unpack_from("<%d%s" % (n, fmt), bin0, off + k * stride))
+
+        if a.get("normalized"):
+            d = {5123: 65535.0, 5121: 255.0}[ct]
+            out = [tuple(x / d for x in t) for t in out]
+
+        return out
+
+    blob = bytearray()
+    new_views = []
+    new_acc = []
+
+    def push(data, target):
+        while len(blob) % 4:
+            blob.append(0)
+
+        new_views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": len(data), "target": target})
+        blob.extend(data)
+
+        return len(new_views) - 1
+
+    for mesh in doc["meshes"]:
+        for prim in mesh["primitives"]:
+            at = prim["attributes"]
+            pos = read(at["POSITION"])
+            nor = read(at["NORMAL"]) if "NORMAL" in at else [(0.0, 1.0, 0.0)] * len(pos)
+            col = read(at["COLOR_0"]) if "COLOR_0" in at else [(1.0, 1.0, 1.0, 1.0)] * len(pos)
+            idx = [t[0] for t in read(prim["indices"])] if "indices" in prim else list(range(len(pos)))
+            seen = {}
+            vp, vn, vc, out = [], [], [], []
+
+            for i in idx:
+                p = pos[i]
+                n = nor[i]
+                c = tuple(max(0, min(255, int(round(x * 255)))) for x in col[i][:3])
+                key = (round(p[0], 4), round(p[1], 4), round(p[2], 4), round(n[0], 2), round(n[1], 2), round(n[2], 2), c)
+                j = seen.get(key)
+
+                if j is None:
+                    j = len(vp)
+                    seen[key] = j
+                    vp.append(p)
+                    vn.append(n)
+                    vc.append(c)
+
+                out.append(j)
+
+            big = len(vp) > 65535
+            base = len(new_acc)
+            pv = push(b"".join(struct.pack("<3f", *p) for p in vp), 34962)
+            nv = push(b"".join(struct.pack("<3f", *n) for n in vn), 34962)
+            cv = push(b"".join(struct.pack("<4B", c[0], c[1], c[2], 255) for c in vc), 34962)
+            iv = push(struct.pack("<%d%s" % (len(out), "I" if big else "H"), *out), 34963)
+            mn = [min(p[k] for p in vp) for k in range(3)]
+            mx = [max(p[k] for p in vp) for k in range(3)]
+            new_acc.append({"bufferView": pv, "componentType": 5126, "count": len(vp), "type": "VEC3", "min": mn, "max": mx})
+            new_acc.append({"bufferView": nv, "componentType": 5126, "count": len(vp), "type": "VEC3"})
+            new_acc.append({"bufferView": cv, "componentType": 5121, "normalized": True, "count": len(vp), "type": "VEC4"})
+            new_acc.append({"bufferView": iv, "componentType": 5125 if big else 5123, "count": len(out), "type": "SCALAR"})
+            prim["attributes"] = {"POSITION": base, "NORMAL": base + 1, "COLOR_0": base + 2}
+            prim["indices"] = base + 3
+
+    while len(blob) % 4:
+        blob.append(0)
+
+    doc["accessors"] = new_acc
+    doc["bufferViews"] = new_views
+    doc["buffers"] = [{"byteLength": len(blob)}]
+    js = json.dumps(doc, separators=(",", ":")).encode()
+
+    while len(js) % 4:
+        js += b" "
+
+    total = 12 + 8 + len(js) + 8 + len(blob)
+
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, total))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A))
+        f.write(js)
+        f.write(struct.pack("<II", len(blob), 0x004E4942))
+        f.write(blob)
+
+
+def squeeze_dir(d):
+    for f in sorted(os.listdir(d)):
+        if f.endswith(".glb"):
+            squeeze(os.path.join(d, f))
+
+
+
 def b(name, src, scale=1.0, post=None, k=None, rot=0.0):
     return (name, lambda: ext(src, scale, k, rot, post), {"group": "building", "collide": "none", "kind": "building"})
 
@@ -232,7 +350,8 @@ PIECES = [
     b("terrace_c", "townhouse-row-unit-b9544b", post=swap(SIDING, (0.95, 0.72, 0.72))),
     b("terrace_d", "townhouse-row-unit-b9544b", post=swap(SIDING, (0.97, 0.86, 0.55))),
     b("villa", "two-storey-family-house-c63c4a", 0.85),
-    b("cottage", "crossing-keeper-s-cottage-de49a4"),
+    b("cottage", "porch-front-cottage-620c29", 0.9),
+    b("split", "split-level-house-40fe1a", 0.85),
     b("corner", "corner-shop-5aec8c"),
     b("hotel", "brownstone-row-house-1b84fd", 0.9),
     b("tavern", "cove-tavern-5861a6"),
@@ -244,11 +363,9 @@ PIECES = [
     b("bandstand", "promenade-bandstand-1a71b5"),
     b("kiosk", "beach-cafe-kiosk-9e8f6d"),
     p("hut", "beach-hut-fc7649", group="building"),
-    p("hut_b", "beach-hut-fc7649", group="building", post=swap((0.96, 0.95, 0.92), (0.96, 0.74, 0.7), 0.05)),
     p("tower", "lifeguard-tower-183c37", group="building", collide="none"),
     p("cubicles", "changing-cubicle-row-5bac7f", group="building"),
     p("shelter", "promenade-shelter-788f46", group="building", collide="none"),
-    p("pierhead", "pier-head-platform-63662b", group="building", collide="none"),
     p("seawall", "sea-wall-run-91e459", group="building", collide="none"),
     p("groyne", "groyne-run-971623", group="building", collide="none"),
     p("revet", "rock-armour-revetment-aea1ca", group="rock", collide="none"),
@@ -276,11 +393,17 @@ PIECES = [
     p("paving", "promenade-paving-tile-5656ce", group="ground", collide="none", ao=False, k=(0.86, 0.8, 0.72)),
     p("sidewalk", "sidewalk-tile-09d894", group="ground", collide="none", ao=False, k=(0.92, 0.9, 0.86)),
     p("planter", "flower-planter-500ed2", 2.2),
-    p("bikes", "campus-bike-rack-386d4d", collide="none"),
-    p("newsstand", "newsstand-6dfd65"),
     p("tree", "street-tree-0d33f3", 1.0, group="tree", collide="trunk"),
     p("pine", "sculpted-pine-e45d4f", 2.2, group="tree", collide="trunk", k=(0.86, 0.92, 0.8)),
     p("shrub", "trimmed-foundation-shrub-616ce0", 1.3, group="bush", collide="none", k=(0.72, 0.84, 0.56)),
+    p("awning", xp("fabric-awning-4d6acc"), 1.0, collide="none"),
+    p("stall", xp("market-stall-94937d"), 1.2),
+    p("rod", xp("propped-fishing-rod-072978"), 1.0, collide="none"),
+    p("fishcrate", xp("fish-crate-3c3f7b"), 1.0),
+    p("deckchair", "striped-deck-chair-70b506", 1.0, collide="none"),
+    p("tamarisk", "tamarisk-bush-ba4337", 1.4, group="tree", collide="trunk"),
+    p("jetty", "boardwalk-deck-run-c1f678", 1.0, group="building", collide="none"),
+    p("picnicshelter", "park-picnic-shelter-9548a3", 1.0, group="building", collide="none"),
     g("deck", deck, "building", "none"),
     g("piles", piles, "building", "none"),
     g("rail", rail, "street", "none"),
@@ -330,6 +453,7 @@ def main():
         print("DONE", name, info["tris"], [round(v, 2) for v in info["min"]], [round(v, 2) for v in info["max"]], len(blocks))
 
     emit_zig("coast", infos, os.path.join(root, "src/shared/maps/coast_kit.zig"))
+    squeeze_dir(pf.OUT)
 
 
 main()

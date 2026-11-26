@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, json, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ["DIR"] = "racing"
 import pf
@@ -159,6 +159,176 @@ def road_line():
     return bm
 
 
+X = os.path.expanduser("~/.cache/polyfork/cprc_x")
+
+
+def xp(i):
+    return os.path.join(X, i + ".glb")
+
+
+def container(c):
+    def go():
+        bm = fresh()
+        dark = (c[0] * 0.7, c[1] * 0.7, c[2] * 0.7)
+        add_box(bm, (-3.0, -1.2, 0.0), (3.0, 1.2, 2.6), c)
+
+        for i in range(13):
+            x = -2.9 + i * 0.48
+            add_box(bm, (x, -1.26, 0.15), (x + 0.2, 1.26, 2.45), dark)
+
+        for x in (-3.04, 2.96):
+            add_box(bm, (x, -1.24, 0.0), (x + 0.08, 1.24, 2.62), (0.22, 0.22, 0.24))
+
+        add_box(bm, (-3.04, -1.24, 2.55), (3.04, 1.24, 2.64), dark)
+        add_box(bm, (2.97, -0.5, 0.4), (3.03, -0.45, 2.2), (0.75, 0.75, 0.72))
+        add_box(bm, (2.97, 0.45, 0.4), (3.03, 0.5, 2.2), (0.75, 0.75, 0.72))
+
+        return bm
+
+    return go
+
+
+def jersey():
+    bm = fresh()
+
+    for i in range(2):
+        x0 = -2.0 + i * 2.0
+        c = (0.82, 0.8, 0.76) if i == 0 else (0.76, 0.74, 0.7)
+        add_box(bm, (x0 + 0.02, -0.32, 0.0), (x0 + 1.98, 0.32, 0.25), c)
+        add_box(bm, (x0 + 0.02, -0.2, 0.25), (x0 + 1.98, 0.2, 0.6), c)
+        add_box(bm, (x0 + 0.02, -0.12, 0.6), (x0 + 1.98, 0.12, 0.85), c)
+        add_box(bm, (x0 + 0.3, -0.13, 0.62), (x0 + 0.9, 0.13, 0.8), (0.86, 0.16, 0.12))
+        add_box(bm, (x0 + 1.1, -0.13, 0.62), (x0 + 1.7, 0.13, 0.8), (0.95, 0.94, 0.92))
+
+    return bm
+
+
+def tyrewall():
+    bm = fresh()
+    cols = [(0.86, 0.16, 0.12), (0.95, 0.94, 0.92)]
+
+    for i in range(5):
+        for j in range(3):
+            x = -2.0 + i * 0.8 + 0.4
+            c = cols[(i + j) % 2] if j == 2 else (0.13, 0.13, 0.14)
+            add_box(bm, (x - 0.36, -0.36, j * 0.3), (x + 0.36, 0.36, j * 0.3 + 0.28), c)
+
+    add_box(bm, (-2.0, 0.37, 0.05), (2.0, 0.42, 0.85), (0.2, 0.42, 0.72))
+
+    return bm
+
+
+def squeeze(path):
+    raw = open(path, "rb").read()
+    jlen = struct.unpack("<I", raw[12:16])[0]
+    doc = json.loads(raw[20:20 + jlen])
+    bin0 = raw[20 + jlen + 8:]
+    acc = doc["accessors"]
+    views = doc["bufferViews"]
+    sizes = {5126: 4, 5123: 2, 5125: 4, 5121: 1}
+    comps = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}
+
+    def read(i):
+        a = acc[i]
+        v = views[a["bufferView"]]
+        n = comps[a["type"]]
+        ct = a["componentType"]
+        fmt = {5126: "f", 5123: "H", 5125: "I", 5121: "B"}[ct]
+        off = v.get("byteOffset", 0) + a.get("byteOffset", 0)
+        stride = v.get("byteStride", sizes[ct] * n)
+        out = []
+
+        for k in range(a["count"]):
+            out.append(struct.unpack_from("<%d%s" % (n, fmt), bin0, off + k * stride))
+
+        if a.get("normalized"):
+            d = {5123: 65535.0, 5121: 255.0}[ct]
+            out = [tuple(x / d for x in t) for t in out]
+
+        return out
+
+    blob = bytearray()
+    new_views = []
+    new_acc = []
+
+    def push(data, target):
+        while len(blob) % 4:
+            blob.append(0)
+
+        new_views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": len(data), "target": target})
+        blob.extend(data)
+
+        return len(new_views) - 1
+
+    for mesh in doc["meshes"]:
+        for prim in mesh["primitives"]:
+            at = prim["attributes"]
+            pos = read(at["POSITION"])
+            nor = read(at["NORMAL"]) if "NORMAL" in at else [(0.0, 1.0, 0.0)] * len(pos)
+            col = read(at["COLOR_0"]) if "COLOR_0" in at else [(1.0, 1.0, 1.0, 1.0)] * len(pos)
+            idx = [t[0] for t in read(prim["indices"])] if "indices" in prim else list(range(len(pos)))
+            seen = {}
+            vp, vn, vc, out = [], [], [], []
+
+            for i in idx:
+                p = pos[i]
+                n = nor[i]
+                c = tuple(max(0, min(255, int(round(x * 255)))) for x in col[i][:3])
+                key = (round(p[0], 4), round(p[1], 4), round(p[2], 4), round(n[0], 2), round(n[1], 2), round(n[2], 2), c)
+                j = seen.get(key)
+
+                if j is None:
+                    j = len(vp)
+                    seen[key] = j
+                    vp.append(p)
+                    vn.append(n)
+                    vc.append(c)
+
+                out.append(j)
+
+            big = len(vp) > 65535
+            base = len(new_acc)
+            pv = push(b"".join(struct.pack("<3f", *p) for p in vp), 34962)
+            nv = push(b"".join(struct.pack("<3f", *n) for n in vn), 34962)
+            cv = push(b"".join(struct.pack("<4B", c[0], c[1], c[2], 255) for c in vc), 34962)
+            iv = push(struct.pack("<%d%s" % (len(out), "I" if big else "H"), *out), 34963)
+            mn = [min(p[k] for p in vp) for k in range(3)]
+            mx = [max(p[k] for p in vp) for k in range(3)]
+            new_acc.append({"bufferView": pv, "componentType": 5126, "count": len(vp), "type": "VEC3", "min": mn, "max": mx})
+            new_acc.append({"bufferView": nv, "componentType": 5126, "count": len(vp), "type": "VEC3"})
+            new_acc.append({"bufferView": cv, "componentType": 5121, "normalized": True, "count": len(vp), "type": "VEC4"})
+            new_acc.append({"bufferView": iv, "componentType": 5125 if big else 5123, "count": len(out), "type": "SCALAR"})
+            prim["attributes"] = {"POSITION": base, "NORMAL": base + 1, "COLOR_0": base + 2}
+            prim["indices"] = base + 3
+
+    while len(blob) % 4:
+        blob.append(0)
+
+    doc["accessors"] = new_acc
+    doc["bufferViews"] = new_views
+    doc["buffers"] = [{"byteLength": len(blob)}]
+    js = json.dumps(doc, separators=(",", ":")).encode()
+
+    while len(js) % 4:
+        js += b" "
+
+    total = 12 + 8 + len(js) + 8 + len(blob)
+
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, total))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A))
+        f.write(js)
+        f.write(struct.pack("<II", len(blob), 0x004E4942))
+        f.write(blob)
+
+
+def squeeze_dir(d):
+    for f in sorted(os.listdir(d)):
+        if f.endswith(".glb"):
+            squeeze(os.path.join(d, f))
+
+
+
 def b(name, src, scale=1.0, post=None, k=None, rot=0.0):
     return (name, lambda: ext(src, scale, k, rot, post), {"group": "building", "collide": "none", "kind": "building"})
 
@@ -214,7 +384,20 @@ PIECES = [
     p("mileage", "mileage-sign-post-823c56", collide="cylinder"),
     p("lift", "hydraulic-car-lift-a5dd34", collide="none"),
     p("sidewalk", "sidewalk-tile-09d894", group="ground", collide="none", ao=False, k=(0.92, 0.9, 0.86)),
-    p("lot", "lane-marking-decal-d1a212", group="ground", collide="none", ao=False),
+    p("gazebo", xp("welcome-week-tent-stall-c27020"), 1.4, group="building", collide="none"),
+    p("shade", xp("shade-sail-canopy-66c4e4"), 1.6, group="building", collide="none"),
+    p("redflag", xp("flagpole-7b7806"), 1.2, collide="cylinder"),
+    p("camtower", xp("scaffold-camera-platform-b6702c"), 1.4, group="building"),
+    p("snack", xp("container-snack-kiosk-7036e5"), 1.2, group="building"),
+    p("fence", xp("terrace-barrier-set-30dd76"), 1.0, collide="none"),
+    p("wrap", xp("stretch-wrapped-pallet-load-b4169b")),
+    p("ibc", xp("ibc-tote-88385a")),
+    p("speed", xp("speed-limit-sign-1c55a2"), collide="cylinder"),
+    g("box_red", container((0.7, 0.24, 0.16)), "building", "box"),
+    g("box_blue", container((0.18, 0.34, 0.56)), "building", "box"),
+    g("box_white", container((0.82, 0.8, 0.76)), "building", "box"),
+    g("jersey", jersey, "street", "box"),
+    g("tyrewall", tyrewall, "street", "box"),
     g("kerb", kerb, "road", "none", ao=False),
     g("curb", curb, "road", "none", ao=False),
     g("line", road_line, "road", "none", ao=False),
@@ -261,6 +444,7 @@ def main():
         print("DONE", name, info["tris"], [round(v, 2) for v in info["min"]], [round(v, 2) for v in info["max"]], len(blocks))
 
     emit_zig("racing", infos, os.path.join(root, "src/shared/maps/racing_kit.zig"))
+    squeeze_dir(pf.OUT)
 
 
 main()

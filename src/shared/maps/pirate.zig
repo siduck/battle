@@ -152,6 +152,20 @@ fn groundColor(x: f32, z: f32) api.Rgb {
 
     if (1 - n.y > 0.4) return shade(mix3(.{ 150, 144, 132 }, .{ 120, 116, 108 }, fleck), light * ao);
 
+    const fd = dist(x, z, fort);
+
+    if (fd < 26) {
+        const jx = @mod(x + 0.3 * @floor(z / 1.4), 1.8);
+        const jz = @mod(z, 1.4);
+        const flag = fd < 12.6 and (jx < 0.12 or jz < 0.12);
+        const earth = mix3(.{ 176, 150, 112 }, .{ 158, 132, 96 }, fleck);
+        const stone = mix3(.{ 168, 160, 146 }, .{ 150, 142, 130 }, tr.fbm(x * 0.7, z * 0.7));
+        const inner = if (flag) mix3(stone, .{ 110, 104, 96 }, 0.6) else stone;
+        const outer = mix3(earth, .{ 120, 158, 74 }, tr.smooth(16, 26, fd) * (0.4 + 0.6 * tr.smooth(0.4, 0.6, tr.fbm(x * 0.09, z * 0.09))));
+
+        return shade(if (fd < 12.6) mix3(inner, earth, 0.25) else outer, light * ao);
+    }
+
     const tm = townMask(x, z);
 
     if (tm > 0.3 and z > -142) {
@@ -329,6 +343,32 @@ fn pierRun(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         if (i % 4 == 1) putAt(b, .mooring, x + (if (along_z) @as(f32, 2.3) else 0), sea_y - 0.2, z + (if (along_z) @as(f32, 0) else 2.3), 0);
 
         if (i % 5 == 3) putAt(b, .lantern, x - (if (along_z) @as(f32, 1.7) else 0), dock_top, z - (if (along_z) @as(f32, 0) else 1.7), if (along_z) half_pi else 0);
+
+        if (i % 3 == 1) {
+            const side: f32 = if (i % 2 == 0) 1.2 else -1.2;
+            const cx = x + (if (along_z) side else 0);
+            const cz = z + (if (along_z) 0 else side);
+            const pick = (i * 7 + @as(u32, @intFromFloat(@abs(x0)))) % 5;
+
+            switch (pick) {
+                0 => {
+                    putAt(b, .freight, cx, dock_top, cz, yaw);
+                },
+                1 => {
+                    putAt(b, .barrel, cx, dock_top, cz, 0);
+                    putAt(b, .barrel, cx + 0.5, dock_top, cz + 0.5, 1);
+                },
+                2 => {
+                    putAt(b, .rope, cx, dock_top, cz, 0);
+                    putAt(b, .sack, cx + 0.6, dock_top, cz - 0.4, 0.4);
+                },
+                3 => {
+                    putAt(b, .crate, cx, dock_top, cz, 0.2);
+                    putAt(b, .wcrate, cx, dock_top + 0.96, cz, 0.5);
+                },
+                else => putAt(b, .netrack, cx, dock_top, cz, yaw),
+            }
+        }
     }
 
     const end_x = if (along_z) x0 else x0 + sx * @as(f32, @floatFromInt(n)) * 3;
@@ -552,10 +592,11 @@ fn fortress(b: *Builder) void {
     const fz = fort[1];
     const y = tr.height(fx, fz);
     const r: f32 = 14;
+    const gate: f32 = 4.4;
     var a: f32 = 0;
 
     while (a < std.math.tau - 0.01) : (a += std.math.tau / 22.0) {
-        if (@abs(a - 4.4) < 0.2) continue;
+        if (@abs(a - gate) < 0.2) continue;
 
         const wx = fx + @cos(a) * r;
         const wz = fz + @sin(a) * r;
@@ -564,35 +605,177 @@ fn fortress(b: *Builder) void {
 
         putAt(b, .battery, wx, wy, wz, yaw);
         lbox(b, wx, wz, yaw, wy, .{ -2, -0.6, 2, 0.6, -0.5, 2.4 });
+    }
 
-        if (@mod(@as(i32, @intFromFloat(a * 10)), 3) == 0) {
-            const cx = fx + @cos(a) * (r - 2.2);
-            const cz = fz + @sin(a) * (r - 2.2);
+    const deck_r: f32 = 11.6;
+    const deck_h: f32 = 1.6;
+    const steps: f32 = 24;
+    var i: f32 = 0;
 
-            putAt(b, .cannon, cx, tr.height(cx, cz), cz, std.math.atan2(@cos(a), @sin(a)));
-            putAt(b, .balls, cx + 0.8, tr.height(cx + 0.8, cz), cz, 0);
+    while (i < steps) : (i += 1) {
+        const da = i / steps * std.math.tau;
+
+        if (@abs(da - gate) < 0.42 or @abs(da) < 0.14 or @abs(da - pi) < 0.14) continue;
+
+        const dx = fx + @cos(da) * deck_r;
+        const dz = fz + @sin(da) * deck_r;
+        const dy = tr.height(dx, dz);
+        const yaw = std.math.atan2(-@cos(da), -@sin(da));
+
+        putAt(b, .pier, dx, dy + deck_h - 1.56, dz, yaw);
+        box(b, dx - 1.2, dy - 0.5, dz - 1.2, dx + 1.2, dy + deck_h, dz + 1.2);
+
+        if (@mod(i, 2) == 0) {
+            const cx = fx + @cos(da) * (deck_r + 0.6);
+            const cz = fz + @sin(da) * (deck_r + 0.6);
+
+            b.putAt(of(.cannon), vec(cx, dy + deck_h, cz), std.math.atan2(@cos(da), @sin(da)), 1.3);
+            putAt(b, .balls, cx - @cos(da) * 1.4, dy + deck_h, cz - @sin(da) * 1.4, 0);
+        } else {
+            putAt(b, .barrel, dx - @cos(da) * 0.8, dy + deck_h, dz - @sin(da) * 0.8, i);
         }
+    }
+
+    for ([_]f32{ 0, pi }) |ra| {
+        const sx = @cos(ra);
+        const x0 = fx + sx * (deck_r - 3.6);
+        const x1 = fx + sx * (deck_r - 1.2);
+        const ry = tr.height(fx + sx * deck_r, fz);
+
+        putAt(b, .gangplank, (x0 + x1) / 2, ry, fz, if (sx > 0) -half_pi else half_pi);
+        b.solid(.{ .ramp = .{ .min = vec(@min(x0, x1), ry - 0.2, fz - 0.7), .max = vec(@max(x0, x1), ry + deck_h, fz + 0.7), .rise = if (sx > 0) .pos_x else .neg_x } });
+        box(b, fx + sx * deck_r - 1.2, ry - 0.5, fz - 1.2, fx + sx * deck_r + 1.2, ry + deck_h, fz + 1.2);
+        putAt(b, .pier, fx + sx * deck_r, ry + deck_h - 1.56, fz, half_pi);
     }
 
     putAt(b, .tower, fx, y, fz, 0);
 
     for ([_][2]f32{ .{ -1.2, -1.3 }, .{ 1.2, -1.3 }, .{ -1.2, 1.3 }, .{ 1.2, 1.3 } }) |o| box(b, fx + o[0] - 0.15, y, fz + o[1] - 0.15, fx + o[0] + 0.15, y + 9, fz + o[1] + 0.15);
 
-    for ([_][3]f32{ .{ 6, 4, 0 }, .{ -6, 5, 1 }, .{ -5, -6, 0 }, .{ 7, -5, 1 } }) |c| {
-        if (c[2] < 0.5) {
-            put(b, .barrel, fx + c[0], fz + c[1], 0);
-            put(b, .barrel, fx + c[0] + 0.8, fz + c[1] + 0.2, 0);
-            put(b, .crate, fx + c[0], fz + c[1] + 1, 0.3);
-        } else {
-            put(b, .crate, fx + c[0], fz + c[1], 0);
-            put(b, .chest, fx + c[0] + 1, fz + c[1], 0.6);
-            put(b, .swivel, fx + c[0] - 1, fz + c[1], 0);
+    putAt(b, .flag, fx + 2.2, y, fz + 1.6, 0.4);
+    putAt(b, .bigtent, fx - 4.6, tr.height(fx - 4.6, fz + 4.4), fz + 4.4, 0.8);
+    box(b, fx - 7, y - 0.5, fz + 2, fx - 2.2, y + 3.4, fz + 6.8);
+    putAt(b, .walltent, fx + 5, tr.height(fx + 5, fz + 4.6), fz + 4.6, -0.7);
+    box(b, fx + 2.8, y - 0.5, fz + 2.4, fx + 7.2, y + 4.4, fz + 6.8);
+    putAt(b, .tarp, fx + 5, tr.height(fx + 5, fz - 4), fz - 4, 0.3);
+
+    for ([_][3]f32{ .{ 4.2, -3.4, 0 }, .{ 5.4, -3.6, 0.3 }, .{ 4.6, -4.8, 1.2 }, .{ 6.2, -4.6, 0.1 } }) |c| put(b, .freight, fx + c[0], fz + c[1], c[2]);
+
+    putAt(b, .crate, fx + 5, tr.height(fx + 5, fz - 4) + 0.9, fz - 4.1, 0.2);
+    put(b, .barrel, fx + 3.4, fz - 5.4, 0);
+    put(b, .barrel, fx + 4.1, fz - 5.8, 1);
+    put(b, .barrel, fx + 6.8, fz - 2.8, 2);
+    putAt(b, .campfire, fx - 4.4, y, fz - 3.6, 0);
+
+    for ([_][3]f32{ .{ -6.6, -3, 0.3 }, .{ -4.2, -6, 1.4 }, .{ -2.4, -3.2, 2.6 } }) |s| put(b, .stump, fx + s[0], fz + s[1], s[2]);
+
+    put(b, .chest, fx - 7.4, fz - 0.4, 1.2);
+    put(b, .rope, fx - 6.8, fz + 1.4, 0);
+    put(b, .wcrate, fx - 2.6, fz + 7.6, 0.2);
+    put(b, .wcrate, fx - 1.6, fz + 8, 0.9);
+    put(b, .sack, fx + 0.6, fz + 7.8, 0);
+    put(b, .balls, fx + 1.4, fz - 7, 0);
+    put(b, .balls, fx + 1.8, fz - 6.6, 0);
+    put(b, .swivel, fx - 0.8, fz - 7.4, 0);
+
+    for ([_]f32{ -1, 1 }) |sd| {
+        const ga = gate + sd * 0.32;
+        const gx = fx + @cos(ga) * (r + 1.8);
+        const gz = fz + @sin(ga) * (r + 1.8);
+
+        putAt(b, .flag, gx, tr.height(gx, gz), gz, 0);
+        putAt(b, .torch, fx + @cos(ga) * (r + 0.4), tr.height(gx, gz), fz + @sin(ga) * (r + 0.4), 0);
+    }
+
+    const pr: f32 = 24;
+    var pa: f32 = 0;
+
+    while (pa < std.math.tau) : (pa += 2.4 / pr) {
+        if (@abs(pa - gate) < 0.22) continue;
+
+        const px = fx + @cos(pa) * pr;
+        const pz = fz + @sin(pa) * pr;
+        const py = tr.height(px, pz);
+
+        if (py < sea_y + 1.5) continue;
+
+        putAt(b, .palisade, px, py - 0.1, pz, std.math.atan2(-@sin(pa), @cos(pa)) + half_pi);
+        box(b, px - 0.9, py - 0.5, pz - 0.9, px + 0.9, py + 1.4, pz + 0.9);
+    }
+
+    for ([_]f32{ 0.9, 2.3, 5.6 }) |ta| {
+        const tx = fx + @cos(ta) * 20;
+        const tz = fz + @sin(ta) * 20;
+        const ty = tr.height(tx, tz);
+
+        putAt(b, .tower, tx, ty, tz, ta);
+
+        for ([_][2]f32{ .{ -1.2, -1.3 }, .{ 1.2, -1.3 }, .{ -1.2, 1.3 }, .{ 1.2, 1.3 } }) |o| {
+            const q = wd.rotPoint(tx, tz, ta, o[0], o[1]);
+
+            box(b, q[0] - 0.15, ty, q[1] - 0.15, q[0] + 0.15, ty + 9, q[1] + 0.15);
+        }
+
+        put(b, .barrel, tx + 2.4, tz + 1, 0);
+        put(b, .crate, tx - 2.2, tz + 1.4, 0.4);
+    }
+
+    for ([_][3]f32{ .{ -20, -6, 0.2 }, .{ -16, -14, 1.1 }, .{ 18, -12, 2.0 }, .{ -4, 19, 0.6 }, .{ 10, 18, 2.6 }, .{ 19, 4, 1.4 } }) |c| {
+        const cx = fx + c[0];
+        const cz = fz + c[1];
+
+        if (tr.height(cx, cz) < sea_y + 1.5) continue;
+
+        put(b, .freight, cx, cz, c[2]);
+        put(b, .barrel, cx + 1.2, cz + 0.4, 0);
+        put(b, .barrel, cx + 1.4, cz - 0.6, 1);
+        put(b, .tent, cx - 3, cz + 2, c[2] + 0.4);
+        box(b, cx - 4.6, tr.height(cx, cz) - 0.5, cz, cx - 1.4, tr.height(cx, cz) + 2, cz + 4);
+    }
+
+    for ([_][4]f32{ .{ -14, -16, 0.3, 0 }, .{ -10, -20, 1.2, 1 }, .{ 4, -18, 2.8, 2 }, .{ 9, -16, 0.4, 3 }, .{ 13, -12, 1.9, 0 }, .{ -17, -9, 2.2, 1 }, .{ 0, -21, 0.9, 3 } }) |c| {
+        const cx = fx + c[0];
+        const cz = fz + c[1];
+        const cy = tr.height(cx, cz);
+
+        if (cy < sea_y + 1.5) continue;
+
+        switch (@as(u32, @intFromFloat(c[3]))) {
+            0 => {
+                putAt(b, .walltent, cx, cy, cz, c[2]);
+                box(b, cx - 2.2, cy - 0.5, cz - 2.2, cx + 2.2, cy + 4.4, cz + 2.2);
+                put(b, .barrel, cx + 3, cz + 1, 0);
+                put(b, .crate, cx + 3, cz - 0.4, 0.3);
+            },
+            1 => {
+                b.putAt(of(.cannon), vec(cx, cy, cz), c[2] + pi, 1.3);
+                put(b, .balls, cx + 1.2, cz + 0.6, 0);
+                put(b, .barrel, cx - 1.4, cz + 0.8, 0);
+                put(b, .freight, cx + 1.5, cz - 1.6, c[2]);
+            },
+            2 => {
+                putAt(b, .tarp, cx, cy, cz, c[2]);
+
+                for ([_][2]f32{ .{ -0.8, 0 }, .{ 0.4, 0.5 }, .{ -0.2, -0.9 }, .{ 1, -0.6 } }) |o| put(b, .freight, cx + o[0], cz + o[1], c[2]);
+
+                putAt(b, .crate, cx - 0.4, cy + 0.9, cz + 0.2, 0.4);
+                put(b, .rope, cx + 1.8, cz + 1.4, 0);
+            },
+            else => {
+                putAt(b, .campfire, cx, cy, cz, 0);
+
+                for ([_][3]f32{ .{ -1.6, 0.2, 0 }, .{ 1.4, 0.8, 1 }, .{ 0.2, -1.6, 2 } }) |o| put(b, .stump, cx + o[0], cz + o[1], o[2]);
+
+                put(b, .flag, cx + 3, cz + 2, 0);
+            },
         }
     }
 
-    claimRect(fx - 18, fz - 18, fx + 18, fz + 18);
+    claimRect(fx - 26, fz - 26, fx + 26, fz + 26);
     loot(b, fx + 3, fz);
     loot(b, fx - 4, fz - 2);
+    lootY(b, fx, y + deck_h, fz + deck_r);
+    loot(b, fx - 16, fz - 12);
     spawnAt(b, fx - 4, fz + 8, pi);
     spawnAt(b, fx - 30, fz - 16, 0.8);
     anchor_list.append(b.gpa, vec(fx, y + 22, fz)) catch {};

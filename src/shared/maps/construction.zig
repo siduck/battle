@@ -81,6 +81,18 @@ const stacks = [_]Stack{
     .{ .x = 132.6, .z = 2, .yaw = half_pi, .n = 1, .kind = .box_green },
     .{ .x = 40, .z = 130, .yaw = 0, .n = 2, .kind = .box_red },
     .{ .x = -24, .z = -122, .yaw = half_pi, .n = 1, .kind = .box_office },
+    .{ .x = -127, .z = -44, .yaw = 0, .n = 2, .kind = .box_green },
+    .{ .x = -127, .z = -41.4, .yaw = 0, .n = 1, .kind = .box_red },
+    .{ .x = -127, .z = -22, .yaw = 0, .n = 3, .kind = .box_blue },
+    .{ .x = -127, .z = -19.4, .yaw = 0, .n = 2, .kind = .box_red },
+    .{ .x = -127, .z = 0, .yaw = 0, .n = 2, .kind = .box_green },
+    .{ .x = -127, .z = 2.6, .yaw = 0, .n = 2, .kind = .box_blue },
+    .{ .x = -127, .z = 26, .yaw = 0, .n = 1, .kind = .box_red },
+    .{ .x = -108, .z = -46, .yaw = half_pi, .n = 2, .kind = .box_red },
+    .{ .x = -105.4, .z = -46, .yaw = half_pi, .n = 2, .kind = .box_green },
+    .{ .x = -109, .z = -24, .yaw = half_pi, .n = 3, .kind = .box_green },
+    .{ .x = -109, .z = 18, .yaw = half_pi, .n = 2, .kind = .box_blue },
+    .{ .x = -106.4, .z = 18, .yaw = half_pi, .n = 1, .kind = .box_red },
 };
 
 const shade_rects = [_]Rect{
@@ -92,6 +104,69 @@ const shade_rects = [_]Rect{
     .{ .x0 = 113, .z0 = 51, .x1 = 127, .z1 = 73 },
     .{ .x0 = 0, .z0 = -138, .x1 = 20, .z1 = -126 },
 };
+
+const Pad = struct { r: Rect, tone: u8 };
+
+const max_pads = 160;
+var pads: [max_pads]Pad = undefined;
+var pad_n: usize = 0;
+
+fn addPad(cx: f32, cz: f32, hx: f32, hz: f32, tone: u8) void {
+    if (pad_n >= max_pads) return;
+
+    pads[pad_n] = .{ .r = .{ .x0 = cx - hx, .z0 = cz - hz, .x1 = cx + hx, .z1 = cz + hz }, .tone = tone };
+    pad_n += 1;
+}
+
+fn hash2(i: i32, j: i32) f32 {
+    var h: u32 = @bitCast(i *% 374761393 +% j *% 668265263);
+
+    h = (h ^ (h >> 13)) *% 1274126177;
+    h ^= h >> 16;
+
+    return @as(f32, @floatFromInt(h & 0xffff)) / 65535.0;
+}
+
+fn gravel(x: f32, z: f32, fine: f32) [3]f32 {
+    const speck = t.fbm(x * 1.7 + 5, z * 1.7 - 3);
+    const base = mixc(.{ 138, 136, 130 }, .{ 118, 116, 112 }, fine);
+
+    return mixc(mixc(base, .{ 170, 166, 158 }, t.smooth(0.62, 0.72, speck)), .{ 92, 90, 88 }, t.smooth(0.3, 0.2, speck) * 0.8);
+}
+
+fn hardcore(x: f32, z: f32, fine: f32) [3]f32 {
+    const speck = t.fbm(x * 2.3 - 8, z * 2.3 + 1);
+    const base = mixc(.{ 96, 94, 92 }, .{ 84, 82, 82 }, fine);
+
+    return mixc(base, .{ 150, 146, 138 }, t.smooth(0.64, 0.74, speck) * 0.9);
+}
+
+fn padTone(tone: u8, x: f32, z: f32, fine: f32) [3]f32 {
+    return switch (tone) {
+        0 => pad(x, z, fine),
+        1 => gravel(x, z, fine),
+        2 => hardcore(x, z, fine),
+        else => mixc(.{ 190, 168, 120 }, .{ 172, 150, 106 }, fine),
+    };
+}
+
+fn zoneColor(x: f32, z: f32, fine: f32) [3]f32 {
+    const wx = x + (t.fbm(x * 0.05 + 3, z * 0.05) - 0.5) * 14;
+    const wz = z + (t.fbm(x * 0.05 - 9, z * 0.05 + 4) - 0.5) * 14;
+    const cell: f32 = 23;
+    const i: i32 = @intFromFloat(@floor(wx / cell));
+    const j: i32 = @intFromFloat(@floor(wz / cell));
+    const fx = wx / cell - @floor(wx / cell);
+    const fz = wz / cell - @floor(wz / cell);
+    const edge_d = @min(@min(fx, 1 - fx), @min(fz, 1 - fz)) * cell;
+    const pick = hash2(i, j);
+    const dry = mixc(.{ 156, 134, 104 }, .{ 140, 120, 94 }, fine);
+    const damp = mixc(.{ 112, 94, 74 }, .{ 100, 84, 66 }, fine);
+    const zone: [3]f32 = if (pick < 0.3) dry else if (pick < 0.52) damp else if (pick < 0.72) gravel(x, z, fine) else if (pick < 0.86) hardcore(x, z, fine) else mixc(.{ 176, 156, 116 }, .{ 160, 140, 104 }, fine);
+    const blend = t.smooth(0, 3.5, edge_d);
+
+    return mixc(mixc(dry, damp, 0.5), zone, 0.35 + 0.65 * blend);
+}
 
 fn rectDist(r: Rect, x: f32, z: f32) f32 {
     const dx = @max(r.x0 - x, 0, x - r.x1);
@@ -279,10 +354,10 @@ fn ground(x: f32, z: f32) api.Rgb {
     const fine = t.fbm(x * 0.35, z * 0.35);
     const grit = t.fbm(x * 0.9 + 31, z * 0.9 - 17);
     const patch = t.fbm(x * 0.07 - 40, z * 0.07 + 9);
-    var c: [3]f32 = mixc(.{ 124, 110, 92 }, .{ 108, 96, 80 }, fine);
+    var c: [3]f32 = zoneColor(x, z, fine);
 
-    c = mixc(c, .{ 140, 132, 118 }, t.smooth(0.38, 0.66, patch) * 0.7);
-    c = mixc(c, .{ 92, 76, 60 }, t.smooth(0.48, 0.66, blot) * 0.75);
+    c = mixc(c, .{ 140, 132, 118 }, t.smooth(0.45, 0.7, patch) * 0.35);
+    c = mixc(c, .{ 92, 76, 60 }, t.smooth(0.52, 0.7, blot) * 0.5);
     c = mixc(c, .{ 84, 74, 64 }, t.smooth(0.55, 0.72, grit) * 0.4);
     c = mixc(c, .{ 160, 152, 138 }, t.smooth(0.6, 0.75, t.fbm(x * 0.6 - 9, z * 0.6 + 4)) * 0.3);
 
@@ -302,6 +377,10 @@ fn ground(x: f32, z: f32) api.Rgb {
     if (inRect(x, z, -32, -16, 30, 34) or inRect(x, z, -86, 48, -56, 76) or inRect(x, z, 50, 42, 86, 66)) c = pad(x, z, fine);
 
     if (inRect(x, z, -146, 92, -78, 146) or inRect(x, z, -146, -52, -96, 34)) c = mixc(.{ 160, 156, 146 }, .{ 144, 140, 130 }, fine);
+
+    for (pads[0..pad_n]) |pd| {
+        if (inRect(x, z, pd.r.x0, pd.r.z0, pd.r.x1, pd.r.z1)) c = padTone(pd.tone, x, z, fine);
+    }
 
     if (inRect(x, z, -146, -146, -62, -66) and @mod(z + 146, 14) < 0.5) c = .{ 210, 200, 156 };
 
@@ -762,49 +841,54 @@ fn containerYard(b: *Builder) void {
 }
 
 fn laydown(b: *Builder) void {
+    addPad(-104, -105, 41, 38, 1);
+
     var row: f32 = -140;
     var r: u32 = 0;
 
-    while (row < -70) : (row += 14) {
-        var x: f32 = -142;
+    while (row < -72) : (row += 9.5) {
+        var x: f32 = -140;
         var c: u32 = 0;
 
-        while (x < -64) : (x += 6.5) {
-            const pick = (r * 7 + c * 3) % 10;
+        while (x < -66) : (x += 6) {
+            const pick = (r * 7 + c * 3) % 8;
             const z = row + 6;
 
             switch (pick) {
                 0, 1 => {
-                    put(b, .precast, x, z, 0);
-                    b.putAt(kit.of(.precast), vec(x, t.height(x, z) + 0.9, z), 0.03, 1);
+                    for ([_]f32{ -1.6, 0, 1.6 }) |o| {
+                        put(b, .wrap, x + o * 0.66, z, 0);
+                        b.putAt(kit.of(.wrap), vec(x + o * 0.66, t.height(x, z) + 1.21, z), 0.02, 1);
+                    }
+
+                    put(b, .ibc, x - 1, z + 1.6, 0);
+                    put(b, .ibc, x + 0.3, z + 1.6, 0);
                 },
                 2 => {
-                    put(b, .scafstack, x, z, 0);
+                    put(b, .scaffold, x, z, 0);
+                    b.putAt(kit.of(.scaffold), vec(x, t.height(x, z) + 3.1, z), 0, 1);
+                    api.box(b, x - 2, t.height(x, z) - 0.5, z - 0.7, x + 2, t.height(x, z) + 6.2, z + 0.7);
                     put(b, .scafstack, x, z + 2, 0);
                 },
                 3 => {
-                    put(b, .rebar, x - 1, z, 0);
-                    put(b, .rebar, x + 1.2, z, 0.1);
+                    put(b, .precast, x - 1, z, 0);
+                    b.putAt(kit.of(.precast), vec(x - 1, t.height(x, z) + 0.9, z), 0.03, 1);
+                    put(b, .rebar, x + 2, z, 0.1);
                 },
                 4 => {
-                    put(b, .pallet, x - 1, z, 0);
-                    put(b, .pallet, x + 0.4, z, 0);
-                    put(b, .pallet, x - 0.3, z + 1.3, half_pi);
-                    put(b, .bag, x + 1.5, z + 2, 0.4);
+                    put(b, .pipes, x, z, 0);
+                    put(b, .pipes, x, z + 2.6, 0);
                 },
-                5 => put(b, .pipes, x, z, 0),
+                5 => {
+                    put(b, .timber, x, z, 0);
+                    b.putAt(kit.of(.timber), vec(x, t.height(x, z) + 0.92, z), 0.04, 1);
+                },
                 6 => {
-                    put(b, .bag, x - 1, z, 0.1);
-                    put(b, .bag, x, z + 0.2, 0.5);
-                    put(b, .bag, x + 1, z, 0.9);
-                    put(b, .drums, x, z + 2.2, 0);
-                },
-                7 => put(b, .timber, x, z, 0),
-                8 => {
                     put(b, .spool, x - 0.8, z, 0);
                     put(b, .spool, x + 0.8, z, 0.3);
+                    put(b, .bag, x, z + 2, 0.4);
                 },
-                else => put(b, .skip, x, z, 0),
+                else => structure(b, .box_blue, &S.box_blue, x, t.height(x, z), z, 0),
             }
 
             c += 1;
@@ -813,10 +897,9 @@ fn laydown(b: *Builder) void {
         r += 1;
     }
 
-    put(b, .rebar, -96, -110, half_pi);
-    put(b, .precast, -130, -72, half_pi);
     put(b, .lamp, -66, -72, 0.3);
     put(b, .lamp, -142, -144, 1);
+    put(b, .lamp, -104, -108, 2);
     line(b, .fence, -146, -64, -70, -64, 4);
 }
 
@@ -834,6 +917,18 @@ fn earthworks(b: *Builder) void {
     };
 
     for (heaps) |h| putS(b, .spoil, h[0], h[1], h[3], h[2]);
+
+    for ([_][4]f32{ .{ 96, -138, 0, 4.4 }, .{ 70, -118, 1.0, 3.6 }, .{ 50, -140, 2.0, 3.0 }, .{ 124, -104, 0.6, 3.2 }, .{ 144, -132, 1.4, 2.6 } }) |h| putS(b, .spoil, h[0], h[1], h[2], h[3]);
+
+    for ([_][3]f32{ .{ 104, -116, 0 }, .{ 108.2, -116, 0.04 }, .{ 82, -124, half_pi }, .{ 60, -126, 0.2 }, .{ 132, -122, half_pi }, .{ 40, -118, 0 } }) |q| put(b, .sandbags, q[0], q[1], q[2]);
+
+    for ([_][3]f32{ .{ 90, -118, 0 }, .{ 120, -112, 1.2 }, .{ 74, -132, 0.4 } }) |q| putS(b, .tplate, q[0], q[1], q[2], 1.4);
+
+    structure(b, .box_green, &S.box_green, 114, t.height(114, -142), -142, 0);
+    structure(b, .box_red, &S.box_red, 114, t.height(114, -142) + 2.59, -142, 0.03);
+    put(b, .sitecabin, 36, -140, half_pi);
+    put(b, .toilet, 41, -142, 0);
+    put(b, .gantry, 140, -144, 0);
 
     put(b, .timber, 116, -118, 0.4);
     put(b, .blocks, 96, -120, half_pi);
@@ -979,7 +1074,8 @@ const reserved = [_]Rect{
     .{ .x0 = -148, .z0 = 90, .x1 = -70, .z1 = 148 },
     .{ .x0 = -148, .z0 = -56, .x1 = -92, .z1 = 38 },
     .{ .x0 = -148, .z0 = -148, .x1 = -60, .z1 = -62 },
-    .{ .x0 = 92, .z0 = -42, .x1 = 148, .z1 = 40 },
+    .{ .x0 = 92, .z0 = -42, .x1 = 148, .z1 = -26 },
+    .{ .x0 = 92, .z0 = 18, .x1 = 148, .z1 = 40 },
     .{ .x0 = 74, .z0 = 84, .x1 = 148, .z1 = 148 },
     .{ .x0 = -36, .z0 = 88, .x1 = 4, .z1 = 124 },
     .{ .x0 = -50, .z0 = -148, .x1 = 8, .z1 = -112 },
@@ -994,6 +1090,10 @@ fn free(x: f32, z: f32, r: f32) bool {
     if (roadDist(x, z) < 7 + r) return false;
 
     for (reserved) |q| {
+        if (x > q.x0 - r and x < q.x1 + r and z > q.z0 - r and z < q.z1 + r) return false;
+    }
+
+    for (claimed[0..claimed_n]) |q| {
         if (x > q.x0 - r and x < q.x1 + r and z > q.z0 - r and z < q.z1 + r) return false;
     }
 
@@ -1052,6 +1152,370 @@ fn clutter(b: *Builder) void {
     }
 }
 
+fn lp(b: *Builder, kind: K, cx: f32, cz: f32, yaw: f32, lx: f32, lz: f32, ly: f32, lyaw: f32, s: f32) void {
+    const o = rot(yaw, lx, lz);
+    const x = cx + o[0];
+    const z = cz + o[1];
+
+    b.putAt(kit.of(kind), vec(x, t.height(x, z) + ly, z), yaw + lyaw, s);
+}
+
+fn lbox(b: *Builder, cx: f32, cz: f32, yaw: f32, lx0: f32, lz0: f32, lx1: f32, lz1: f32, h: f32) void {
+    const r = api.world.rotBox(cx, cz, yaw, lx0, lz0, lx1, lz1);
+    const y = t.height(cx, cz);
+
+    api.box(b, r[0], y - 0.5, r[1], r[2], y + h, r[3]);
+}
+
+fn lstruct(b: *Builder, kind: K, sol: []const [7]f32, cx: f32, cz: f32, yaw: f32, lx: f32, lz: f32, lyaw: f32) void {
+    const o = rot(yaw, lx, lz);
+
+    structure(b, kind, sol, cx + o[0], t.height(cx + o[0], cz + o[1]), cz + o[1], yaw + lyaw);
+}
+
+fn foundations(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    addPad(cx, cz, 9, 9, 0);
+
+    var i: i32 = -1;
+
+    while (i <= 1) : (i += 1) {
+        var j: i32 = -1;
+
+        while (j <= 1) : (j += 1) {
+            const fi: f32 = @floatFromInt(i);
+            const fj: f32 = @floatFromInt(j);
+
+            lstruct(b, .starter, &S.starter, cx, cz, yaw, fi * 5.5, fj * 5.5, 0);
+        }
+    }
+
+    lp(b, .rebarmat, cx, cz, yaw, -2.75, 0, 0.02, half_pi, 1);
+    lp(b, .rebarmat, cx, cz, yaw, 2.75, 0, 0.02, half_pi, 1);
+    lp(b, .formwork, cx, cz, yaw, 0, -8.2, 0, 0, 1);
+
+    for ([_]f32{ -6, -2, 2, 6 }) |sx| {
+        lp(b, .scaffold, cx, cz, yaw, sx, 8.2, 0, 0, 1);
+        lp(b, .scaffold, cx, cz, yaw, sx, 8.2, 3.1, 0, 1);
+    }
+
+    lbox(b, cx, cz, yaw, -8, 7.5, 8, 8.9, 6.2);
+    lp(b, .pallet, cx, cz, yaw, -8, -5, 0, 0.1, 1);
+    lp(b, .bag, cx, cz, yaw, -7.6, -3.4, 0, 0.5, 1);
+    lp(b, .rebar, cx, cz, yaw, 7.5, -4.5, 0, half_pi, 1);
+    lp(b, .mixer, cx, cz, yaw, 6, 4, 0, 0.6, 1);
+}
+
+fn yard(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    addPad(cx, cz, 9, 7.5, 1);
+
+    const row = [_]K{ .wrap, .wrap, .ibc, .wrap, .ibc, .ibc, .wrap, .wrap, .wrap };
+    var n: usize = 0;
+
+    for ([_]f32{ -5, -2.6 }) |lz| {
+        var lx: f32 = -7;
+
+        while (lx <= 7) : (lx += 1.75) {
+            const k2 = row[(n * 5 + @as(usize, @intFromFloat(lz + 10))) % row.len];
+
+            n += 1;
+            lp(b, k2, cx, cz, yaw, lx, lz, 0, b.rng.range(-0.06, 0.06), 1);
+
+            if (b.rng.next() < 0.35 and k2 == .wrap) lp(b, .wrap, cx, cz, yaw, lx, lz, 1.21, b.rng.range(-0.1, 0.1), 1);
+        }
+    }
+
+    lp(b, .precast, cx, cz, yaw, -5, 1.6, 0, 0, 1);
+    lp(b, .precast, cx, cz, yaw, -5, 1.6, 0.9, 0.04, 1);
+    lp(b, .pipes, cx, cz, yaw, 0.5, 1.6, 0, 0, 1);
+    lp(b, .timber, cx, cz, yaw, 5.5, 1.6, 0, 0, 1);
+    lp(b, .scafstack, cx, cz, yaw, -5, 5, 0, 0, 1);
+    lp(b, .spool, cx, cz, yaw, 0, 5, 0, 0.3, 1);
+    lp(b, .spool, cx, cz, yaw, 1.6, 5.2, 0, 1.1, 1);
+    lp(b, .bag, cx, cz, yaw, 4, 5, 0, 0.2, 1);
+    lp(b, .bag, cx, cz, yaw, 5.4, 5.3, 0, 0.9, 1);
+
+    var lx: f32 = -8;
+
+    while (lx <= 8) : (lx += 2) lp(b, .pedbar, cx, cz, yaw, lx, -7.4, 0, 0, 1);
+
+    lbox(b, cx, cz, yaw, -9, -7.6, 9, -7.2, 1.1);
+    lp(b, .lamp, cx, cz, yaw, 8.5, 6.5, 0, 2.2, 1);
+}
+
+fn cabinRow(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    addPad(cx, cz, 10, 7, 2);
+
+    for ([_]f32{ -6.5, -2.2, 2.1 }) |lx| lp(b, .sitecabin, cx, cz, yaw, lx, -1, 0, 0, 1);
+
+    var i: u32 = 0;
+
+    while (i < 3) : (i += 1) lp(b, .toilet, cx, cz, yaw, 6 + @as(f32, @floatFromInt(i)) * 1.4, -3.5, 0, 0, 1);
+
+    lp(b, .genset, cx, cz, yaw, 7, 2, 0, half_pi, 1);
+    lp(b, .sandbags, cx, cz, yaw, -4, 5.4, 0, 0, 1);
+    lp(b, .sandbags, cx, cz, yaw, 2, 5.4, 0, 0.05, 1);
+    lp(b, .sign, cx, cz, yaw, 8, 5.4, 0, 0, 1);
+    lp(b, .ibc, cx, cz, yaw, -9, 3, 0, 0.2, 1);
+    lp(b, .drums, cx, cz, yaw, -9, 5.4, 0, 0, 1);
+}
+
+fn steelBay(b: *Builder, cx: f32, cz: f32, yaw: f32, tall: bool) void {
+    const sc: f32 = 1.5;
+    const h: f32 = 3.095 * sc;
+    const lv: usize = if (tall) 3 else 2;
+
+    addPad(cx, cz, 8, 8, 0);
+
+    for ([_]f32{ -3, 3 }) |lx| {
+        for ([_]f32{ -3, 3 }) |lz| {
+            var l: usize = 0;
+
+            while (l < lv) : (l += 1) {
+                if (l == lv - 1 and lx > 0 and lz > 0) continue;
+
+                lp(b, .framebay, cx, cz, yaw, lx, lz, @as(f32, @floatFromInt(l)) * h, 0, sc);
+            }
+        }
+    }
+
+    for ([_]f32{ -5.8, -0.2, 5.8 }) |px| {
+        for ([_]f32{ -5.8, -0.2, 5.8 }) |pz| lbox(b, cx, cz, yaw, px - 0.25, pz - 0.25, px + 0.25, pz + 0.25, h * @as(f32, @floatFromInt(lv)));
+    }
+
+    lp(b, .scaffold, cx, cz, yaw, -4, -7.2, 0, 0, 1);
+    lp(b, .scaffold, cx, cz, yaw, 0, -7.2, 0, 0, 1);
+    lp(b, .scaffold, cx, cz, yaw, -4, -7.2, 3.1, 0, 1);
+    lp(b, .gantry, cx, cz, yaw, 3.5, -7.6, 0, 0, 1);
+    lbox(b, cx, cz, yaw, -6, -7.9, 2, -6.5, 6.2);
+
+    for ([_]f32{ 1.6, 5.4 }) |gx| lbox(b, cx, cz, yaw, gx - 0.2, -9.5, gx + 0.2, -5.7, 4.2);
+
+    lp(b, .precast, cx, cz, yaw, 0, 0, 0, 0.1, 1);
+    lp(b, .wrap, cx, cz, yaw, -3, 2, 0, 0, 1);
+    lp(b, .ibc, cx, cz, yaw, 2.5, -2, 0, 0.3, 1);
+}
+
+fn boxStack(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    const kinds = [_]K{ .box_red, .box_blue, .box_green };
+    var i: usize = 0;
+
+    addPad(cx, cz, 8, 7, 2);
+
+    for ([_]f32{ -3.2, 0, 3.2 }) |lz| {
+        const k2 = kinds[(i + @as(usize, @intFromFloat(b.rng.range(0, 2.99)))) % 3];
+        const n: u32 = if (i == 1) 3 else 2;
+        var lvl: u32 = 0;
+
+        i += 1;
+
+        while (lvl < n) : (lvl += 1) {
+            const o = rot(yaw, -1, lz);
+            const x = cx + o[0];
+            const z = cz + o[1];
+
+            structure(b, k2, boxSolids(k2), x, t.height(x, z) + @as(f32, @floatFromInt(lvl)) * 2.59, z, yaw + (if (lvl > 0) b.rng.range(-0.03, 0.03) else 0));
+        }
+    }
+
+    lp(b, .skip, cx, cz, yaw, 6, -4, 0, half_pi, 1);
+    lp(b, .ibc, cx, cz, yaw, 6, 1, 0, 0.1, 1);
+    lp(b, .ibc, cx, cz, yaw, 6, 2.3, 0, -0.1, 1);
+    lp(b, .wrap, cx, cz, yaw, 6.2, 4.4, 0, 0, 1);
+    lp(b, .drums, cx, cz, yaw, -6.5, 5, 0, 0, 1);
+}
+
+fn earthBank(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    addPad(cx, cz, 8, 6, 3);
+    lp(b, .spoil, cx, cz, yaw, -2, 1, -0.3, 0.4, 2.2);
+    lp(b, .sandbags, cx, cz, yaw, -2, -5, 0, 0, 1);
+    lp(b, .sandbags, cx, cz, yaw, 2.2, -5, 0, 0.05, 1);
+    lp(b, .sandbags, cx, cz, yaw, 6, -3.5, 0, half_pi, 1);
+    lp(b, .pipes, cx, cz, yaw, 5, 3, 0, half_pi, 1);
+    lp(b, .tplate, cx, cz, yaw, 3, -1, 0.02, 0.2, 1.4);
+    lp(b, .cone, cx, cz, yaw, 4.5, -1.5, 0, 0, 1);
+    lp(b, .cone, cx, cz, yaw, 1.5, 0.5, 0, 0, 1);
+    lp(b, .lights, cx, cz, yaw, -7, 4, 0, 0, 1);
+}
+
+fn module(b: *Builder, x: f32, z: f32) void {
+    const yaw = @as(f32, @floatFromInt(@as(u32, @intFromFloat(b.rng.range(0, 3.99))))) * half_pi;
+    const pick = b.rng.next();
+
+    if (pick < 0.2) foundations(b, x, z, yaw) else if (pick < 0.4) yard(b, x, z, yaw) else if (pick < 0.54) cabinRow(b, x, z, yaw) else if (pick < 0.72) steelBay(b, x, z, yaw, b.rng.next() < 0.4) else if (pick < 0.86) boxStack(b, x, z, yaw) else earthBank(b, x, z, yaw);
+}
+
+fn fill(b: *Builder) void {
+    var gx: f32 = -136;
+
+    while (gx < 138) : (gx += 5) {
+        var gz: f32 = -136;
+
+        while (gz < 138) : (gz += 5) {
+            const x = gx;
+            const z = gz;
+
+            if (!free(x, z, 8.5) or moundAt(x, z).h > 0.1 or moundAt(x + 8, z).h > 0.1 or moundAt(x - 8, z).h > 0.1 or moundAt(x, z + 8).h > 0.1 or moundAt(x, z - 8).h > 0.1) continue;
+
+            module(b, x, z);
+            if (claimed_n < claimed.len) {
+                claimed[claimed_n] = .{ .x0 = x - 10, .z0 = z - 10, .x1 = x + 10, .z1 = z + 10 };
+                claimed_n += 1;
+            }
+        }
+    }
+}
+
+fn mini(b: *Builder, x: f32, z: f32) void {
+    const yaw = @as(f32, @floatFromInt(@as(u32, @intFromFloat(b.rng.range(0, 3.99))))) * half_pi;
+    const pick = b.rng.next();
+
+    if (pick < 0.3) {
+        addPad(x, z, 4.5, 3.5, 1);
+
+        for ([_]f32{ -2, 2 }) |lx| {
+            var l: f32 = 0;
+
+            while (l < 3) : (l += 1) lp(b, .scaffold, x, z, yaw, lx, 0, l * 3.1, 0, 1);
+        }
+
+        lbox(b, x, z, yaw, -4, -0.75, 4, 0.75, 9.3);
+        lp(b, .scafstack, x, z, yaw, 0, 2.6, 0, 0, 1);
+        lp(b, .wrap, x, z, yaw, -3, -2.4, 0, 0.1, 1);
+    } else if (pick < 0.5) {
+        addPad(x, z, 5, 3, 2);
+        lp(b, .sitecabin, x, z, yaw, -1, 0, 0, half_pi, 1);
+        lp(b, .toilet, x, z, yaw, 3.6, -1.2, 0, 0, 1);
+        lp(b, .toilet, x, z, yaw, 3.6, 0.2, 0, 0, 1);
+        lp(b, .ibc, x, z, yaw, 3.6, 2, 0, 0.3, 1);
+    } else if (pick < 0.68) {
+        addPad(x, z, 5, 5, 0);
+
+        for ([_]f32{ -2.5, 2.5 }) |lx| {
+            for ([_]f32{ -2.5, 2.5 }) |lz| lstruct(b, .starter, &S.starter, x, z, yaw, lx, lz, 0);
+        }
+
+        lp(b, .rebarmat, x, z, yaw, 0, 0, 0.02, 0, 0.7);
+        lp(b, .formwork, x, z, yaw, 0, -4.4, 0, 0, 1);
+    } else if (pick < 0.84) {
+        lp(b, .spoil, x, z, yaw, 0, 0, -0.3, b.rng.range(0, 6), 1.6);
+        lp(b, .sandbags, x, z, yaw, 0, -4.2, 0, 0, 1);
+        lp(b, .sandbags, x, z, yaw, 4.2, 0, 0, half_pi, 1);
+    } else {
+        addPad(x, z, 4, 4, 1);
+
+        for ([_]f32{ -1.2, 0, 1.2 }) |lx| lp(b, .wrap, x, z, yaw, lx, -1, 0, 0, 1);
+
+        lp(b, .wrap, x, z, yaw, -0.6, -1, 1.21, 0.1, 1);
+        lp(b, .ibc, x, z, yaw, -1, 1.2, 0, 0, 1);
+        lp(b, .ibc, x, z, yaw, 0.4, 1.2, 0, 0, 1);
+        lp(b, .ibc, x, z, yaw, -0.3, 1.2, 1.16, 0.05, 1);
+        lp(b, .pedbar, x, z, yaw, 0, 3.2, 0, 0, 1);
+        lp(b, .pedbar, x, z, yaw, 2.6, 2, 0, half_pi, 1);
+    }
+}
+
+fn fillMini(b: *Builder) void {
+    var gx: f32 = -138;
+
+    while (gx < 140) : (gx += 4) {
+        var gz: f32 = -138;
+
+        while (gz < 140) : (gz += 4) {
+            if (!free(gx, gz, 5) or moundAt(gx, gz).h > 0.1 or moundAt(gx + 5, gz).h > 0.1 or moundAt(gx - 5, gz).h > 0.1 or moundAt(gx, gz + 5).h > 0.1 or moundAt(gx, gz - 5).h > 0.1) continue;
+
+            if (b.rng.next() < 0.25) continue;
+
+            mini(b, gx, gz);
+
+            if (claimed_n < claimed.len) {
+                claimed[claimed_n] = .{ .x0 = gx - 6, .z0 = gz - 6, .x1 = gx + 6, .z1 = gz + 6 };
+                claimed_n += 1;
+            }
+        }
+    }
+}
+
+var claimed: [400]Rect = undefined;
+var claimed_n: usize = 0;
+
+fn pitCover(b: *Builder) void {
+    const fy = pit_floor;
+
+    for ([_][3]f32{ .{ 68, -60, 0 }, .{ 76, -100, 0.1 }, .{ 108, -60, half_pi }, .{ 110, -98, 0.3 }, .{ 96, -66, 0 }, .{ 70, -84, half_pi } }) |q| at(b, .sandbags, q[0], fy, q[1], q[2]);
+
+    for ([_][2]f32{ .{ 74, -70 }, .{ 74.6, -71.2 }, .{ 104, -92 }, .{ 102.8, -92.4 } }) |q| at(b, .ibc, q[0], fy, q[1], 0.2);
+
+    for ([_][2]f32{ .{ 98, -104 }, .{ 99, -104 }, .{ 66, -96 }, .{ 66, -95 } }) |q| at(b, .wrap, q[0], fy, q[1], 0);
+
+    b.putAt(kit.of(.framebay), vec(80, fy, -100), 0, 1.5);
+    b.putAt(kit.of(.framebay), vec(104, fy, -62), half_pi, 1.5);
+
+    for ([_][2]f32{ .{ 80, -100 }, .{ 104, -62 } }) |c| {
+        for ([_]f32{ -2.8, 2.8 }) |ox| {
+            for ([_]f32{ -2.8, 2.8 }) |oz| api.box(b, c[0] + ox - 0.2, fy - 0.5, c[1] + oz - 0.2, c[0] + ox + 0.2, fy + 4.6, c[1] + oz + 0.2);
+        }
+    }
+
+    for ([_]f32{ 64, 68, 72 }) |x| {
+        b.putAt(kit.of(.scaffold), vec(x, fy, -51.5), 0, 1);
+        b.putAt(kit.of(.scaffold), vec(x, fy + 3.1, -51.5), 0, 1);
+    }
+
+    api.box(b, 62, fy - 0.5, -52.3, 74, fy + 6.2, -50.7);
+}
+
+fn roadDressing(b: *Builder) void {
+    for (roads) |r| {
+        const dx = r[2] - r[0];
+        const dz = r[3] - r[1];
+        const len = @sqrt(dx * dx + dz * dz);
+        const ux = dx / len;
+        const uz = dz / len;
+        const yaw = -std.math.atan2(dz, dx);
+        var d: f32 = 6;
+        var n: u32 = 0;
+
+        while (d < len - 6) : (d += 5.5) {
+            n += 1;
+
+            for ([_]f32{ -1, 1 }) |side| {
+                const off = side * b.rng.range(9, 11.5);
+                const x = r[0] + ux * d - uz * off;
+                const z = r[1] + uz * d + ux * off;
+
+                if (!free(x, z, 1.8) or moundAt(x, z).h > 0.1) continue;
+
+                const pick = b.rng.next();
+
+                if (n % 6 == 0 and side > 0) {
+                    put(b, .lamp, x, z, yaw);
+                } else if (pick < 0.16) {
+                    put(b, .wrap, x - ux * 0.6, z - uz * 0.6, yaw);
+                    put(b, .wrap, x + ux * 0.6, z + uz * 0.6, yaw + 0.05);
+                    put(b, .ibc, x + ux * 1.9, z + uz * 1.9, yaw);
+                } else if (pick < 0.3) {
+                    put(b, .sandbags, x, z, yaw);
+                } else if (pick < 0.42) {
+                    put(b, .pedbar, x - ux, z - uz, yaw);
+                    put(b, .pedbar, x + ux, z + uz, yaw);
+                    put(b, .cone, x + ux * 2.4, z + uz * 2.4, 0);
+                } else if (pick < 0.54) {
+                    put(b, .pipes, x, z, yaw);
+                } else if (pick < 0.64) {
+                    put(b, .blocks, x, z, yaw);
+                } else if (pick < 0.72) {
+                    put(b, .pallet, x, z, yaw);
+                    put(b, .bag, x + ux * 1.6, z + uz * 1.6, 0.3);
+                } else if (pick < 0.8) {
+                    put(b, .skip, x, z, yaw);
+                } else if (pick < 0.86) {
+                    put(b, .genset, x, z, yaw);
+                }
+            }
+        }
+    }
+}
+
 fn decals(b: *Builder) void {
     for (roads) |r| {
         const dx = r[2] - r[0];
@@ -1089,6 +1553,8 @@ fn decals(b: *Builder) void {
 }
 
 fn build(b: *Builder) void {
+    pad_n = 0;
+    claimed_n = 0;
     perimeter(b);
     city(b);
     core(b);
@@ -1104,6 +1570,11 @@ fn build(b: *Builder) void {
     northSide(b);
     westCenter(b);
     roadside(b);
+    fill(b);
+    fillMini(b);
+    roadDressing(b);
+    pitCover(b);
+    structure(b, .crane, &S.crane, -86, 0, 52, 2.6);
     clutter(b);
     decals(b);
 }

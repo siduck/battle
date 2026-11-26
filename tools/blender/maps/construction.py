@@ -1,4 +1,4 @@
-import os, sys, math, random, re
+import os, sys, math, random, re, json, struct
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 os.environ.setdefault("DIR", "construction")
 import pf
@@ -59,7 +59,7 @@ class Mesh:
             for l in f.loops:
                 l[self.col] = (c[0], c[1], c[2], 1.0)
 
-        if bevel > 0:
+        if bevel >= 0.035:
             es = list({e for f in fs for e in f.edges})
             res = bmesh.ops.bevel(self.bm, geom=vs + es, offset=bevel, segments=1, affect="EDGES", clamp_overlap=True)
             w = (min(1, c[0] * 1.12 + 0.02), min(1, c[1] * 1.12 + 0.02), min(1, c[2] * 1.12 + 0.02), 1.0)
@@ -216,7 +216,7 @@ def bake(bm, reach=2.2, strength=0.75, rays=16, floor=0.0, grime=0.9, seed=1):
         t = n.orthogonal().normalized()
         b2 = n.cross(t)
         cen = f.calc_center_median()
-        fv = 1 + rng.uniform(-0.035, 0.035)
+        fv = 1
 
         for l in f.loops:
             co = l.vert.co
@@ -388,11 +388,11 @@ def blockwall(m, x0, z0, x1, z1, y, h, rng):
 
     for r in range(rows):
         lim = length if r < full else length * rng.uniform(0.35, 0.95)
-        s = 0.0 if r % 2 == 0 else -0.3
+        s = 0.0 if r % 2 == 0 else -0.6
         yy = y + r * course
 
         while s < lim:
-            e = min(s + 0.6, lim)
+            e = min(s + 1.2, lim)
             s0 = max(s, 0)
 
             if e - s0 > 0.06:
@@ -666,7 +666,7 @@ def tower(name, X0, X1, Z0, Z1, nf, core, partial, walls, seed):
             z = rng.uniform(Z0 + 1, Z1 - 2)
             m.box((x, F[i], z), (x + rng.uniform(0.6, 1.6), F[i] + 0.008, z + rng.uniform(0.6, 1.4)), (0.52, 0.51, 0.49))
 
-    return finish(m, name, size=2.0, reach=4.0, strength=0.9)
+    return finish(m, name, size=5.0, reach=4.0, strength=0.9)
 
 
 MAIN_WALLS = [
@@ -857,7 +857,7 @@ def frame():
         x = 1.0 + k * 0.5
         m.box((x, H, 7.0), (x + 0.4, H + 0.25, 9.0), STEEL if k % 2 else (0.42, 0.45, 0.48))
 
-    return finish(m, "frame", size=2.0, reach=1.6, strength=0.7)
+    return finish(m, "frame", size=5.0, reach=1.6, strength=0.7)
 
 
 def pilewall():
@@ -1098,6 +1098,44 @@ def timber():
     return finish(m, "timber", size=0, reach=0.8, strength=0.55)
 
 
+def starter():
+    reset()
+    m = Mesh()
+
+    m.box((-0.8, 0.0, -0.8), (0.8, 0.45, 0.8), CONCRETE_D)
+    m.box((-0.3, 0.45, -0.3), (0.3, 1.5, 0.3), CONCRETE)
+
+    for q in range(4):
+        ox = -0.18 if q % 2 else 0.18
+        oz = -0.18 if q < 2 else 0.18
+        m.box((ox - 0.025, 1.5, oz - 0.025), (ox + 0.025, 2.6, oz + 0.025), REBAR)
+
+    m.box((-0.24, 2.3, -0.24), (0.24, 2.34, 0.24), REBAR)
+    m.solid((-0.8, 0.0, -0.8), (0.8, 0.45, 0.8))
+    m.solid((-0.3, 0.45, -0.3), (0.3, 2.6, 0.3))
+
+    return finish(m, "starter", size=0, reach=1.0, strength=0.6)
+
+
+def rebarmat():
+    reset()
+    m = Mesh()
+
+    for i in range(13):
+        x = -3.0 + i * 0.5
+        m.box((x - 0.02, 0.12, -1.6), (x + 0.02, 0.16, 1.6), REBAR)
+
+    for i in range(7):
+        z = -1.5 + i * 0.5
+        m.box((-3.1, 0.16, z - 0.02), (3.1, 0.2, z + 0.02), REBAR)
+
+    for x in (-2.5, 0.0, 2.5):
+        for z in (-1.0, 1.0):
+            m.box((x - 0.06, 0.0, z - 0.06), (x + 0.06, 0.12, z + 0.06), (0.3, 0.3, 0.3))
+
+    return finish(m, "rebarmat", size=0, reach=0.5, strength=0.4)
+
+
 def flat_poly(m, pts, y, c):
     vs = [m.bm.verts.new(gpos(x, y, z)) for x, z in pts]
     f = m.bm.faces.new(list(reversed(vs)))
@@ -1192,12 +1230,141 @@ def kitprop(name, src, scale=1.0, group="street", collide="box", k=None, drop=No
     return info
 
 
+
+def decimate(bm, ratio):
+    me = bpy.data.meshes.new("dec")
+    bm.to_mesh(me)
+    ob = bpy.data.objects.new("dec", me)
+    bpy.context.scene.collection.objects.link(ob)
+    mod = ob.modifiers.new("dec", "DECIMATE")
+    mod.ratio = ratio
+    dg = bpy.context.evaluated_depsgraph_get()
+    me2 = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
+    bm.clear()
+    bm.from_mesh(me2)
+    bpy.data.objects.remove(ob, do_unlink=True)
+    bpy.data.meshes.remove(me)
+    bpy.data.meshes.remove(me2)
+
+
+def squeeze(path):
+    raw = open(path, "rb").read()
+    jlen = struct.unpack("<I", raw[12:16])[0]
+    doc = json.loads(raw[20:20 + jlen])
+    bin0 = raw[20 + jlen + 8:]
+    acc = doc["accessors"]
+    views = doc["bufferViews"]
+    sizes = {5126: 4, 5123: 2, 5125: 4, 5121: 1}
+    comps = {"SCALAR": 1, "VEC3": 3, "VEC4": 4}
+
+    def read(i):
+        a = acc[i]
+        v = views[a["bufferView"]]
+        n = comps[a["type"]]
+        ct = a["componentType"]
+        fmt = {5126: "f", 5123: "H", 5125: "I", 5121: "B"}[ct]
+        off = v.get("byteOffset", 0) + a.get("byteOffset", 0)
+        stride = v.get("byteStride", sizes[ct] * n)
+        out = []
+
+        for k in range(a["count"]):
+            out.append(struct.unpack_from("<%d%s" % (n, fmt), bin0, off + k * stride))
+
+        if a.get("normalized"):
+            d = {5123: 65535.0, 5121: 255.0}[ct]
+            out = [tuple(x / d for x in t) for t in out]
+
+        return out
+
+    blob = bytearray()
+    new_views = []
+    new_acc = []
+
+    def push(data, target):
+        while len(blob) % 4:
+            blob.append(0)
+
+        new_views.append({"buffer": 0, "byteOffset": len(blob), "byteLength": len(data), "target": target})
+        blob.extend(data)
+
+        return len(new_views) - 1
+
+    for mesh in doc["meshes"]:
+        for prim in mesh["primitives"]:
+            at = prim["attributes"]
+            pos = read(at["POSITION"])
+            nor = read(at["NORMAL"]) if "NORMAL" in at else [(0.0, 1.0, 0.0)] * len(pos)
+            col = read(at["COLOR_0"]) if "COLOR_0" in at else [(1.0, 1.0, 1.0, 1.0)] * len(pos)
+            idx = [t[0] for t in read(prim["indices"])] if "indices" in prim else list(range(len(pos)))
+            seen = {}
+            vp, vn, vc, out = [], [], [], []
+
+            for i in idx:
+                p = pos[i]
+                n = nor[i]
+                c = tuple(max(0, min(255, int(round(x * 255)))) for x in col[i][:3])
+                key = (round(p[0], 4), round(p[1], 4), round(p[2], 4), round(n[0], 2), round(n[1], 2), round(n[2], 2), c)
+                j = seen.get(key)
+
+                if j is None:
+                    j = len(vp)
+                    seen[key] = j
+                    vp.append(p)
+                    vn.append(n)
+                    vc.append(c)
+
+                out.append(j)
+
+            big = len(vp) > 65535
+            base = len(new_acc)
+            pv = push(b"".join(struct.pack("<3f", *p) for p in vp), 34962)
+            nv = push(b"".join(struct.pack("<3f", *n) for n in vn), 34962)
+            cv = push(b"".join(struct.pack("<4B", c[0], c[1], c[2], 255) for c in vc), 34962)
+            iv = push(struct.pack("<%d%s" % (len(out), "I" if big else "H"), *out), 34963)
+            mn = [min(p[k] for p in vp) for k in range(3)]
+            mx = [max(p[k] for p in vp) for k in range(3)]
+            new_acc.append({"bufferView": pv, "componentType": 5126, "count": len(vp), "type": "VEC3", "min": mn, "max": mx})
+            new_acc.append({"bufferView": nv, "componentType": 5126, "count": len(vp), "type": "VEC3"})
+            new_acc.append({"bufferView": cv, "componentType": 5121, "normalized": True, "count": len(vp), "type": "VEC4"})
+            new_acc.append({"bufferView": iv, "componentType": 5125 if big else 5123, "count": len(out), "type": "SCALAR"})
+            prim["attributes"] = {"POSITION": base, "NORMAL": base + 1, "COLOR_0": base + 2}
+            prim["indices"] = base + 3
+
+    while len(blob) % 4:
+        blob.append(0)
+
+    doc["accessors"] = new_acc
+    doc["bufferViews"] = new_views
+    doc["buffers"] = [{"byteLength": len(blob)}]
+    js = json.dumps(doc, separators=(",", ":")).encode()
+
+    while len(js) % 4:
+        js += b" "
+
+    total = 12 + 8 + len(js) + 8 + len(blob)
+
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2, total))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A))
+        f.write(js)
+        f.write(struct.pack("<II", len(blob), 0x004E4942))
+        f.write(blob)
+
+
+def squeeze_dir(d):
+    for f in sorted(os.listdir(d)):
+        if f.endswith(".glb"):
+            squeeze(os.path.join(d, f))
+
+
+
 def city(name, src, height):
     reset()
     bm = load(os.path.join(CITY, src + ".glb"))
     lo, hi = bounds(bm)
     normalize(bm, scale=height / (hi.z - lo.z))
     tint(bm, (0.92, 0.94, 1.0))
+    decimate(bm, 0.45)
     info = export(bm, name)
     info["kind"] = "prop"
     info["group"] = "building"
@@ -1232,6 +1399,15 @@ PROPS = [
     ("formwork", "formwork-wall-panel-run-52e9f5", {}),
     ("core", "concrete-core-section-39af7c", {"k": (0.82, 0.82, 0.82)}),
     ("mud", "mud-and-rut-tile-858785", {"collide": "none", "group": "ground"}),
+    ("scaffold", "scaffold-bay-4e051b", {}),
+    ("sitecabin", "site-cabin-e9ee10", {}),
+    ("framebay", "steel-frame-bay-91d3b6", {"collide": "none"}),
+    ("gantry", "loading-gantry-34460f", {"collide": "none"}),
+    ("tunnel", "pedestrian-walkway-tunnel-0b194e", {"collide": "none"}),
+    ("ibc", os.path.expanduser("~/.cache/polyfork/cprc_x/%s.glb") % "ibc-tote-88385a", {}),
+    ("wrap", os.path.expanduser("~/.cache/polyfork/cprc_x/%s.glb") % "stretch-wrapped-pallet-load-b4169b", {}),
+    ("sandbags", os.path.expanduser("~/.cache/polyfork/cprc_x/%s.glb") % "sandbag-wall-section-7075ee", {}),
+    ("pedbar", os.path.expanduser("~/.cache/polyfork/cprc_x/%s.glb") % "pedestrian-safety-barrier-run-2afeca", {"collide": "none"}),
 ]
 
 CITYS = [
@@ -1271,7 +1447,7 @@ def main():
 
     infos = {}
 
-    for fn in (lambda: tower("tower", -12, 12, -9, 9, 4, True, True, MAIN_WALLS, 11), lambda: tower("tower2", -8, 8, -6, 6, 3, False, False, SMALL_WALLS, 5), crane, cabins, frame, pilewall, lambda: container("box_red", (0.66, 0.22, 0.14)), lambda: container("box_blue", (0.16, 0.34, 0.56)), lambda: container("box_green", (0.22, 0.42, 0.3)), lambda: container("box_office", (0.86, 0.84, 0.78), office=True), pipes, drums, spool, silo, jersey, timber):
+    for fn in (lambda: tower("tower", -12, 12, -9, 9, 4, True, True, MAIN_WALLS, 11), lambda: tower("tower2", -8, 8, -6, 6, 3, False, False, SMALL_WALLS, 5), crane, cabins, frame, pilewall, lambda: container("box_red", (0.66, 0.22, 0.14)), lambda: container("box_blue", (0.16, 0.34, 0.56)), lambda: container("box_green", (0.22, 0.42, 0.3)), lambda: container("box_office", (0.86, 0.84, 0.78), office=True), pipes, drums, spool, silo, jersey, timber, starter, rebarmat):
         info = fn()
         infos[info["file"].split("/")[-1][:-4]] = info
 
@@ -1287,6 +1463,7 @@ def main():
     path = os.path.join(root, "src/shared/maps", "construction_kit.zig")
     emit_zig("construction", infos, path)
     write_solids(path)
+    squeeze_dir(pf.OUT)
 
 
 main()

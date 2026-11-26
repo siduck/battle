@@ -115,8 +115,9 @@ fn groundColor(x: f32, z: f32) api.Rgb {
     if (sdv < -track_w - 2) {
         const dust = mix3(.{ 206, 168, 120 }, .{ 190, 150, 106 }, fleck);
         const weed = tr.smooth(0.55, 0.7, tr.fbm(x * 0.05 + 2, z * 0.05));
+        const zone = zoneTone(x, z, fleck);
 
-        return shade(mix3(dust, .{ 150, 140, 96 }, weed * 0.5), light * ao);
+        return shade(mix3(mix3(dust, zone, 0.75), .{ 150, 140, 96 }, weed * 0.45), light * ao);
     }
 
     const sand = mix3(.{ 222, 170, 112 }, .{ 200, 140, 92 }, tr.fbm(x * 0.04 + 1, z * 0.04 - 6));
@@ -125,7 +126,33 @@ fn groundColor(x: f32, z: f32) api.Rgb {
     return shade(mix3(mix3(sand, .{ 232, 196, 150 }, std.math.clamp(fleck - 0.5, 0, 0.4)), .{ 150, 132, 88 }, scrub * 0.6), light * ao);
 }
 
-const max_lots = 16;
+const max_lots = 120;
+
+fn hash2(i: i32, j: i32) f32 {
+    var h: u32 = @bitCast(i *% 374761393 +% j *% 668265263);
+
+    h = (h ^ (h >> 13)) *% 1274126177;
+    h ^= h >> 16;
+
+    return @as(f32, @floatFromInt(h & 0xffff)) / 65535.0;
+}
+
+fn zoneTone(x: f32, z: f32, fleck: f32) [3]f32 {
+    const wx = x + (tr.fbm(x * 0.05 + 3, z * 0.05) - 0.5) * 16;
+    const wz = z + (tr.fbm(x * 0.05 - 9, z * 0.05 + 4) - 0.5) * 16;
+    const cell: f32 = 26;
+    const pick = hash2(@intFromFloat(@floor(wx / cell)), @intFromFloat(@floor(wz / cell)));
+    const speck = tr.fbm(x * 1.9 + 5, z * 1.9 - 3);
+    const gravel = mix3(mix3(.{ 160, 146, 126 }, .{ 144, 132, 114 }, fleck), .{ 192, 180, 160 }, tr.smooth(0.62, 0.72, speck));
+
+    if (pick < 0.35) return mix3(.{ 214, 176, 126 }, .{ 198, 160, 114 }, fleck);
+
+    if (pick < 0.6) return mix3(.{ 178, 136, 96 }, .{ 164, 124, 86 }, fleck);
+
+    if (pick < 0.82) return gravel;
+
+    return mix3(.{ 226, 196, 150 }, .{ 212, 182, 138 }, fleck);
+}
 var lots: [max_lots][4]f32 = undefined;
 var lot_n: usize = 0;
 
@@ -298,6 +325,17 @@ fn car(b: *Builder, x: f32, z: f32, yaw: f32) void {
     claimRect(x - 2, z - 2, x + 2, z + 2);
 }
 
+fn lotItem(b: *Builder, x: f32, z: f32, yaw: f32) void {
+    if (rnd(b) < 0.45) {
+        car(b, x, z, yaw);
+
+        return;
+    }
+
+    miniModule(b, x, z);
+    claimRect(x - 3, z - 3, x + 3, z + 3);
+}
+
 fn lot(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, along_x: bool, fill: f32) void {
     addLot(x0, z0, x1, z1);
 
@@ -306,7 +344,7 @@ fn lot(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, along_x: bool, fill: f32
 
         while (x < x1 - 1.5) : (x += 6.4) {
             for ([_]f32{ z0 + 3, z1 - 3 }) |z| {
-                if (rnd(b) < fill and !taken(x, z, 0.5)) car(b, x, z, if (z < (z0 + z1) / 2) pi else 0);
+                if (rnd(b) < fill + 0.35 and !taken(x, z, 0.5)) lotItem(b, x, z, if (z < (z0 + z1) / 2) pi else 0);
             }
         }
     } else {
@@ -314,7 +352,7 @@ fn lot(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, along_x: bool, fill: f32
 
         while (z < z1 - 1.5) : (z += 6.4) {
             for ([_]f32{ x0 + 3, x1 - 3 }) |x| {
-                if (rnd(b) < fill and !taken(x, z, 0.5)) car(b, x, z, if (x < (x0 + x1) / 2) -half_pi else half_pi);
+                if (rnd(b) < fill + 0.35 and !taken(x, z, 0.5)) lotItem(b, x, z, if (x < (x0 + x1) / 2) -half_pi else half_pi);
             }
         }
     }
@@ -491,30 +529,6 @@ fn grandstand(b: *Builder) void {
     spawnAt(b, -60, z - 6, 0);
     spawnAt(b, 60, z - 6, 0);
     anchor_list.append(b.gpa, vec(0, 22, z)) catch {};
-}
-
-fn pits(b: *Builder) void {
-    const z: f32 = -hz + track_w + 12;
-
-    for ([_]f32{ -54, -36, 36, 54 }) |x| {
-        house(b, .garage, x, z, pi);
-        put(b, .lift, x, z - 7, 0);
-        put(b, .tyres, x + 3.4, z - 5, 0);
-        put(b, .tyres, x + 4.2, z - 5.4, 0.4);
-        put(b, .cans, x - 3.6, z - 4.6, pi);
-        put(b, .drum, x - 4.4, z - 5.2, 0);
-    }
-
-    for ([_]f32{ -45, 45 }) |x| {
-        park_list.append(b.gpa, .{ .pos = vec(x, tr.height(x, z - 5), z - 5), .yaw = half_pi }) catch {};
-        put(b, .cone, x - 2, z - 8, 0);
-        put(b, .cone, x + 2, z - 8, 0);
-    }
-
-    loot(b, -45, z - 8);
-    loot(b, 45, z - 8);
-    spawnAt(b, -64, z - 4, 0);
-    spawnAt(b, 64, z - 4, 0);
 }
 
 fn mainStreet(b: *Builder) void {
@@ -799,6 +813,384 @@ fn desert(b: *Builder) void {
     spawnAt(b, 158, -40, -half_pi);
 }
 
+fn rp(yaw: f32, x: f32, z: f32) [2]f32 {
+    const c = @cos(yaw);
+    const s = @sin(yaw);
+
+    return .{ x * c + z * s, -x * s + z * c };
+}
+
+fn lp(b: *Builder, e: K, cx: f32, cz: f32, yaw: f32, lx: f32, lz: f32, ly: f32, lyaw: f32) void {
+    const o = rp(yaw, lx, lz);
+    const x = cx + o[0];
+    const z = cz + o[1];
+
+    b.putAt(of(e), vec(x, tr.height(x, z) + ly, z), yaw + lyaw, 1);
+}
+
+fn lsolid(b: *Builder, cx: f32, cz: f32, yaw: f32, l: [6]f32) void {
+    const r = wd.rotBox(cx, cz, yaw, l[0], l[1], l[2], l[3]);
+    const y = tr.height(cx, cz);
+
+    box(b, r[0], y + l[4], r[1], r[2], y + l[5], r[3]);
+}
+
+fn padLot(cx: f32, cz: f32, yaw: f32, hw: f32, hd: f32) void {
+    const r = wd.rotBox(cx, cz, yaw, -hw, -hd, hw, hd);
+
+    addLot(r[0], r[1], r[2], r[3]);
+}
+
+const boxes = [_]K{ .box_red, .box_blue, .box_white };
+
+fn paddock(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    padLot(cx, cz, yaw, 8, 7);
+    lp(b, .gazebo, cx, cz, yaw, -4, -2, 0, 0);
+    lp(b, .gazebo, cx, cz, yaw, 0.4, -2, 0, 0);
+    lp(b, if (rnd(b) < 0.5) .box_red else .box_blue, cx, cz, yaw, -1.5, 4.2, 0, 0);
+    lsolid(b, cx, cz, yaw, .{ -4.6, 2.9, 1.6, 5.5, -0.5, 2.6 });
+
+    for ([_]f32{ 4.5, 5.4, 6.3 }) |tx| {
+        lp(b, .tyres, cx, cz, yaw, tx, -4, 0, 0);
+        lp(b, .tyres, cx, cz, yaw, tx, -4, 0.96, 0.4);
+    }
+
+    lp(b, .drum, cx, cz, yaw, 5, 0, 0, 0);
+    lp(b, .drum, cx, cz, yaw, 5.7, 0.5, 0, 0.6);
+    lp(b, .ibc, cx, cz, yaw, 5.5, 2.4, 0, 0.1);
+    lp(b, .wrap, cx, cz, yaw, 5.5, 4, 0, 0);
+    lp(b, .redflag, cx, cz, yaw, -7, -5.5, 0, 0);
+    lp(b, .cans, cx, cz, yaw, -6.5, 1, 0, half_pi);
+    lp(b, .lift, cx, cz, yaw, -2, -6.2, 0, 0);
+}
+
+fn containerYard(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    padLot(cx, cz, yaw, 8, 6);
+
+    var i: usize = 0;
+
+    for ([_]f32{ -2.8, 0, 2.8 }) |lz| {
+        const e = boxes[(i + @as(usize, @intFromFloat(rnd(b) * 2.99))) % 3];
+
+        lp(b, e, cx, cz, yaw, -1.5, lz, 0, 0);
+
+        if (i != 2) lp(b, boxes[(i + 1) % 3], cx, cz, yaw, -1.5, lz, 2.64, rnd(b) * 0.06 - 0.03);
+
+        i += 1;
+    }
+
+    lsolid(b, cx, cz, yaw, .{ -4.6, -4.1, 1.6, 4.1, -0.5, 5.3 });
+
+    for ([_]f32{ -3, -1.8, -0.6 }) |lz| lp(b, .wrap, cx, cz, yaw, 4, lz, 0, 0);
+
+    lp(b, .wrap, cx, cz, yaw, 4, -2.4, 1.21, 0.05);
+    lp(b, .ibc, cx, cz, yaw, 4, 1.5, 0, 0);
+    lp(b, .ibc, cx, cz, yaw, 4, 2.8, 0, 0.1);
+    lp(b, .drum, cx, cz, yaw, 6, 4, 0, 0);
+}
+
+fn miniStand(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    var x: f32 = -6;
+
+    while (x <= 6) : (x += 1) {
+        lp(b, .stand, cx, cz, yaw, x, 0, 0, half_pi);
+        lp(b, .roof, cx, cz, yaw, x, -1, 0, half_pi);
+    }
+
+    var st: f32 = 0;
+
+    while (st < 7) : (st += 1) lsolid(b, cx, cz, yaw, .{ -6.5, 2.5 - st, 6.5, 3.5 - st, 0, (st + 1) * 0.62 });
+
+    lsolid(b, cx, cz, yaw, .{ -6.5, -4.5, 6.5, -3.6, 0, 7.3 });
+    lp(b, .redflag, cx, cz, yaw, -8, 3, 0, 0);
+    lp(b, .redflag, cx, cz, yaw, 8, 3, 0, 0);
+
+    for ([_]f32{ -5, -3, -1, 1, 3, 5 }) |fx| lp(b, .fence, cx, cz, yaw, fx, 5.2, 0, 0);
+
+    lp(b, .snack, cx, cz, yaw, 0, -7, 0, pi);
+}
+
+fn chicane(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    padLot(cx, cz, yaw, 9, 7);
+
+    for ([_][3]f32{ .{ -6, -4, 0 }, .{ -2, -4, 0 }, .{ 2, 0, 0 }, .{ 6, 0, 0 }, .{ -6, 4, 0 }, .{ -2, 4, 0 } }) |j| lp(b, .jersey, cx, cz, yaw, j[0], j[1], 0, j[2]);
+
+    lp(b, .tyrewall, cx, cz, yaw, 7.5, -4.5, 0, half_pi);
+    lp(b, .tyrewall, cx, cz, yaw, -7.5, 0, 0, half_pi);
+
+    for ([_][2]f32{ .{ 0, -2 }, .{ 3, -2 }, .{ -4, 2 }, .{ 1, 2.5 }, .{ 5, 4 } }) |c| lp(b, .cone, cx, cz, yaw, c[0], c[1], 0, 0);
+
+    lp(b, .camtower, cx, cz, yaw, 7.5, 5.5, 0, 0);
+}
+
+fn fanZone(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    padLot(cx, cz, yaw, 7, 6);
+    lp(b, .shade, cx, cz, yaw, 0, 0, 0, 0);
+
+    for ([_][2]f32{ .{ -2, -1.5 }, .{ 2, -1.5 }, .{ -2, 1.8 }, .{ 2, 1.8 } }) |p| lp(b, .picnic, cx, cz, yaw, p[0], p[1], 0, 0);
+
+    lp(b, .snack, cx, cz, yaw, 0, -5.6, 0, 0);
+    lp(b, .soda, cx, cz, yaw, 5.5, -4, 0, -half_pi);
+    lp(b, .ice, cx, cz, yaw, 5.5, -2.6, 0, 0);
+    lp(b, .planter, cx, cz, yaw, -6, 4.5, 0, 0);
+    lp(b, .planter, cx, cz, yaw, 6, 4.5, 0, 0);
+    lp(b, .redflag, cx, cz, yaw, -6, -5, 0, 0);
+}
+
+fn scrubPatch(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    putS(b, .outcrop, cx, cz, spin(b), 1.2);
+    lp(b, .joshua, cx, cz, yaw, 5, 3, 0, spin(b));
+    lp(b, .joshua, cx, cz, yaw, -5, -4, 0, spin(b));
+    lp(b, .saguaro, cx, cz, yaw, 4, -5, 0, spin(b));
+
+    for ([_][2]f32{ .{ -3, 4 }, .{ 6, -1 }, .{ -6, 0 }, .{ 1, 6 }, .{ 2, -6 } }) |c| lp(b, .creosote, cx, cz, yaw, c[0], c[1], 0, spin(b));
+
+    lp(b, .speed, cx, cz, yaw, -6, 6, 0, 0);
+}
+
+fn module(b: *Builder, x: f32, z: f32) void {
+    const yaw = @as(f32, @floatFromInt(@as(u32, @intFromFloat(rnd(b) * 3.99)))) * half_pi;
+    const pick = rnd(b);
+
+    if (pick < 0.24) paddock(b, x, z, yaw) else if (pick < 0.44) containerYard(b, x, z, yaw) else if (pick < 0.56) miniStand(b, x, z, yaw) else if (pick < 0.7) chicane(b, x, z, yaw) else if (pick < 0.84) fanZone(b, x, z, yaw) else scrubPatch(b, x, z, yaw);
+}
+
+fn fillInfield(b: *Builder) void {
+    var z: f32 = -hz + 12;
+
+    while (z < hz - 10) : (z += 3) {
+        var x: f32 = -hx + 12;
+
+        while (x < hx - 10) : (x += 3) {
+            if (trackSd(x, z) > -track_w - 12 or taken(x, z, 9) or lotAt(x, z) or streetDist(x, z) < street_w + 10) continue;
+
+            module(b, x, z);
+            claimRect(x - 9, z - 9, x + 9, z + 9);
+        }
+    }
+}
+
+fn pitLane(b: *Builder) void {
+    const wall_z: f32 = -hz + track_w + 1.4;
+    const gz: f32 = -hz + track_w + 13;
+    var x: f32 = -118;
+
+    while (x < 118) : (x += 4) {
+        if (@abs(x) < 10) continue;
+
+        putAt(b, .jersey, x, tr.height(x, wall_z), wall_z, 0);
+        box(b, x - 2, tr.height(x, wall_z) - 0.5, wall_z - 0.35, x + 2, tr.height(x, wall_z) + 0.85, wall_z + 0.35);
+
+        if (@mod(@as(i32, @intFromFloat(x + 200)), 24) == 2) putAt(b, .redflag, x, tr.height(x, wall_z + 1), wall_z + 1, 0);
+    }
+
+    addLot(-120, wall_z + 0.5, -10, gz - 4);
+    addLot(10, wall_z + 0.5, 120, gz - 4);
+
+    var gx: f32 = -114;
+
+    while (gx < 116) : (gx += 9) {
+        if (@abs(gx) < 14 or taken(gx, gz, 1)) continue;
+
+        house(b, if (@mod(@as(i32, @intFromFloat(gx + 300)), 4) == 0) .repair else .garage, gx, gz, pi);
+
+        const fz = gz - 5.4;
+        const fy = tr.height(gx, fz);
+
+        putAt(b, .tyres, gx - 3, fy, fz, 0);
+        putAt(b, .tyres, gx - 3, fy + 0.96, fz, 0.4);
+        putAt(b, .tyres, gx - 2.1, fy, fz + 0.2, 0.2);
+        putAt(b, if (@mod(@as(i32, @intFromFloat(gx + 300)), 18) < 9) .drum else .ibc, gx + 3, fy, fz, 0);
+        putAt(b, .cone, gx + 1.6, fy, fz - 1, 0);
+
+        if (@mod(@as(i32, @intFromFloat(gx + 300)), 27) < 9) putAt(b, .cans, gx + 3.4, fy, fz + 1.2, pi);
+    }
+
+    var px: f32 = -112;
+
+    while (px < 114) : (px += 18) {
+        if (@abs(px) < 16) continue;
+
+        const z = gz + 9;
+
+        if (taken(px, z, 2)) continue;
+
+        put(b, .gazebo, px, z, 0);
+        put(b, if (@mod(@as(i32, @intFromFloat(px + 300)), 36) < 18) .box_red else .box_white, px + 6, z + 1, half_pi);
+        box(b, px + 4.7, tr.height(px, z) - 0.5, z - 2, px + 7.3, tr.height(px, z) + 2.6, z + 4);
+        put(b, .tyres, px - 3.5, z - 1, 0);
+        put(b, .tyres, px - 3.5, z, 0.4);
+        putAt(b, .tyres, px - 3.5, tr.height(px, z) + 0.96, z - 0.5, 0.2);
+        put(b, .ibc, px + 3, z + 3.5, 0);
+        claimRect(px - 5, z - 3, px + 8, z + 5);
+    }
+
+    put(b, .camtower, -9, wall_z + 3, 0);
+    put(b, .camtower, 9, wall_z + 3, 0);
+
+    for ([_]f32{ -45, 45 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, tr.height(cx, wall_z + 4), wall_z + 4), .yaw = half_pi }) catch {};
+
+    loot(b, -45, gz - 5);
+    loot(b, 45, gz - 5);
+    loot(b, -90, gz + 9);
+    loot(b, 90, gz + 9);
+    spawnAt(b, -64, gz + 6, 0);
+    spawnAt(b, 64, gz + 6, 0);
+    claimRect(-122, wall_z - 1, 122, gz + 5);
+}
+
+fn infieldEdge(b: *Builder) void {
+    const total = trackLength();
+    var t: f32 = 2;
+    var n: u32 = 0;
+
+    while (t < total) : (t += 4) {
+        n += 1;
+
+        const p = trackPoint(t);
+        const nx = @sin(p[2]);
+        const nz = -@cos(p[2]);
+        const ix = p[0] + nx * (track_w + 3.5);
+        const iz = p[1] + nz * (track_w + 3.5);
+
+        if (streetDist(ix, iz) < street_w + 3 or taken(ix, iz, 0)) continue;
+
+        if (n % 9 < 6) {
+            putAt(b, .fence, ix - @cos(p[2]), tr.height(ix, iz), iz - @sin(p[2]), -p[2]);
+            putAt(b, .fence, ix + @cos(p[2]), tr.height(ix, iz), iz + @sin(p[2]), -p[2]);
+        } else if (n % 9 == 7) {
+            putAt(b, .tyrewall, ix, tr.height(ix, iz), iz, -p[2]);
+            box(b, ix - 2, tr.height(ix, iz) - 0.5, iz - 2, ix + 2, tr.height(ix, iz) + 0.9, iz + 2);
+        }
+
+        if (n % 23 == 0) {
+            const bx = p[0] - nx * (track_w + 14);
+            const bz = p[1] - nz * (track_w + 14);
+
+            putAt(b, .billboard, bx, tr.height(bx, bz), bz, -p[2] + pi);
+        }
+
+        if (n % 31 == 11) {
+            const ox = p[0] - nx * (track_w + 12);
+            const oz = p[1] - nz * (track_w + 12);
+
+            if (!taken(ox, oz, 4)) {
+                putAt(b, .shade, ox, tr.height(ox, oz), oz, -p[2]);
+                putAt(b, .camtower, ox + 6 * @cos(p[2]), tr.height(ox, oz), oz + 6 * @sin(p[2]), -p[2]);
+                claimRect(ox - 6, oz - 6, ox + 6, oz + 6);
+            }
+        }
+    }
+}
+
+fn miniModule(b: *Builder, cx: f32, cz: f32) void {
+    const yaw = @as(f32, @floatFromInt(@as(u32, @intFromFloat(rnd(b) * 3.99)))) * half_pi;
+    const pick = rnd(b);
+
+    if (pick < 0.22) {
+        lp(b, boxes[@as(usize, @intFromFloat(rnd(b) * 2.99))], cx, cz, yaw, 0, 0, 0, 0);
+        lsolid(b, cx, cz, yaw, .{ -3.1, -1.3, 3.1, 1.3, -0.5, 2.6 });
+        lp(b, .wrap, cx, cz, yaw, -1.5, 2.2, 0, 0);
+        lp(b, .wrap, cx, cz, yaw, -0.4, 2.2, 0, 0.1);
+        lp(b, .drum, cx, cz, yaw, 2, 2, 0, 0);
+    } else if (pick < 0.4) {
+        for ([_]f32{ -1, 0, 1 }) |tx| {
+            lp(b, .tyres, cx, cz, yaw, tx, 0, 0, 0);
+            lp(b, .tyres, cx, cz, yaw, tx, 0, 0.96, 0.3);
+        }
+
+        lp(b, .tyres, cx, cz, yaw, -0.5, 0, 1.92, 0.1);
+        lp(b, .drum, cx, cz, yaw, 2.4, 0.4, 0, 0);
+        lp(b, .drum, cx, cz, yaw, 2.4, -0.6, 0, 0.5);
+        lp(b, .cone, cx, cz, yaw, -2.5, 1.5, 0, 0);
+    } else if (pick < 0.56) {
+        padLot(cx, cz, yaw, 3.5, 3.5);
+        lp(b, .gazebo, cx, cz, yaw, 0, 0, 0, 0);
+        lp(b, .picnic, cx, cz, yaw, 0, 0.3, 0, 0);
+        lp(b, .ice, cx, cz, yaw, 2.6, -1.4, 0, 0);
+        lp(b, .redflag, cx, cz, yaw, -3, 3, 0, 0);
+    } else if (pick < 0.7) {
+        lp(b, .jersey, cx, cz, yaw, -2, 0, 0, 0);
+        lp(b, .jersey, cx, cz, yaw, 2, 0, 0, 0);
+        lp(b, .tyrewall, cx, cz, yaw, 0, 1.6, 0, 0);
+        lsolid(b, cx, cz, yaw, .{ -4, -0.4, 4, 2.1, -0.5, 0.9 });
+    } else if (pick < 0.84) {
+        lp(b, .ibc, cx, cz, yaw, 0, 0, 0, 0);
+        lp(b, .ibc, cx, cz, yaw, 1.3, 0, 0, 0.05);
+        lp(b, .ibc, cx, cz, yaw, 0.6, 0, 1.16, 0.1);
+        lp(b, .wrap, cx, cz, yaw, -1.4, 0.2, 0, 0);
+        lp(b, .cans, cx, cz, yaw, 0, 2, 0, 0);
+    } else {
+        putS(b, .outcrop, cx, cz, spin(b), 0.9);
+        lp(b, .joshua, cx, cz, yaw, 3, 2, 0, spin(b));
+        lp(b, .creosote, cx, cz, yaw, -3, 1, 0, spin(b));
+        lp(b, .creosote, cx, cz, yaw, 1, -3, 0, spin(b));
+    }
+}
+
+fn fillMini(b: *Builder) void {
+    var z: f32 = -hz + 12;
+
+    while (z < hz - 10) : (z += 3) {
+        var x: f32 = -hx + 12;
+
+        while (x < hx - 10) : (x += 3) {
+            if (trackSd(x, z) > -track_w - 8 or taken(x, z, 4) or lotAt(x, z) or streetDist(x, z) < street_w + 5) continue;
+
+            if (rnd(b) < 0.3) continue;
+
+            miniModule(b, x, z);
+            claimRect(x - 4, z - 4, x + 4, z + 4);
+        }
+    }
+}
+
+fn desertCamp(b: *Builder, cx: f32, cz: f32) void {
+    const yaw = spin(b);
+    const pick = rnd(b);
+
+    if (pick < 0.3) {
+        lp(b, .billboard, cx, cz, yaw, 0, 0, 0, 0);
+        putS(b, .outcrop, cx + 6, cz + 4, spin(b), 1.4);
+        lp(b, .saguaro, cx, cz, yaw, -5, 3, 0, 0);
+    } else if (pick < 0.55) {
+        lp(b, .shade, cx, cz, yaw, 0, 0, 0, 0);
+        lp(b, .picnic, cx, cz, yaw, 0, 0, 0, 0);
+        lp(b, .ice, cx, cz, yaw, 2, 1, 0, 0);
+        lp(b, .redflag, cx, cz, yaw, 4, -4, 0, 0);
+        lp(b, .tyres, cx, cz, yaw, -4, 3, 0, 0);
+    } else if (pick < 0.75) {
+        putS(b, .outcrop, cx, cz, spin(b), b.rng.range(1.6, 2.4));
+        putS(b, .outcrop, cx + 5, cz - 3, spin(b), b.rng.range(1.0, 1.6));
+        lp(b, .joshua, cx, cz, yaw, -5, 4, 0, 0);
+    } else {
+        lp(b, if (rnd(b) < 0.5) .box_red else .box_white, cx, cz, yaw, 0, 0, 0, 0);
+        lsolid(b, cx, cz, yaw, .{ -3.1, -1.3, 3.1, 1.3, -0.5, 2.6 });
+        lp(b, .drum, cx, cz, yaw, 4, 1, 0, 0);
+        lp(b, .tyres, cx, cz, yaw, -4, 1.5, 0, 0);
+        lp(b, .weed, cx, cz, yaw, 1, 3, 0, 0);
+    }
+}
+
+fn outerRing(b: *Builder) void {
+    var z: f32 = -170;
+
+    while (z < 172) : (z += 6) {
+        var x: f32 = -170;
+
+        while (x < 172) : (x += 6) {
+            const sd = trackSd(x, z);
+
+            if (sd < track_w + 16 or taken(x, z, 6)) continue;
+
+            if (rnd(b) < 0.55) continue;
+
+            desertCamp(b, x + b.rng.range(-2, 2), z + b.rng.range(-2, 2));
+            claimRect(x - 7, z - 7, x + 7, z + 7);
+        }
+    }
+}
+
 fn build(b: *Builder) void {
     @memset(&occ, 0);
     shadow_n = 0;
@@ -812,13 +1204,17 @@ fn build(b: *Builder) void {
     circuit(b);
     mainStreet(b);
     grandstand(b);
-    pits(b);
+    pitLane(b);
     quarterNW(b);
     quarterNE(b);
     quarterSW(b);
     quarterSE(b);
     frontage(b);
+    infieldEdge(b);
+    fillInfield(b);
+    fillMini(b);
     infield(b);
+    outerRing(b);
     desert(b);
 }
 
