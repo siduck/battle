@@ -61,6 +61,12 @@ jobs:
           zig build -Drelease
           tar -czf dronefire-linux-x86_64.tar.gz -C zig-out bin share
 
+      - name: Windows build
+        run: |
+          zig build -Drelease -Dtarget=x86_64-windows-gnu --prefix zig-out-win
+          mkdir -p win && cp -r zig-out-win win/dronefire
+          (cd win && zip -qr ../dronefire-windows-x86_64.zip dronefire)
+
       - name: Android build
         run: |
           zig build -Dandroid -Drelease -Dandroid_sdk="$ANDROID_SDK_DIR"
@@ -71,4 +77,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v$(date -u +%Y.%m.%d)-${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" dronefire.apk dronefire-linux-x86_64.tar.gz --title "Dronefire $tag" --notes "$(git log -1 --pretty=%s)" --target "$GITHUB_SHA"
+          gh release create "$tag" dronefire.apk dronefire-linux-x86_64.tar.gz dronefire-windows-x86_64.zip --title "Dronefire $tag" --notes "$(git log -1 --pretty=%s)" --target "$GITHUB_SHA"
