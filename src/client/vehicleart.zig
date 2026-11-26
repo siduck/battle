@@ -268,8 +268,11 @@ pub fn draw(r: *gfx.Renderer, art: *const Art, v: vehicle.Vehicle, alpha: f32) v
     }
 
     const pos = v.prev.lerp(v.pos, alpha).add(basis.y.scale(-h.ground));
+    const far2 = pos.sub(eye).dot(pos.sub(eye));
 
     r.drawModelLit(ha.body, mesh.transform(pos, basis, h.scale));
+
+    if (far2 > 90 * 90 and h.turret == null) return;
 
     if (h.turret) |pivot| {
         const turret_basis = rotateBasis(basis, basis.y, v.turret);
@@ -306,13 +309,17 @@ pub fn draw(r: *gfx.Renderer, art: *const Art, v: vehicle.Vehicle, alpha: f32) v
 
                 r.drawModelLit(w, mesh.transform(spot, rotateBasis(fixed, basis.x, v.spin), h.scale));
 
-                if (ha.caliper) |c| r.drawModelLit(c, mesh.transform(spot, fixed, h.scale));
+                if (far2 < 25 * 25) {
+                    if (ha.caliper) |c| r.drawModelLit(c, mesh.transform(spot, fixed, h.scale));
+                }
             }
         }
     }
 
     r.setSurface(.{ .roughness = 0.5 });
 }
+
+pub var eye: Vec3 = .{};
 
 fn charred(r: *gfx.Renderer, model: rl.Model, transform: rl.Matrix) void {
     var saved: [64]rl.Color = undefined;

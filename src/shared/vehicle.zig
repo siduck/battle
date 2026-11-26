@@ -1,4 +1,5 @@
 const std = @import("std");
+const grid = @import("grid.zig");
 const math = @import("math.zig");
 const map = @import("map.zig");
 const terrain = @import("terrain.zig");
@@ -197,7 +198,9 @@ fn groundAt(pieces: []const map.Piece, p: Vec3, r: f32, climb: f32) Ground {
     var piece = false;
     const box: @import("geom.zig").Rect = .{ .min_x = p.x - r, .max_x = p.x + r, .min_z = p.z - r, .max_z = p.z + r };
 
-    for (pieces) |pc| {
+    var near = grid.rect(pieces, box);
+
+    while (near.next()) |pc| {
         const top = pc.shape.topOver(box) orelse continue;
 
         if (top <= p.y + climb and top > best) {
@@ -212,7 +215,9 @@ fn groundAt(pieces: []const map.Piece, p: Vec3, r: f32, climb: f32) Ground {
 fn blocked(pieces: []const map.Piece, p: Vec3, r: f32, climb: f32, height: f32) bool {
     const box: @import("geom.zig").Rect = .{ .min_x = p.x - r, .max_x = p.x + r, .min_z = p.z - r, .max_z = p.z + r };
 
-    for (pieces) |pc| {
+    var near = grid.rect(pieces, box);
+
+    while (near.next()) |pc| {
         const top = pc.shape.topOver(box) orelse continue;
 
         if (top > p.y + climb and pc.shape.bottom() < p.y + height) return true;

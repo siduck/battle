@@ -16,6 +16,9 @@ pub var shadow_res: c_int = if (assets.mobile) 1024 else 2048;
 const shadow_slot: c_int = 13;
 const shadow_slot_far: c_int = 12;
 const env_slot: c_int = 14;
+const cloud_slot: c_int = 11;
+var cloud_tex: c_uint = 0;
+var cloud_loc: c_int = -2;
 const mat_slot: c_int = 7;
 const ground_detail_slot: c_int = 5;
 const ground_map_slot: c_int = 6;
@@ -63,21 +66,35 @@ const lit_vs =
     \\in vec3 vertexNormal;
     \\in vec4 vertexColor;
     \\in vec2 vertexTexCoord;
+    \\in vec4 vertexBoneIndices;
+    \\in vec4 vertexBoneWeights;
     \\uniform mat4 mvp;
     \\uniform mat4 matModel;
     \\uniform mat4 matNormal;
+    \\uniform mat4 boneMatrices[56];
+    \\uniform float skinned;
     \\out vec3 worldPos;
     \\out vec3 worldNormal;
     \\out float localY;
     \\centroid out vec4 tint;
     \\centroid out vec2 uv;
     \\void main() {
+    \\    vec4 p = vec4(vertexPosition, 1.0);
+    \\    vec3 n = vertexNormal;
+    \\    if (skinned > 0.5) {
+    \\        mat4 s = boneMatrices[int(vertexBoneIndices.x)] * vertexBoneWeights.x
+    \\            + boneMatrices[int(vertexBoneIndices.y)] * vertexBoneWeights.y
+    \\            + boneMatrices[int(vertexBoneIndices.z)] * vertexBoneWeights.z
+    \\            + boneMatrices[int(vertexBoneIndices.w)] * vertexBoneWeights.w;
+    \\        p = s * p;
+    \\        n = mat3(s) * n;
+    \\    }
     \\    uv = vertexTexCoord;
     \\    localY = 10.0;
-    \\    worldPos = (matModel * vec4(vertexPosition, 1.0)).xyz;
-    \\    worldNormal = normalize(mat3(matNormal) * vertexNormal);
+    \\    worldPos = (matModel * p).xyz;
+    \\    worldNormal = normalize(mat3(matNormal) * n);
     \\    tint = vertexColor;
-    \\    gl_Position = mvp * vec4(vertexPosition, 1.0);
+    \\    gl_Position = mvp * p;
     \\}
 ;
 
@@ -290,24 +307,9 @@ const sky_vs =
 ;
 
 const sky_fs = "#version 330\nin vec3 dir;\nout vec4 finalColor;\nuniform vec3 skyZenith;\nuniform vec3 sunDir;\nuniform float time;\nuniform float prism;\n" ++ common_fs ++
-    \\float hash(vec2 p) {
-    \\    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-    \\}
-    \\float noise(vec2 p) {
-    \\    vec2 i = floor(p);
-    \\    vec2 f = fract(p);
-    \\    vec2 u = f * f * (3.0 - 2.0 * f);
-    \\    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-    \\}
+    \\uniform sampler2D cloudTex;
     \\float fbm(vec2 p) {
-    \\    float v = 0.0;
-    \\    float a = 0.5;
-    \\    for (int i = 0; i < 5; i++) {
-    \\        v += a * noise(p);
-    \\        p = p * 2.03 + vec2(1.7, 9.2);
-    \\        a *= 0.5;
-    \\    }
-    \\    return v;
+    \\    return texture(cloudTex, p * 0.125).r;
     \\}
     \\void main() {
     \\    vec3 d = normalize(dir);
@@ -419,6 +421,188 @@ const SkyLocs = struct {
 };
 
 pub const Phase = enum { shadow, main };
+
+const inst_cap: usize = 16384;
+var inst_stage: [inst_cap][16]f32 = undefined;
+var inst_vbos: [3]c_uint = .{ 0, 0, 0 };
+var inst_frame: usize = 0;
+var inst_ring: usize = 0;
+var sway_loc: c_int = -2;
+var sway_time_loc: c_int = -1;
+var mat_id_loc: c_int = -1;
+var skinned_loc: c_int = -1;
+var bones_loc: c_int = -1;
+
+fn latticeHash(x: u32, y: u32) f32 {
+    var h = x *% 374761393 +% y *% 668265263;
+
+    h = (h ^ (h >> 13)) *% 1274126177;
+    h ^= h >> 16;
+
+    return @as(f32, @floatFromInt(h & 0xffff)) / 65535.0;
+}
+
+fn valueNoise(x: f32, y: f32, period: u32) f32 {
+    const fx = @floor(x);
+    const fy = @floor(y);
+    const ix: u32 = @intFromFloat(fx);
+    const iy: u32 = @intFromFloat(fy);
+    const tx = x - fx;
+    const ty = y - fy;
+    const ux = tx * tx * (3 - 2 * tx);
+    const uy = ty * ty * (3 - 2 * ty);
+    const x0 = ix % period;
+    const y0 = iy % period;
+    const x1 = (ix + 1) % period;
+    const y1 = (iy + 1) % period;
+    const a = latticeHash(x0, y0);
+    const b = latticeHash(x1, y0);
+    const c = latticeHash(x0, y1);
+    const d = latticeHash(x1, y1);
+
+    return (a + (b - a) * ux) + ((c + (d - c) * ux) - (a + (b - a) * ux)) * uy;
+}
+
+fn makeClouds() c_uint {
+    const size: usize = 512;
+    const span: f32 = 8;
+    const pixels = std.heap.page_allocator.alloc(u8, size * size) catch return 0;
+
+    defer std.heap.page_allocator.free(pixels);
+
+    for (0..size) |j| {
+        for (0..size) |i| {
+            const x = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(size)) * span;
+            const y = @as(f32, @floatFromInt(j)) / @as(f32, @floatFromInt(size)) * span;
+            var v: f32 = 0;
+            var a: f32 = 0.5;
+            var f: f32 = 1;
+            var period: u32 = 8;
+
+            for (0..5) |_| {
+                v += a * valueNoise(x * f, y * f, period);
+                f *= 2;
+                period *= 2;
+                a *= 0.5;
+            }
+
+            pixels[j * size + i] = @intFromFloat(std.math.clamp(v, 0, 1) * 255);
+        }
+    }
+
+    const id = rlgl.rlLoadTexture(pixels.ptr, @intCast(size), @intCast(size), rl.PIXELFORMAT_UNCOMPRESSED_GRAYSCALE, 1);
+
+    rlgl.rlTextureParameters(id, rlgl.RL_TEXTURE_WRAP_S, rlgl.RL_TEXTURE_WRAP_REPEAT);
+    rlgl.rlTextureParameters(id, rlgl.RL_TEXTURE_WRAP_T, rlgl.RL_TEXTURE_WRAP_REPEAT);
+    rlgl.rlTextureParameters(id, rlgl.RL_TEXTURE_MAG_FILTER, rlgl.RL_TEXTURE_FILTER_LINEAR);
+    rlgl.rlTextureParameters(id, rlgl.RL_TEXTURE_MIN_FILTER, rlgl.RL_TEXTURE_FILTER_LINEAR);
+
+    return id;
+}
+
+fn asMat(comptime T: type, m: anytype) T {
+    return @as(*const T, @ptrCast(&m)).*;
+}
+
+fn flatMatrix(m: rl.Matrix) [16]f32 {
+    return .{ m.m0, m.m1, m.m2, m.m3, m.m4, m.m5, m.m6, m.m7, m.m8, m.m9, m.m10, m.m11, m.m12, m.m13, m.m14, m.m15 };
+}
+
+pub fn uploadStatic(transforms: []const rl.Matrix) c_uint {
+    if (transforms.len == 0) return 0;
+
+    const flat = std.heap.page_allocator.alloc([16]f32, transforms.len) catch return 0;
+
+    defer std.heap.page_allocator.free(flat);
+
+    for (transforms, 0..) |t, i| flat[i] = flatMatrix(t);
+
+    return rlgl.rlLoadVertexBuffer(flat.ptr, @intCast(transforms.len * 64), false);
+}
+
+fn drawMeshBatch(mesh: rl.Mesh, material: rl.Material, transforms: []const rl.Matrix) void {
+    const sh = material.shader;
+    const inst_loc = sh.locs[@intCast(rl.SHADER_LOC_VERTEX_INSTANCETRANSFORM)];
+
+    if (inst_loc < 0 or transforms.len > inst_cap) return rl.DrawMeshInstanced(mesh, material, transforms.ptr, @intCast(transforms.len));
+
+    const inst_vbo = &inst_vbos[inst_frame];
+
+    if (inst_vbo.* == 0) inst_vbo.* = rlgl.rlLoadVertexBuffer(null, @intCast(inst_cap * 64), true);
+
+    if (inst_ring + transforms.len > inst_cap) inst_ring = 0;
+
+    for (transforms, 0..) |t, i| inst_stage[inst_ring + i] = flatMatrix(t);
+
+    const base = inst_ring * 64;
+
+    rlgl.rlUpdateVertexBuffer(inst_vbo.*, &inst_stage[inst_ring], @intCast(transforms.len * 64), @intCast(base));
+    inst_ring += transforms.len;
+    drawFromBuffer(mesh, material, inst_vbo.*, base, transforms.len);
+}
+
+fn drawFromBuffer(mesh: rl.Mesh, material: rl.Material, vbo: c_uint, base: usize, count: usize) void {
+    const sh = material.shader;
+    const inst_loc = sh.locs[@intCast(rl.SHADER_LOC_VERTEX_INSTANCETRANSFORM)];
+
+    rlgl.rlEnableShader(sh.id);
+
+    const diffuse = material.maps[@intCast(rl.MATERIAL_MAP_DIFFUSE)];
+    const col_loc = sh.locs[@intCast(rl.SHADER_LOC_COLOR_DIFFUSE)];
+
+    if (col_loc != -1) {
+        const c = diffuse.color;
+        const v = [4]f32{ @as(f32, @floatFromInt(c.r)) / 255, @as(f32, @floatFromInt(c.g)) / 255, @as(f32, @floatFromInt(c.b)) / 255, @as(f32, @floatFromInt(c.a)) / 255 };
+
+        rlgl.rlSetUniform(col_loc, &v, rl.SHADER_UNIFORM_VEC4, 1);
+    }
+
+    const view = rlgl.rlGetMatrixModelview();
+    const proj = rlgl.rlGetMatrixProjection();
+    const view_loc = sh.locs[@intCast(rl.SHADER_LOC_MATRIX_VIEW)];
+    const proj_loc = sh.locs[@intCast(rl.SHADER_LOC_MATRIX_PROJECTION)];
+    const normal_loc = sh.locs[@intCast(rl.SHADER_LOC_MATRIX_NORMAL)];
+
+    if (view_loc != -1) rlgl.rlSetUniformMatrix(view_loc, view);
+    if (proj_loc != -1) rlgl.rlSetUniformMatrix(proj_loc, proj);
+    if (normal_loc != -1) rlgl.rlSetUniformMatrix(normal_loc, asMat(rlgl.Matrix, rm.MatrixIdentity()));
+
+    if (diffuse.texture.id > 0) {
+        const slot: c_int = 0;
+
+        rlgl.rlActiveTextureSlot(0);
+        rlgl.rlEnableTexture(diffuse.texture.id);
+        rlgl.rlSetUniform(sh.locs[@intCast(rl.SHADER_LOC_MAP_DIFFUSE)], &slot, rl.SHADER_UNIFORM_INT, 1);
+    }
+
+    _ = rlgl.rlEnableVertexArray(mesh.vaoId);
+    rlgl.rlEnableVertexBuffer(vbo);
+
+    for (0..4) |i| {
+        const loc: c_uint = @intCast(inst_loc + @as(c_int, @intCast(i)));
+
+        rlgl.rlEnableVertexAttribute(loc);
+        rlgl.rlSetVertexAttribute(loc, 4, rlgl.RL_FLOAT, false, 64, @intCast(base + i * 16));
+        rlgl.rlSetVertexAttributeDivisor(loc, 1);
+    }
+
+    rlgl.rlSetUniformMatrix(sh.locs[@intCast(rl.SHADER_LOC_MATRIX_MVP)], asMat(rlgl.Matrix, rm.MatrixMultiply(rm.MatrixMultiply(asMat(rm.Matrix, rlgl.rlGetMatrixTransform()), asMat(rm.Matrix, view)), asMat(rm.Matrix, proj))));
+
+    if (mesh.indices != null) {
+        rlgl.rlDrawVertexArrayElementsInstanced(0, mesh.triangleCount * 3, null, @intCast(count));
+    } else {
+        rlgl.rlDrawVertexArrayInstanced(0, mesh.vertexCount, @intCast(count));
+    }
+
+    if (diffuse.texture.id > 0) {
+        rlgl.rlActiveTextureSlot(0);
+        rlgl.rlDisableTexture();
+    }
+
+    rlgl.rlDisableVertexArray();
+    rlgl.rlDisableVertexBuffer();
+    rlgl.rlDisableShader();
+}
 
 pub const Renderer = struct {
     lit: rl.Shader,
@@ -615,6 +799,9 @@ pub const Renderer = struct {
     }
 
     pub fn begin(r: *Renderer, cam: rl.Camera3D, time: f32) void {
+        inst_frame = (inst_frame + 1) % inst_vbos.len;
+        inst_ring = 0;
+
         const view = [3]f32{ cam.position.x, cam.position.y, cam.position.z };
         const sun = [3]f32{ r.sun_dir.x, r.sun_dir.y, r.sun_dir.z };
         const texel: f32 = 1.0 / @as(f32, @floatFromInt(shadow_res));
@@ -635,6 +822,13 @@ pub const Renderer = struct {
 
         rlgl.rlActiveTextureSlot(env_slot);
         rlgl.rlEnableTexture(r.env.id);
+
+        if (cloud_tex == 0) cloud_tex = makeClouds();
+
+        if (cloud_loc == -2) cloud_loc = rl.GetShaderLocation(r.sky, "cloudTex");
+
+        rlgl.rlActiveTextureSlot(cloud_slot);
+        rlgl.rlEnableTexture(cloud_tex);
         rlgl.rlActiveTextureSlot(shadow_slot);
         rlgl.rlEnableTexture(r.shadow_depth);
 
@@ -661,6 +855,7 @@ pub const Renderer = struct {
 
         rlgl.rlEnableShader(r.sky.id);
         rlgl.rlSetUniform(r.sky_locs.env_map, &env_unit, rl.SHADER_UNIFORM_INT, 1);
+        rlgl.rlSetUniform(cloud_loc, &cloud_slot, rl.SHADER_UNIFORM_INT, 1);
         rl.SetShaderValue(r.sky, r.sky_locs.env_scale, &r.env_scale, rl.SHADER_UNIFORM_FLOAT);
         rl.SetShaderValue(r.sky, r.sky_locs.exposure, &r.exposure, rl.SHADER_UNIFORM_FLOAT);
         rl.SetShaderValue(r.sky, r.sky_locs.grade_tint, &r.grade_tint, rl.SHADER_UNIFORM_VEC3);
@@ -794,7 +989,13 @@ pub const Renderer = struct {
     pub fn setMatId(r: *Renderer, id: f32) void {
         if (r.phase == .shadow) return;
 
-        rl.SetShaderValue(r.lit_inst, rl.GetShaderLocation(r.lit_inst, "matId"), &id, rl.SHADER_UNIFORM_FLOAT);
+        if (sway_loc == -2) {
+            sway_loc = rl.GetShaderLocation(r.lit_inst, "sway");
+            sway_time_loc = rl.GetShaderLocation(r.lit_inst, "swayTime");
+            mat_id_loc = rl.GetShaderLocation(r.lit_inst, "matId");
+        }
+
+        rl.SetShaderValue(r.lit_inst, mat_id_loc, &id, rl.SHADER_UNIFORM_FLOAT);
     }
 
     pub fn setGlass(r: *Renderer, alpha: f32) void {
@@ -841,8 +1042,14 @@ pub const Renderer = struct {
     pub fn setSway(r: *Renderer, amount: f32) void {
         const t: f32 = @floatCast(rl.GetTime());
 
-        rl.SetShaderValue(r.lit_inst, rl.GetShaderLocation(r.lit_inst, "sway"), &amount, rl.SHADER_UNIFORM_FLOAT);
-        rl.SetShaderValue(r.lit_inst, rl.GetShaderLocation(r.lit_inst, "swayTime"), &t, rl.SHADER_UNIFORM_FLOAT);
+        if (sway_loc == -2) {
+            sway_loc = rl.GetShaderLocation(r.lit_inst, "sway");
+            sway_time_loc = rl.GetShaderLocation(r.lit_inst, "swayTime");
+            mat_id_loc = rl.GetShaderLocation(r.lit_inst, "matId");
+        }
+
+        rl.SetShaderValue(r.lit_inst, sway_loc, &amount, rl.SHADER_UNIFORM_FLOAT);
+        rl.SetShaderValue(r.lit_inst, sway_time_loc, &t, rl.SHADER_UNIFORM_FLOAT);
     }
 
     pub fn drawInstanced(r: *Renderer, model: rl.Model, transforms: []const rl.Matrix, two_sided: bool) void {
@@ -856,7 +1063,24 @@ pub const Renderer = struct {
             var material = model.materials[@intCast(model.meshMaterial[i])];
 
             material.shader = if (r.phase == .shadow) r.depth_inst else r.lit_inst;
-            rl.DrawMeshInstanced(model.meshes[i], material, transforms.ptr, @intCast(transforms.len));
+            drawMeshBatch(model.meshes[i], material, transforms);
+        }
+
+        if (two_sided) rlgl.rlEnableBackfaceCulling();
+    }
+
+    pub fn drawStatic(r: *Renderer, model: rl.Model, vbo: c_uint, count: usize, two_sided: bool) void {
+        if (r.skip or count == 0 or vbo == 0) return;
+
+        if (two_sided) rlgl.rlDisableBackfaceCulling();
+
+        var i: usize = 0;
+
+        while (i < @as(usize, @intCast(model.meshCount))) : (i += 1) {
+            var material = model.materials[@intCast(model.meshMaterial[i])];
+
+            material.shader = if (r.phase == .shadow) r.depth_inst else r.lit_inst;
+            drawFromBuffer(model.meshes[i], material, vbo, 0, count);
         }
 
         if (two_sided) rlgl.rlEnableBackfaceCulling();
@@ -874,8 +1098,34 @@ pub const Renderer = struct {
         rl.DrawMesh(m, r.lit_material, transform);
     }
 
+    pub fn enableSkinning(r: *Renderer, model: *rl.Model) void {
+        skinned_loc = rl.GetShaderLocation(r.lit, "skinned");
+        bones_loc = rl.GetShaderLocation(r.lit, "boneMatrices");
+        r.lit.locs[@intCast(rl.SHADER_LOC_VERTEX_BONEIDS)] = rl.GetShaderLocationAttrib(r.lit, "vertexBoneIndices");
+        r.lit.locs[@intCast(rl.SHADER_LOC_VERTEX_BONEWEIGHTS)] = rl.GetShaderLocationAttrib(r.lit, "vertexBoneWeights");
+        r.lit_material.shader = r.lit;
+
+        for (model.materials[0..@intCast(model.materialCount)]) |*m| m.shader = r.lit;
+    }
+
     pub fn drawModel(r: *Renderer, model: rl.Model, transform: rl.Matrix) void {
         if (r.skip) return;
+
+        const skin = r.phase != .shadow and bones_loc >= 0 and model.boneMatrices != null and model.skeleton.boneCount > 0 and model.skeleton.boneCount <= 56;
+
+        if (skin) {
+            const on: f32 = 1;
+
+            rlgl.rlEnableShader(r.lit.id);
+            rlgl.rlSetUniformMatrices(bones_loc, @ptrCast(model.boneMatrices), @intCast(model.skeleton.boneCount));
+            rl.SetShaderValue(r.lit, skinned_loc, &on, rl.SHADER_UNIFORM_FLOAT);
+        }
+
+        defer if (skin) {
+            const off: f32 = 0;
+
+            rl.SetShaderValue(r.lit, skinned_loc, &off, rl.SHADER_UNIFORM_FLOAT);
+        };
 
         var i: usize = 0;
 

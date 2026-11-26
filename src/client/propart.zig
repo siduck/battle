@@ -17,6 +17,7 @@ const Slot = struct {
     spots: []Vec3 = &.{},
     visible: []rl.Matrix = &.{},
     count: usize = 0,
+    vbo: c_uint = 0,
 };
 
 pub const Props = struct {
@@ -100,6 +101,22 @@ pub const Props = struct {
             var n: usize = 0;
 
             if (shadow and (info.group == .road or info.group == .ground)) continue;
+
+            if (!glass and !shadow) {
+                if (slot.vbo == 0) slot.vbo = gfx.uploadStatic(slot.all[0..slot.count]);
+
+                r.setSway(switch (info.group) {
+                    .tree => 1.0,
+                    .bush => 0.8,
+                    .ground => 0.6,
+                    else => 0,
+                });
+                r.setMatId(kitMaterial(i));
+                r.drawStatic(model, slot.vbo, slot.count, info.foliage);
+                r.setMatId(-1);
+
+                continue;
+            }
 
             for (slot.spots[0..slot.count], 0..) |spot, k| {
                 if (glass and world.paneBroken(spot)) continue;

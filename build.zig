@@ -142,6 +142,7 @@ const manifest_xml =
     \\    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     \\    <uses-feature android:name="android.hardware.gamepad" android:required="false"/>
     \\    <application android:label="Dronefire" android:hasCode="false" android:extractNativeLibs="true" android:isGame="true" android:appCategory="game">
+    \\        <profileable android:shell="true" />
     \\        <activity android:name="android.app.NativeActivity" android:exported="true" android:launchMode="singleTask" android:screenOrientation="sensorLandscape" android:resizeableActivity="false" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|smallestScreenSize|navigation|uiMode|density">
     \\            <meta-data android:name="android.app.lib_name" android:value="main"/>
     \\            <intent-filter>
@@ -200,7 +201,7 @@ fn buildAndroid(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
-        .strip = true,
+        .strip = b.option(bool, "keep-symbols", "Keep symbols in the Android library") == null,
         .imports = &.{
             .{ .name = "shared", .module = shared },
             .{ .name = "raylib", .module = bindings[0] },

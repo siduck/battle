@@ -652,7 +652,18 @@ fn indoors(eye: Vec3) bool {
 
 pub var clean_shot = false;
 
+pub var part_ms: [7]f32 = @splat(0);
+var part_t: f64 = 0;
+
+fn mark(i: usize) void {
+    const now = rl.GetTime();
+
+    if (i > 0) part_ms[i - 1] += @floatCast(now - part_t);
+    part_t = now;
+}
+
 pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.count]gunart.Art, scenery: *propart.Props, rig: *soldier.Rig, kit: soldier.Kit, cars: *const vehicleart.Art, g: Game, v: View, dt: f32) void {
+    mark(0);
     r.ambientBoost(if (indoors(v.eye)) 1.8 else 1);
     r.setSurface(.{ .roughness = 1, .metallic = 0 });
     r.draw(models.backdrop, mesh.identity, false);
@@ -662,11 +673,14 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     for (models_mod.extraMeshes()) |em| r.draw(em, mesh.identity, true);
 
     if (shared.terrain.current != .courtyard) drawChunks(r, v);
+    mark(1);
     r.setDetailMode(0);
     r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
     r.setPropDetail(true);
     scenery.draw(r, v.eye, v.forward);
+    mark(2);
     cover.draw(r, v.eye);
+    mark(3);
     r.setPropDetail(false);
     r.setSurface(.{ .roughness = 0.5 });
 
@@ -694,6 +708,8 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     }
 
     r.setSheen(0.75);
+
+    vehicleart.eye = v.eye;
 
     for (g.vehicles) |car| {
         const to = car.pos.sub(v.eye);
@@ -738,7 +754,9 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     }
 
     r.setSurface(.{ .roughness = 0.7 });
+    mark(4);
     soldier.draw(r, rig, kit, models, arts, g, g.accumulator / movement.dt, dt);
+    mark(5);
     r.setSurface(.{ .roughness = 0.5 });
 
     for (g.projectiles.items) |p| {
@@ -761,6 +779,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     fx_state.?.draw(r, g, .{ .right = v.right, .up = v.up, .eye = v.eye, .forward = v.forward, .muzzle = v.muzzle });
 
     if (r.phase != .shadow) dust(v.eye, g.time);
+    mark(6);
 
     if (driving.driving() or air.flying() or clean_shot) return;
 

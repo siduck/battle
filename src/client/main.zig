@@ -386,8 +386,9 @@ fn keepScreenOn() void {
 }
 
 fn askFullRefresh(app: *AndroidApp) void {
-    const window = app.window orelse return;
-    const sym = std.c.dlsym(null, "ANativeWindow_setFrameRate") orelse return;
+    const window = app.window orelse return rl.TraceLog(rl.LOG_INFO, "no window for frame rate");
+    const lib = std.c.dlopen("libandroid.so", .{ .LAZY = true }) orelse return rl.TraceLog(rl.LOG_INFO, "no libandroid");
+    const sym = std.c.dlsym(lib, "ANativeWindow_setFrameRate") orelse return rl.TraceLog(rl.LOG_INFO, "no setFrameRate");
     const setRate: *const fn (?*anyopaque, f32, i8) callconv(.c) i32 = @ptrCast(@alignCast(sym));
 
     var buf: [64]u8 = undefined;
@@ -580,10 +581,13 @@ var auto_scale: f32 = 1;
 var slow_time: f32 = 0;
 var fast_time: f32 = 0;
 
+var refresh_asked = false;
 var stat_t: f32 = 0;
 var stat_n: f32 = 0;
 var stat_cpu: f32 = 0;
 var stat_swap: f32 = 0;
+var stat_sim: f32 = 0;
+var stat_scene: f32 = 0;
 
 fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     if (!assets.mobile) return;
@@ -596,13 +600,21 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     if (stat_t < 2) return;
 
     var buf: [128]u8 = undefined;
-    const line = std.fmt.bufPrintSentinel(&buf, "frame fps {d:.0} cpu {d:.1} ms swap {d:.1} ms scale {d:.2}", .{ stat_n / stat_t, stat_cpu / stat_n * 1000, stat_swap / stat_n * 1000, sceneScale() }, 0) catch return;
+    const line = std.fmt.bufPrintSentinel(&buf, "frame fps {d:.0} cpu {d:.1} sim {d:.1} scene {d:.1} swap {d:.1} ms scale {d:.2}", .{ stat_n / stat_t, stat_cpu / stat_n * 1000, stat_sim / stat_n * 1000, stat_scene / stat_n * 1000, stat_swap / stat_n * 1000, sceneScale() }, 0) catch return;
 
     rl.TraceLog(rl.LOG_INFO, "%s", line.ptr);
+
+    const pm = render.part_ms;
+    const parts = std.fmt.bufPrintSentinel(&buf, "parts world {d:.1} props {d:.1} cover {d:.1} cars {d:.1} soldiers {d:.1} fx {d:.1}", .{ pm[0] / stat_n * 1000, pm[1] / stat_n * 1000, pm[2] / stat_n * 1000, pm[3] / stat_n * 1000, pm[4] / stat_n * 1000, pm[5] / stat_n * 1000 }, 0) catch return;
+
+    rl.TraceLog(rl.LOG_INFO, "%s", parts.ptr);
+    render.part_ms = @splat(0);
     stat_t = 0;
     stat_n = 0;
     stat_cpu = 0;
     stat_swap = 0;
+    stat_sim = 0;
+    stat_scene = 0;
 }
 
 fn sceneScale() f32 {
@@ -924,6 +936,7 @@ pub fn main() void {
     const char_path = assets.file(&char_buf, "characters/soldier.glb");
     loadStep("Loading soldiers", 0.8);
     var rig = soldier.Rig.load(char_path);
+    renderer.enableSkinning(&rig.model);
     const kit = soldier.Kit.build();
     var cars_buf: [512]u8 = undefined;
     const cars_dir = assets.dir(&cars_buf, "cars");
@@ -1031,6 +1044,12 @@ pub fn main() void {
         if (rl.IsKeyPressed(rl.KEY_F5)) restart(app_dir);
 
         const frame_start = rl.GetTime();
+
+        if (assets.mobile and !refresh_asked) {
+            refresh_asked = true;
+
+            if (GetAndroidApp()) |app| askFullRefresh(app);
+        }
 
         if (boom_test) {
             boom_timer -= frame_dt;
@@ -1193,12 +1212,15 @@ pub fn main() void {
         if (std.c.getenv("DF_RIDE") != null) rideTest(&game);
 
         net.drive(&game, &controls);
+        const sim_start = rl.GetTime();
+
         game.simulate(frame_dt, controls);
 
         const view = game.view();
 
         game.update(frame_dt, controls, view);
         net.frame(&game, frame_dt);
+        stat_sim += @floatCast(rl.GetTime() - sim_start);
 
         if (std.c.getenv("DF_HOLDCAM") != null) {
             if (std.c.getenv("DF_CAM")) |spec| placeCamera(&game, std.mem.sliceTo(spec, 0));
@@ -1248,11 +1270,14 @@ pub fn main() void {
         const target = if (renderer.post) null else sceneTarget();
 
         if (target) |rt| {
+            const scene_start = rl.GetTime();
+
             rl.BeginTextureMode(rt);
             renderer.begin(cam, game.time);
             render.scene(&renderer, &models, &arts, &scenery, &rig, kit, &cars, game, now, frame_dt);
             renderer.end();
             rl.EndTextureMode();
+            stat_scene += @floatCast(rl.GetTime() - scene_start);
 
             if (shared.terrain.current == .prism) prism_glow.process(rt.texture);
         }

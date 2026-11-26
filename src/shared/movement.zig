@@ -2,6 +2,7 @@ const math = @import("math.zig");
 const geom = @import("geom.zig");
 const map = @import("map.zig");
 const terrain = @import("terrain.zig");
+const grid = @import("grid.zig");
 
 const Vec3 = math.Vec3;
 
@@ -65,7 +66,10 @@ fn blocks(piece: map.Piece, pos: Vec3) bool {
 }
 
 pub fn solidAt(pieces: []const map.Piece, pos: Vec3) bool {
-    for (pieces) |piece| {
+    var near = grid.rect(pieces, footprint(pos));
+
+    while (near.next()) |piece_ref| {
+        const piece = piece_ref.*;
         const top = piece.shape.topOver(footprint(pos)) orelse continue;
 
         if (pos.y + height > piece.shape.bottom() and pos.y < top - skin) return true;
@@ -77,7 +81,10 @@ pub fn solidAt(pieces: []const map.Piece, pos: Vec3) bool {
 fn groundUnder(pieces: []const map.Piece, pos: Vec3, max_top: f32) f32 {
     var best = terrain.height(pos.x, pos.z);
 
-    for (pieces) |piece| {
+    var near = grid.rect(pieces, footprint(pos));
+
+    while (near.next()) |piece_ref| {
+        const piece = piece_ref.*;
         const top = piece.shape.topOver(footprint(pos)) orelse continue;
 
         if (top <= max_top and top > best) best = top;
@@ -90,7 +97,10 @@ fn ceilingAbove(pieces: []const map.Piece, pos: Vec3) f32 {
     var lowest: f32 = 1e9;
     const head = pos.y + height;
 
-    for (pieces) |piece| {
+    var near = grid.rect(pieces, footprint(pos));
+
+    while (near.next()) |piece_ref| {
+        const piece = piece_ref.*;
         if (piece.shape.topOver(footprint(pos)) == null) continue;
 
         const bottom = piece.shape.bottom();
@@ -137,7 +147,10 @@ fn moveHorizontal(p: *Player, pieces: []const map.Piece, along_x: bool, delta: f
 
     if (along_x) p.pos.x += delta else p.pos.z += delta;
 
-    for (pieces) |piece| {
+    var near = grid.rect(pieces, geom.Rect.around(p.pos, radius + 1));
+
+    while (near.next()) |piece_ref| {
+        const piece = piece_ref.*;
         if (!blocks(piece, p.pos)) continue;
 
         pushOut(p, piece, along_x, delta);
@@ -234,7 +247,9 @@ pub fn raycast(pieces: []const map.Piece, origin: Vec3, dir: Vec3, max_t: f32) ?
         best = .{ .t = t, .normal = terrain.normal(p.x, p.z) };
     }
 
-    for (pieces) |piece| {
+    var near = grid.ray(pieces, origin, dir, limit);
+
+    while (near.next()) |piece| {
         const hit = piece.shape.raycast(origin, dir, limit) orelse continue;
 
         limit = hit.t;
