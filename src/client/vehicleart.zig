@@ -67,10 +67,13 @@ fn load(dir: []const u8, name: []const u8, part: []const u8) ?rl.Model {
 
     if (model.meshCount == 0) return null;
 
-    mesh.dropCpu(model);
     applyShared(dir, name, part, model);
 
-    return model;
+    const merged = mesh.mergeFlat(model);
+
+    mesh.dropCpu(merged);
+
+    return merged;
 }
 
 const SharedTexture = struct {

@@ -748,3 +748,111 @@ fn polar(theta: f32, phi: f32) Vec3 {
         .z = @sin(theta) * @sin(phi),
     };
 }
+
+pub fn mergeFlat(model: rl.Model) rl.Model {
+    const n: usize = @intCast(model.meshCount);
+
+    if (n < 2) return model;
+
+    var verts: usize = 0;
+    var tris: usize = 0;
+    var mergeable: usize = 0;
+    var ok: [256]bool = @splat(false);
+
+    if (n > ok.len) return model;
+
+    for (0..n) |i| {
+        const m = model.meshes[i];
+        const mat = model.materials[@intCast(model.meshMaterial[i])];
+        const tex = mat.maps[0].texture.id;
+
+        ok[i] = (tex == 0 or tex == 1) and mat.maps[0].color.a >= 250 and m.vertices != null and m.normals != null and m.boneIndices == null;
+
+        if (!ok[i]) continue;
+
+        verts += @intCast(m.vertexCount);
+        tris += @intCast(m.triangleCount);
+        mergeable += 1;
+    }
+
+    if (mergeable < 2 or verts > 65535) return model;
+
+    var out: rl.Mesh = std.mem.zeroes(rl.Mesh);
+
+    out.vertexCount = @intCast(verts);
+    out.triangleCount = @intCast(tris);
+    out.vertices = @ptrCast(@alignCast(rl.MemAlloc(@intCast(verts * 3 * 4))));
+    out.normals = @ptrCast(@alignCast(rl.MemAlloc(@intCast(verts * 3 * 4))));
+    out.texcoords = @ptrCast(@alignCast(rl.MemAlloc(@intCast(verts * 2 * 4))));
+    out.colors = @ptrCast(rl.MemAlloc(@intCast(verts * 4)));
+    out.indices = @ptrCast(@alignCast(rl.MemAlloc(@intCast(tris * 3 * 2))));
+
+    var vbase: usize = 0;
+    var ibase: usize = 0;
+
+    for (0..n) |i| {
+        if (!ok[i]) continue;
+
+        const m = model.meshes[i];
+        const c = model.materials[@intCast(model.meshMaterial[i])].maps[0].color;
+        const vc: usize = @intCast(m.vertexCount);
+
+        @memcpy(out.vertices[vbase * 3 .. (vbase + vc) * 3], m.vertices[0 .. vc * 3]);
+        @memcpy(out.normals[vbase * 3 .. (vbase + vc) * 3], m.normals[0 .. vc * 3]);
+        @memset(out.texcoords[vbase * 2 .. (vbase + vc) * 2], 0);
+
+        for (0..vc) |v| {
+            const src: [4]u8 = if (m.colors != null) .{ m.colors[v * 4], m.colors[v * 4 + 1], m.colors[v * 4 + 2], m.colors[v * 4 + 3] } else .{ 255, 255, 255, 255 };
+
+            out.colors[(vbase + v) * 4] = @intCast(@as(u32, src[0]) * c.r / 255);
+            out.colors[(vbase + v) * 4 + 1] = @intCast(@as(u32, src[1]) * c.g / 255);
+            out.colors[(vbase + v) * 4 + 2] = @intCast(@as(u32, src[2]) * c.b / 255);
+            out.colors[(vbase + v) * 4 + 3] = 255;
+        }
+
+        const tc: usize = @intCast(m.triangleCount);
+
+        for (0..tc * 3) |k| {
+            const idx: usize = if (m.indices != null) m.indices[k] else k;
+
+            out.indices[ibase + k] = @intCast(vbase + idx);
+        }
+
+        vbase += vc;
+        ibase += tc * 3;
+    }
+
+    rl.UploadMesh(&out, false);
+
+    const kept = n - mergeable;
+    const mat_n: usize = @intCast(model.materialCount);
+    var result = model;
+
+    result.meshCount = @intCast(kept + 1);
+    result.materialCount = @intCast(mat_n + 1);
+    result.meshes = @ptrCast(@alignCast(rl.MemAlloc(@intCast((kept + 1) * @sizeOf(rl.Mesh)))));
+    result.materials = @ptrCast(@alignCast(rl.MemAlloc(@intCast((mat_n + 1) * @sizeOf(rl.Material)))));
+    result.meshMaterial = @ptrCast(@alignCast(rl.MemAlloc(@intCast((kept + 1) * @sizeOf(c_int)))));
+
+    for (0..mat_n) |i| result.materials[i] = model.materials[i];
+
+    result.materials[mat_n] = rl.LoadMaterialDefault();
+    result.meshes[0] = out;
+    result.meshMaterial[0] = @intCast(mat_n);
+
+    var k: usize = 1;
+
+    for (0..n) |i| {
+        if (ok[i]) {
+            rl.UnloadMesh(model.meshes[i]);
+
+            continue;
+        }
+
+        result.meshes[k] = model.meshes[i];
+        result.meshMaterial[k] = model.meshMaterial[i];
+        k += 1;
+    }
+
+    return result;
+}
