@@ -138,6 +138,31 @@ Polyfork kits, measured with `tools/blender/study/analyze.py`, and POLYGON Milit
 - **Pressed or embossed surfaces** (jerry can X): model the raised panels as extruded outlines;
   thin bars for grooves read as wire.
 
+## What POLYGON packs really are (157 marketing images studied, Nov 2026)
+
+Military, War, Sci-Fi Space, Sci-Fi City, Nature and Farm packs:
+- **The geometry is low poly** (props hundreds of tris, buildings and vehicles a few thousand),
+  but the screenshots owe much of their look to the engine: real-time shadows, ambient occlusion,
+  bloom, colour grading, depth of field, fog, emissive neon and particles. Dronefire has none of
+  those by rule, so match the models, and get the occlusion look by **baking AO into vertex
+  colours** (darken corners, undersides and contact faces once in Blender; zero runtime cost).
+- **One shared gradient colour atlas** for everything, plus real textures only for signs, posters,
+  decals and markings (numbers, stars, stencils).
+- **Nature is not pure low poly:** foliage uses alpha-textured cards and the terrain is
+  hand-painted. Flat faceted trees and rocks are the Farm-pack style and fit our pipeline.
+- **Modular kits:** wall, floor, roof and trim pieces on a grid; weapons split into parts (receiver,
+  barrel, stock, magazine, sight) that recombine into many guns; vehicles in variants (camo, rust).
+- **Density sells it:** layout sheets show hundreds of props per pack, and scenes are packed with
+  clutter on every surface.
+- **Palette per pack:** Military is desert sand and khaki with saturated accents (awnings, rugs,
+  water tanks); Farm is warm and saturated (red barns, yellow crops); Sci-Fi is dark metal with
+  neon emissive strips. Pick one per map and keep every asset in it.
+- **Weapons:** chunky prisms with exact silhouettes, wood against gunmetal; small details (bolt,
+  sights, rails) as single boxes.
+- **Vehicles:** boxy hulls with bevels, separate wheels, markings as decals.
+- **Characters, animate beings, religious buildings and hate symbols in these packs are out of
+  scope** for Dronefire.
+
 ## Measured reference comparison (how to do it right)
 
 ```
