@@ -35,7 +35,7 @@ const Cell = struct {
 
 const cell_size: f32 = 32;
 const min_pixels: f32 = 5;
-const lod_pixels: f32 = 150;
+const lod_pixels: f32 = 100;
 
 pub var tri_count: [kind_count]u64 = @splat(0);
 

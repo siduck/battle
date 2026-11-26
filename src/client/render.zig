@@ -595,7 +595,25 @@ fn drawChunks(r: *gfx.Renderer, v: View) void {
     const f = if (flen > 0.01) fwd.scale(1 / flen) else Vec3{ .z = 1 };
     const shadow = r.phase == .shadow;
 
-    for (models_mod.chunks) |*c| {
+    var order: [512]u16 = undefined;
+    var keys: [512]f32 = undefined;
+    const n = @min(models_mod.chunks.len, order.len);
+
+    for (0..n) |i| {
+        const c = models_mod.chunks[i];
+
+        order[i] = @intCast(i);
+        keys[i] = (c.cx - v.eye.x) * (c.cx - v.eye.x) + (c.cz - v.eye.z) * (c.cz - v.eye.z);
+    }
+
+    std.mem.sort(u16, order[0..n], &keys, struct {
+        fn less(k: *[512]f32, a: u16, b: u16) bool {
+            return k[a] < k[b];
+        }
+    }.less);
+
+    for (order[0..n]) |ci| {
+        const c = &models_mod.chunks[ci];
         const d = Vec3{ .x = c.cx - v.eye.x, .z = c.cz - v.eye.z };
         const dist = d.length();
 
@@ -609,7 +627,7 @@ fn drawChunks(r: *gfx.Renderer, v: View) void {
 
         if (!shadow and !pvs.visible(v.eye, .{ .x = c.cx, .z = c.cz }, c.r)) continue;
 
-        const near = dist < 230 + c.r;
+        const near = dist < 140 + c.r;
 
         r.setSurface(.{ .roughness = 1, .metallic = 0 });
         r.setDetailMode(1);

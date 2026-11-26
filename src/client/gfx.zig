@@ -712,8 +712,8 @@ pub const Renderer = struct {
     skip: bool = false,
 
     pub fn init(sky_path: [:0]const u8, sky_mesh: rl.Mesh) Renderer {
-        const lit = shader(lit_vs, lit_fs);
-        var lit_inst = shader(lit_inst_vs, lit_fs);
+        const lit = fastShader(lit_vs, lit_fs);
+        var lit_inst = fastShader(lit_inst_vs, lit_fs);
         const depth = shader(depth_vs, depth_fs);
         var depth_inst = shader(depth_inst_vs, depth_fs);
 
@@ -1393,8 +1393,50 @@ fn esSource(comptime src: [:0]const u8) [:0]const u8 {
     return "#version 300 es\nprecision highp float;\nprecision highp sampler2D;" ++ src[head.len..];
 }
 
+fn replaceAll(comptime src: []const u8, comptime from: []const u8, comptime to: []const u8) []const u8 {
+    comptime {
+        @setEvalBranchQuota(200000);
+
+        var out: []const u8 = "";
+        var rest = src;
+
+        while (std.mem.indexOf(u8, rest, from)) |i| {
+            out = out ++ rest[0..i] ++ to;
+            rest = rest[i + from.len ..];
+        }
+
+        return out ++ rest;
+    }
+}
+
+fn esFragment(comptime src: [:0]const u8, comptime fast: bool) [:0]const u8 {
+    comptime {
+        const head = "#version 330";
+        var body: []const u8 = src[head.len..];
+
+        body = replaceAll(body, "in vec3 worldPos;", "in highp vec3 worldPos;");
+        body = replaceAll(body, "uniform vec3 viewPos;", "uniform highp vec3 viewPos;");
+        body = replaceAll(body, "uniform vec3 groundXf;", "uniform highp vec3 groundXf;");
+        body = replaceAll(body, "uniform float time;", "uniform highp float time;");
+        body = replaceAll(body, "    vec2 guv = ", "    highp vec2 guv = ");
+        body = replaceAll(body, "    vec2 duv = ", "    highp vec2 duv = ");
+
+        const out = (if (fast) "#version 300 es\nprecision mediump float;\nprecision mediump sampler2D;" else "#version 300 es\nprecision highp float;\nprecision highp sampler2D;") ++ body;
+
+        return out[0..out.len :0];
+    }
+}
+
 fn shader(comptime vs: [:0]const u8, comptime fs: [:0]const u8) rl.Shader {
-    if (assets.mobile or std.c.getenv("DF_ES_SHADERS") != null) return rl.LoadShaderFromMemory(comptime esSource(vs), comptime esSource(fs));
+    return shaderPrecision(vs, fs, false);
+}
+
+fn fastShader(comptime vs: [:0]const u8, comptime fs: [:0]const u8) rl.Shader {
+    return shaderPrecision(vs, fs, true);
+}
+
+fn shaderPrecision(comptime vs: [:0]const u8, comptime fs: [:0]const u8, comptime fast: bool) rl.Shader {
+    if (assets.mobile or std.c.getenv("DF_ES_SHADERS") != null) return rl.LoadShaderFromMemory(comptime esSource(vs), comptime esFragment(fs, fast));
 
     return rl.LoadShaderFromMemory(vs, fs);
 }
