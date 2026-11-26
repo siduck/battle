@@ -158,13 +158,15 @@ building, vehicle, prop, road and nature asset follows it. A box with flat colou
   lighter step for caps). Trim is a value step of the same hue, never a second near-white.
 - One accent hue, roughly opposite the main hue (teal against terracotta), used sparingly:
   shutters, cloth, a door.
+- Keep plaster and paint dusty: about 25 to 35% saturation (Synty measured: tan 216,185,162).
+  43% read as salmon pink in the game. Check colours in the game, not in the Workbench preview.
 - Wood dark and warm, metal neutral, voids near black. No pure white, no pure black on surfaces.
 - Wear: brick patches in the wall's dark step with a few bricks, plus base grime and baked AO.
 
 **Quality check before an asset is done**
 1. Silhouette reads at 30 m in the game (screenshot with `DF_ASSET`, `DF_ASSET_DIST`, `DF_ASSET_YAW`).
 2. Palette: body, dark step, light step, one accent, wood. Nothing else fighting.
-3. Studio render (`studio.py` style: sun, dark background) next to the reference sheets in
+3. Studio render (`tools/blender/studio.py <recipe> <out.png>`: sun, dark background, colours shown as in game) next to the reference sheets in
    `~/gamess/design`. Would it sit in a Synty layout sheet without standing out?
 4. Every face has a reason; no flat wall wider than about 3 m without an opening, beam or patch.
 5. Triangle budget and on-device FPS as in the performance skill.
