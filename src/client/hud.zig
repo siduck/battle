@@ -2,6 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const shared = @import("shared");
 const ui = @import("ui.zig");
+const touch = @import("touch.zig");
 const settings = @import("settings.zig");
 const game_mod = @import("game.zig");
 const icons_mod = @import("icons.zig");
@@ -46,9 +47,17 @@ pub fn draw(g: Game, font: rl.Font, icons: *const icons_mod.Icons, playing: bool
     prompt(g, font, u, cx, cy, pad, &buf);
 
     if (settings.show_fps) {
-        const fps = print(&buf, "{d} FPS", .{rl.GetFPS()});
+        const n = rl.GetFPS();
+        const fps = print(&buf, "{d} FPS", .{n});
+        const size = 15 * u;
+        const tw = ui.capsWidth(font, fps, size);
+        const px = if (touch.active()) 84 * u else 20 * u;
+        const py = 20 * u;
+        const dot: rl.Color = if (n >= 55) ui.rgba(96, 214, 120, 255) else if (n >= 30) ui.rgba(255, 196, 90, 255) else ui.red;
 
-        ui.caps(font, fps, 36 * u, h - 22 * u, 10 * u, ui.fade(ui.white, 0.45));
+        rl.DrawRectangleRounded(.{ .x = px, .y = py, .width = tw + 40 * u, .height = 30 * u }, 1, 12, ui.fade(ui.ink, 0.72));
+        rl.DrawCircleV(.{ .x = px + 15 * u, .y = py + 15 * u }, 4.5 * u, dot);
+        ui.caps(font, fps, px + 27 * u, py + 15 * u - size / 2, size, ui.white);
     }
 
     if (!playing) pause(font, u, w, h, cx, cy, pad);

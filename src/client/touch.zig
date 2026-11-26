@@ -8,7 +8,9 @@ const net = @import("net.zig");
 
 const Controls = game_mod.Controls;
 
-const Button = enum { fire, aim, jump, reload, swap, grenade, fireball, use };
+const Button = enum { fire, aim, jump, reload, swap, grenade, use, pause };
+
+pub var use_visible = false;
 
 
 const Role = union(enum) {
@@ -35,6 +37,7 @@ pub const Result = struct {
     controls: Controls = .{},
     look_x: f32 = 0,
     look_y: f32 = 0,
+    pause: bool = false,
 };
 
 var forced: ?bool = null;
@@ -51,14 +54,14 @@ fn place(b: Button, w: f32, h: f32) Circle {
     const s = h / 720 * settings.touch_size;
 
     return switch (b) {
-        .fire => .{ .x = w - 230 * s, .y = h - 330 * s, .r = 70 * s },
-        .jump => .{ .x = w - 95 * s, .y = h - 260 * s, .r = 48 * s },
-        .aim => .{ .x = w - 365 * s, .y = h - 420 * s, .r = 42 * s },
-        .reload => .{ .x = w - 95 * s, .y = h - 410 * s, .r = 36 * s },
-        .swap => .{ .x = w - 230 * s, .y = h - 485 * s, .r = 36 * s },
-        .grenade => .{ .x = w - 380 * s, .y = h - 240 * s, .r = 36 * s },
-        .fireball => .{ .x = w - 490 * s, .y = h - 330 * s, .r = 40 * s },
-        .use => .{ .x = w - 95 * s, .y = h - 555 * s, .r = 36 * s },
+        .fire => .{ .x = w - 200 * s, .y = h - 270 * s, .r = 52 * s },
+        .jump => .{ .x = w - 85 * s, .y = h - 215 * s, .r = 40 * s },
+        .aim => .{ .x = w - 310 * s, .y = h - 360 * s, .r = 32 * s },
+        .reload => .{ .x = w - 85 * s, .y = h - 335 * s, .r = 30 * s },
+        .swap => .{ .x = w - 200 * s, .y = h - 400 * s, .r = 30 * s },
+        .grenade => .{ .x = w - 320 * s, .y = h - 200 * s, .r = 30 * s },
+        .use => .{ .x = w - 85 * s, .y = h - 450 * s, .r = 30 * s },
+        .pause => .{ .x = 48 * s, .y = 48 * s, .r = 24 * s },
     };
 }
 
@@ -101,6 +104,8 @@ pub const Touch = struct {
         }
 
         for (std.enums.values(Button)) |b| {
+            if (b == .use and !use_visible) continue;
+
             if (hit(place(b, w, h), p)) return .{ .button = b };
         }
 
@@ -111,7 +116,7 @@ pub const Touch = struct {
 
     pub fn read(t: *Touch, w: f32, h: f32) Result {
         const s = h / 720;
-        const reach = 90 * s;
+        const reach = 72 * s;
         var out: Result = .{};
         const emulate = !assets.mobile and rl.GetTouchPointCount() == 0 and rl.IsMouseButtonDown(rl.MOUSE_BUTTON_LEFT);
         const count: usize = if (emulate) 1 else @intCast(rl.GetTouchPointCount());
@@ -168,7 +173,8 @@ pub const Touch = struct {
                         out.controls.enter = true;
                         out.controls.interact = true;
                     },
-                    .jump, .fireball => {},
+                    .pause => out.pause = true,
+                    .jump => {},
                 },
             }
         }
@@ -190,7 +196,6 @@ pub const Touch = struct {
                 .button => |b| switch (b) {
                     .fire => out.controls.fire_down = true,
                     .jump => out.controls.jump = true,
-                    .fireball => out.controls.fireball = true,
                     else => {},
                 },
             }
@@ -205,8 +210,9 @@ pub const Touch = struct {
             t.knob = .{ .x = t.origin.x + dx * k, .y = t.origin.y + dy * k };
             out.controls.right = std.math.clamp(dx / reach, -1, 1);
             out.controls.forward = std.math.clamp(-dy / reach, -1, 1);
+            out.controls.sprint = out.controls.forward > 0.92;
         } else {
-            t.origin = .{ .x = 190 * s, .y = h - 190 * s };
+            t.origin = .{ .x = 170 * s, .y = h - 170 * s };
             t.knob = t.origin;
         }
 
@@ -235,11 +241,13 @@ pub const Touch = struct {
 
         const op = settings.touch_opacity;
 
-        rl.DrawCircleV(t.origin, 90 * s, ui.fade(ui.ink, 0.28 * op));
-        rl.DrawCircleLinesV(t.origin, 90 * s, ui.fade(ui.white, 0.35 * op));
-        rl.DrawCircleV(t.knob, 38 * s, ui.fade(ui.white, 0.5 * op));
+        rl.DrawCircleV(t.origin, 72 * s, ui.fade(ui.ink, 0.28 * op));
+        rl.DrawCircleLinesV(t.origin, 72 * s, ui.fade(ui.white, 0.35 * op));
+        rl.DrawCircleV(t.knob, 30 * s, ui.fade(ui.white, 0.5 * op));
 
         for (std.enums.values(Button)) |b| {
+            if (b == .use and !use_visible) continue;
+
             const c = place(b, w, h);
             const on = t.held(b) or (b == .aim and t.aiming);
             rl.DrawCircleV(.{ .x = c.x, .y = c.y }, c.r, ui.fade(if (on) ui.white else ui.ink, (if (on) @as(f32, 0.45) else 0.32) * op));
@@ -297,14 +305,9 @@ fn icon(b: Button, x: f32, y: f32, k: f32, col: rl.Color) void {
             rl.DrawRectangleRounded(.{ .x = x - k * 0.22, .y = y - k * 0.62, .width = k * 0.44, .height = k * 0.3 }, 0.3, 4, col);
             rl.DrawRing(v2(x + k * 0.42, y - k * 0.6), k * 0.14, k * 0.14 + t * 0.7, 0, 360, 16, col);
         },
-        .fireball => {
-            const flame = rl.Color{ .r = 255, .g = 150, .b = 50, .a = col.a };
-            const core = rl.Color{ .r = 255, .g = 230, .b = 150, .a = col.a };
-
-            rl.DrawCircleV(v2(x, y + k * 0.25), k * 0.55, flame);
-            rl.DrawTriangle(v2(x, y - k * 0.9), v2(x - k * 0.53, y + k * 0.12), v2(x + k * 0.53, y + k * 0.12), flame);
-            rl.DrawCircleV(v2(x, y + k * 0.35), k * 0.28, core);
-            rl.DrawTriangle(v2(x, y - k * 0.2), v2(x - k * 0.27, y + k * 0.3), v2(x + k * 0.27, y + k * 0.3), core);
+        .pause => {
+            rl.DrawRectangleRounded(.{ .x = x - k * 0.5, .y = y - k * 0.6, .width = k * 0.34, .height = k * 1.2 }, 0.4, 4, col);
+            rl.DrawRectangleRounded(.{ .x = x + k * 0.16, .y = y - k * 0.6, .width = k * 0.34, .height = k * 1.2 }, 0.4, 4, col);
         },
         .use => {
             rl.DrawRectangleRoundedLinesEx(.{ .x = x - k * 0.1, .y = y - k * 0.7, .width = k * 0.8, .height = k * 1.4 }, 0.2, 4, t, col);

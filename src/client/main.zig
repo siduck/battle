@@ -191,7 +191,7 @@ fn readKeyboard(captured: bool, scoped: bool) Controls {
         .steady = rl.IsKeyDown(rl.KEY_LEFT_SHIFT),
         .boost = rl.IsKeyDown(rl.KEY_LEFT_SHIFT) or rl.IsKeyDown(rl.KEY_RIGHT_SHIFT),
         .throw_gun = rl.IsKeyPressed(rl.KEY_T),
-        .fireball = rl.IsKeyDown(rl.KEY_X),
+        .sprint = rl.IsKeyDown(rl.KEY_LEFT_SHIFT),
         .enter = rl.IsKeyPressed(rl.KEY_F),
     };
 }
@@ -281,7 +281,7 @@ fn readPad(p: *Pad, dt: f32, knife_active: bool, scoped: bool) Frame {
             .steady = p.down(rl.GAMEPAD_BUTTON_LEFT_THUMB),
             .boost = in_car and (p.down(rl.GAMEPAD_BUTTON_LEFT_THUMB) or p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)),
             .throw_gun = !scoped and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN),
-            .fireball = p.down(rl.GAMEPAD_BUTTON_RIGHT_THUMB),
+            .sprint = p.down(rl.GAMEPAD_BUTTON_LEFT_THUMB),
             .enter = enter,
             .reset = reset,
         },
@@ -312,7 +312,7 @@ fn merge(a: Controls, b: Controls) Controls {
         .zoom_step = a.zoom_step + b.zoom_step,
         .steady = a.steady or b.steady,
         .throw_gun = a.throw_gun or b.throw_gun,
-        .fireball = a.fireball or b.fireball,
+        .sprint = a.sprint or b.sprint,
         .enter = a.enter or b.enter,
         .reset = a.reset or b.reset,
     };
@@ -615,6 +615,24 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     stat_swap = 0;
     stat_sim = 0;
     stat_scene = 0;
+}
+
+fn nearUsable(g: *Game) bool {
+    if (driving.driving() or air.flying()) return true;
+
+    if (g.dead > 0) return false;
+
+    if (g.near_drop != null) return true;
+
+    if (air.nearest(g) != null) return true;
+
+    const at = g.player.center();
+
+    for (g.vehicles) |v| {
+        if (v.alive() and shared.vehicle.usableBy(at, v)) return true;
+    }
+
+    return false;
 }
 
 fn sceneScale() f32 {
@@ -1207,7 +1225,14 @@ pub fn main() void {
         if (touch_mod.active() and playing and !(pad.id != null and pad.active)) {
             const screen_w: f32 = @floatFromInt(rl.GetScreenWidth());
             const screen_h: f32 = @floatFromInt(rl.GetScreenHeight());
+            touch_mod.use_visible = nearUsable(&game);
+
             const tap = touch.read(screen_w, screen_h);
+
+            if (tap.pause) {
+                playing = false;
+                rl.EnableCursor();
+            }
 
             controls = merge(controls, tap.controls);
             game.look(tap.look_x, tap.look_y * flip, mouse_sensitivity * 1.4 * 720 / screen_h * settings.touch_look * aim_sens);

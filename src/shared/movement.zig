@@ -16,6 +16,7 @@ pub const step_height: f32 = 0.55;
 
 const walk_speed: f32 = 7;
 const ads_speed: f32 = 4.2;
+const sprint_speed: f32 = 10.5;
 const ground_accel: f32 = 75;
 const air_accel: f32 = 28;
 const air_drag: f32 = 0.35;
@@ -31,6 +32,7 @@ pub const Input = struct {
     right: f32 = 0,
     jump: bool = false,
     aiming: bool = false,
+    sprint: bool = false,
     yaw: f32 = 0,
     pitch: f32 = 0,
 };
@@ -164,7 +166,7 @@ pub fn step(p: *Player, input: Input, pieces: []const map.Piece) void {
 
     if (wish.length() > 1) wish = wish.normalize();
 
-    const speed = if (input.aiming) ads_speed else walk_speed;
+    const speed = if (input.aiming) ads_speed else if (input.sprint and input.forward > 0.3) sprint_speed else walk_speed;
     const target = wish.scale(speed);
     const accel = if (p.grounded) ground_accel else air_accel;
     const was_grounded = p.grounded;

@@ -384,6 +384,7 @@ pub const Controls = struct {
     zoom_step: i32 = 0,
     steady: bool = false,
     throw_gun: bool = false,
+    sprint: bool = false,
     fireball: bool = false,
     enter: bool = false,
     reset: bool = false,
@@ -693,6 +694,7 @@ pub const Game = struct {
             .right = if (alive) c.right * guard else 0,
             .jump = alive and c.jump,
             .aiming = g.ads > 0.5,
+            .sprint = alive and c.sprint,
             .yaw = g.yaw,
         };
 

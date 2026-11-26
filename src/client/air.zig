@@ -539,7 +539,7 @@ pub fn update(g: *Game, dt: f32, c: Controls) bool {
     return used;
 }
 
-fn nearest(g: *Game) ?usize {
+pub fn nearest(g: *Game) ?usize {
     const at = g.player.center();
     var best: ?usize = null;
     var best_d: f32 = 1e9;
