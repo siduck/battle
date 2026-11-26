@@ -316,7 +316,7 @@ fn ground(x: f32, z: f32) api.Rgb {
     c = mix3(c, .{ 128, 110, 82 }, 1 - t.smooth(-1.5, 3, wet));
 
     const sd = dist2(x, z, springs[0], springs[1]);
-    const trav = 1 - t.smooth(springs[2] * 0.85, springs[2] * 1.15, sd);
+    const trav = 1 - t.smooth(springs[2] * 0.62, springs[2] * 0.84, sd);
 
     c = mix3(c, mix3(.{ 200, 182, 150 }, .{ 196, 142, 96 }, t.smooth(0.4, 0.65, t.fbm(x * 0.2, z * 0.2))), trav * 0.9);
     c = mix3(c, .{ 214, 150, 90 }, trav * t.smooth(0.25, 0.3, slope) * 0.6);
@@ -409,41 +409,257 @@ fn scatterIn(b: *Builder, kinds: []const K, n: usize, cx: f32, cz: f32, r: f32, 
     }
 }
 
+fn walkway(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const len = @sqrt(dx * dx + dz * dz);
+    const s: f32 = 1.3;
+    const piece = s * 0.8;
+    const n: usize = @intFromFloat(@max(1, @floor(len / piece)));
+    const yaw = std.math.atan2(dx, dz);
+    const ux = dx / len;
+    const uz = dz / len;
+    var i: usize = 0;
+
+    while (i < n) : (i += 1) {
+        const u = (@as(f32, @floatFromInt(i)) + 0.5) * piece;
+        const x = x0 + ux * u;
+        const z = z0 + uz * u;
+
+        if (!dry(x, z, 0.5)) continue;
+
+        const ya = t.height(x - ux * s * 0.5, z - uz * s * 0.5);
+        const yb = t.height(x + ux * s * 0.5, z + uz * s * 0.5);
+
+        b.putAt(kit.of(.boardwalk), vec(x, @max(ya, yb) - 0.08, z), yaw, s);
+        claim(x, z, 1.3);
+
+        if (i % 3 == 1) {
+            const side: f32 = if (i % 2 == 0) 1 else -1;
+            const px = x - uz * 2.2 * side;
+            const pz = z + ux * 2.2 * side;
+
+            if (open(px, pz, 0.5)) put(b, if (b.rng.next() < 0.5) .fern else .reeds, px, pz, b.rng.range(0, 6), b.rng.range(0.8, 1.1));
+        }
+    }
+}
+
+fn pool(b: *Builder, x: f32, z: f32, big: bool, steam: bool) void {
+    const s: f32 = if (big) b.rng.range(1.5, 1.9) else b.rng.range(1.0, 1.3);
+    const yaw = b.rng.range(0, std.math.tau);
+    const rim: f32 = if (big) 6.5 else 4.5;
+
+    sink(b, .spring, x, z, yaw, s, 0.25);
+
+    if (steam) sink(b, .steamspring, x, z, yaw, s * 0.5, 0.15);
+    claim(x, z, rim - 1);
+
+    if (b.rng.next() < 0.6) {
+        const a = yaw + 1.2;
+
+        sink(b, .spring, x + @cos(a) * rim * 0.9, z + @sin(a) * rim * 0.9, yaw + 1, s * 0.6, 0.2);
+        claim(x + @cos(a) * rim * 0.9, z + @sin(a) * rim * 0.9, 2.2);
+    }
+
+    var q: usize = 0;
+    const n: usize = if (big) 9 else 6;
+
+    while (q < n) : (q += 1) {
+        const a = yaw + @as(f32, @floatFromInt(q)) / @as(f32, @floatFromInt(n)) * std.math.tau + b.rng.range(-0.2, 0.2);
+        const r = rim + b.rng.range(-0.4, 0.8);
+        const px = x + @cos(a) * r;
+        const pz = z + @sin(a) * r;
+
+        if (trailDist(px, pz) < 3 or !open(px, pz, 0.6)) continue;
+
+        const roll = b.rng.next();
+
+        if (roll < 0.3) {
+            sink(b, .volcanic, px, pz, b.rng.range(0, 6), b.rng.range(0.6, 0.9), 0.4);
+            claim(px, pz, 1.4);
+        } else if (roll < 0.48) {
+            sink(b, .fernrock, px, pz, b.rng.range(0, 6), b.rng.range(0.5, 0.8), 0.3);
+            claim(px, pz, 1.4);
+        } else if (roll < 0.62) {
+            put(b, .stones, px, pz, b.rng.range(0, 6), b.rng.range(1, 1.4));
+        } else if (roll < 0.76) {
+            put(b, .reeds, px, pz, b.rng.range(0, 6), b.rng.range(0.8, 1.2));
+        } else if (roll < 0.88) {
+            put(b, .fern, px, pz, b.rng.range(0, 6), b.rng.range(1, 1.4));
+        } else {
+            sink(b, .basalt, px, pz, b.rng.range(0, 6), b.rng.range(0.5, 0.8), 0.2);
+            claim(px, pz, 1.2);
+        }
+    }
+}
+
+fn rimClump(b: *Builder, x: f32, z: f32, out: f32) void {
+    const roll = b.rng.next();
+    const yaw = b.rng.range(0, std.math.tau);
+
+    if (roll < 0.3) {
+        sink(b, .columns, x, z, yaw, b.rng.range(0.9, 1.3), 0.4);
+        sink(b, .volcanic, x + 2.2, z + 1.2, yaw, 0.8, 0.3);
+    } else if (roll < 0.55) {
+        sink(b, .boulder, x, z, yaw, b.rng.range(0.9, 1.2), 0.5);
+        sink(b, .fernrock, x - 2, z + 1.6, yaw, 0.8, 0.3);
+    } else if (roll < 0.8) {
+        sink(b, .fernrock, x, z, yaw, b.rng.range(1, 1.3), 0.3);
+        sink(b, .basalt, x + 1.8, z - 1.4, yaw, 0.7, 0.2);
+    } else {
+        sink(b, .volcanic, x, z, yaw, b.rng.range(1, 1.3), 0.4);
+        put(b, .petrified, x - 2.2, z + 0.4, yaw, 1);
+    }
+
+    claim(x, z, 3);
+
+    for ([_]f32{ -1, 1 }) |sd| {
+        const px = x + @cos(out + sd * 0.9) * 3.4;
+        const pz = z + @sin(out + sd * 0.9) * 3.4;
+
+        if (open(px, pz, 0.6)) put(b, if (b.rng.next() < 0.5) .treefern else .fern, px, pz, b.rng.range(0, 6), b.rng.range(0.9, 1.3));
+    }
+}
+
 fn thermal(b: *Builder) void {
     const cx = springs[0];
     const cz = springs[1];
-    var a: f32 = 0;
-    var i: usize = 0;
+    const rad = springs[2];
 
-    while (a < std.math.tau) : (a += 0.36) {
-        for ([_]f32{ 8, 15, 22, 29, 36 }) |r| {
-            const x = cx + @cos(a + r * 0.05) * r;
-            const z = cz + @sin(a + r * 0.05) * r;
+    sink(b, .spring, cx, cz, 0.3, 2.4, 0.3);
+    sink(b, .steamspring, cx, cz, 0.3, 1.0, 0.1);
+    claim(cx, cz, 8);
 
-            if (trailDist(x, z) < 3 or !open(x, z, 2)) continue;
+    for ([_]f32{ 0.4, 2.5, 4.4 }) |a| {
+        const x = cx + @cos(a) * 10;
+        const z = cz + @sin(a) * 10;
 
-            const e: K = switch (i % 9) {
-                0, 3, 6 => .spring,
-                1 => .mud,
-                2 => .geyser,
-                4 => .fumarole,
-                5 => .reeds,
-                7 => .palm,
-                else => .columns,
-            };
+        if (trailDist(x, z) < 4) continue;
 
-            put(b, e, x, z, b.rng.range(0, 6), b.rng.range(0.9, 1.2));
-            claim(x, z, 2.5);
-            i += 1;
+        put(b, .steamvent, x, z, a, 1);
+        claim(x, z, 2.4);
+        sink(b, .lavapile, x + 2.4, z - 1, a, 0.8, 0.2);
+    }
 
-            if (b.rng.next() < 0.5) put(b, .stones, x + 2.5, z + 1, b.rng.range(0, 6), 1);
+    for ([_]f32{ 1.4, 3.5, 5.6 }) |a| {
+        const x = cx + @cos(a) * 29;
+        const z = cz + @sin(a) * 29;
+
+        if (trailDist(x, z) < 6 or !open(x, z, 3)) continue;
+
+        sink(b, .geyser, x, z, a, 0.9, 0.2);
+        claim(x, z, 3);
+    }
+
+    for (trails) |s| {
+        for ([_]u1{ 0, 1 }) |end| {
+            const ex = if (end == 0) s[0] else s[2];
+            const ez = if (end == 0) s[1] else s[3];
+
+            if (@abs(ex - cx) > 1 or @abs(ez - cz) > 1) continue;
+
+            const ox = if (end == 0) s[2] else s[0];
+            const oz = if (end == 0) s[3] else s[1];
+            const dx = ox - cx;
+            const dz = oz - cz;
+            const l = @sqrt(dx * dx + dz * dz);
+
+            walkway(b, cx + dx / l * 9, cz + dz / l * 9, cx + dx / l * (rad * 0.9), cz + dz / l * (rad * 0.9));
         }
     }
 
-    put(b, .geyser, cx, cz, 0, 1.6);
-    put(b, .spring, cx + 3, cz - 2, 0.4, 1.3);
-    claim(cx, cz, 5);
-    scatterIn(b, &.{ .columns, .boulder, .reeds, .lavapile }, 14, cx, cz, springs[2] + 8, 0.8, 1.3);
+    var a: f32 = 0;
+    var prev: ?[2]f32 = null;
+
+    while (a <= std.math.tau + 0.01) : (a += 0.18) {
+        const x = cx + @cos(a) * 17;
+        const z = cz + @sin(a) * 17;
+
+        if (prev) |p| {
+            if (trailDist((p[0] + x) / 2, (p[1] + z) / 2) > 2.5 and @sin(a * 2 + 1) > -0.55) walkway(b, p[0], p[1], x, z);
+        }
+
+        prev = .{ x, z };
+    }
+
+    var q: usize = 0;
+
+    while (q < 14) : (q += 1) {
+        const r: f32 = if (q % 2 == 0) 11 else 23;
+        var ang = @as(f32, @floatFromInt(q)) * 0.9 + 0.3;
+        var tries: usize = 0;
+
+        while (tries < 8) : (tries += 1) {
+            const x = cx + @cos(ang) * r;
+            const z = cz + @sin(ang) * r;
+
+            if (trailDist(x, z) > 7 and open(x, z, 4)) {
+                pool(b, x, z, q % 3 != 2, q % 4 == 1);
+
+                break;
+            }
+
+            ang += 0.23;
+        }
+    }
+
+    a = 0;
+
+    while (a < std.math.tau) : (a += 0.21) {
+        const r = rad * 0.84 + b.rng.range(-1, 2);
+        const x = cx + @cos(a) * r;
+        const z = cz + @sin(a) * r;
+
+        if (trailDist(x, z) < 6 or !open(x, z, 1.5)) continue;
+
+        rimClump(b, x, z, a);
+    }
+
+    var i: usize = 0;
+
+    while (i < 130) : (i += 1) {
+        const ang = b.rng.range(0, std.math.tau);
+        const r = b.rng.range(7, rad * 0.8);
+        const x = cx + @cos(ang) * r;
+        const z = cz + @sin(ang) * r;
+
+        if (trailDist(x, z) < 2.5 or !open(x, z, 1.6)) continue;
+
+        const roll = b.rng.next();
+
+        if (roll < 0.16) {
+            put(b, .petrified, x, z, b.rng.range(0, 6), b.rng.range(1, 1.3));
+            claim(x, z, 2);
+        } else if (roll < 0.28) {
+            put(b, .hollow, x, z, b.rng.range(0, 6), b.rng.range(0.7, 0.9));
+            claim(x, z, 3);
+        } else if (roll < 0.42) {
+            sink(b, .volcanic, x, z, b.rng.range(0, 6), b.rng.range(0.8, 1.1), 0.4);
+            claim(x, z, 2);
+        } else if (roll < 0.52) {
+            sink(b, .columns, x, z, b.rng.range(0, 6), b.rng.range(0.7, 1.0), 0.3);
+            claim(x, z, 2.2);
+        } else if (roll < 0.62) {
+            put(b, .mud, x, z, b.rng.range(0, 6), b.rng.range(0.8, 1.1));
+            claim(x, z, 2.2);
+        } else if (roll < 0.7) {
+            put(b, .fumarole, x, z, b.rng.range(0, 6), b.rng.range(0.7, 0.9));
+            claim(x, z, 1.6);
+        } else if (roll < 0.8) {
+            put(b, .palm, x, z, b.rng.range(0, 6), b.rng.range(0.9, 1.2));
+            put(b, .fern, x + 1.2, z + 0.6, 0, 1.2);
+            claim(x, z, 1.6);
+        } else if (roll < 0.9) {
+            put(b, .treefern, x, z, b.rng.range(0, 6), b.rng.range(0.9, 1.2));
+            claim(x, z, 1.4);
+        } else {
+            put(b, .stump, x, z, b.rng.range(0, 6), 1);
+            put(b, .moss, x + 1, z, 0, 1.2);
+            claim(x, z, 1.4);
+        }
+
+        if (b.rng.next() < 0.5) put(b, if (b.rng.next() < 0.5) .moss else .stones, x + b.rng.range(-3, 3), z + b.rng.range(-3, 3), b.rng.range(0, 6), b.rng.range(1, 1.6));
+    }
 }
 
 fn volcanicField(b: *Builder) void {
@@ -589,13 +805,17 @@ fn jungleDensity(x: f32, z: f32) f32 {
 
     if (dist2(x, z, volcano[0], volcano[1]) < 105) return 0;
 
-    if (dist2(x, z, springs[0], springs[1]) < springs[2] * 1.1) return 0.05;
+    const sd = dist2(x, z, springs[0], springs[1]);
+
+    if (sd < springs[2] * 0.74) return 0.02;
+
+    if (sd < springs[2] * 1.35) return 0.6;
 
     const ash = @max(lavaField(x, z), t.smooth(150, 80, dist2(x, z, volcano[0], volcano[1])));
     const patch = t.smooth(0.28, 0.55, t.fbm(x * 0.024 + 11, z * 0.024 + 4));
     const glade = 1 - t.smooth(0.64, 0.72, t.fbm(x * 0.05 - 3, z * 0.05 + 7)) * 0.85;
 
-    return ((0.15 + 0.85 * patch * patch) * glade + t.smooth(def.play - 20, def.play + 10, e) * 0.6) * (1 - ash * 0.85);
+    return ((0.22 + 0.78 * patch * patch) * glade + t.smooth(def.play - 20, def.play + 10, e) * 0.6) * (1 - ash * 0.85);
 }
 
 fn jungleKind(b: *Builder, x: f32, z: f32) K {
@@ -662,7 +882,7 @@ fn jungle(b: *Builder) void {
 fn groundCover(b: *Builder) void {
     var i: usize = 0;
 
-    while (i < 2200) : (i += 1) {
+    while (i < 4000) : (i += 1) {
         const x = b.rng.range(-def.play, def.play);
         const z = b.rng.range(-def.play, def.play);
 

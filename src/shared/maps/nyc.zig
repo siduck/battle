@@ -154,7 +154,7 @@ fn ground(x: f32, z: f32) api.Rgb {
         .park => api.shade(mix(.{ 104, 140, 76 }, .{ 92, 126, 68 }, n), l),
         .site => api.shade(mix(.{ 150, 132, 104 }, .{ 132, 116, 92 }, n), l),
         .plaza => plaza(x, z, l),
-        .row => alley(l, n),
+        .row => yardGround(x, z, l, n),
     };
 }
 
@@ -175,6 +175,20 @@ fn road(x: f32, z: f32, l: f32, n: f32) api.Rgb {
     const patch = t.smooth(0.62, 0.7, p) * 0.12;
 
     return api.shade(mix(mix(.{ 70, 70, 74 }, .{ 60, 60, 64 }, n), .{ 92, 90, 88 }, patch), l);
+}
+
+fn yardGround(x: f32, z: f32, l: f32, n: f32) api.Rgb {
+    const tile = hash(@floor(x / 3), @floor(z / 3));
+    const seam = @min(@abs(@mod(x, 3) - 1.5), @abs(@mod(z, 3) - 1.5));
+    const patch = t.smooth(0.44, 0.52, t.fbm(x * 0.07 + 13, z * 0.07 - 2));
+    const stain = t.smooth(0.56, 0.66, t.fbm(x * 0.2 - 7, z * 0.2 + 3));
+    var c = mix(.{ 150, 140, 126 }, .{ 124, 116, 106 }, tile);
+
+    c = mix(c, mix(.{ 86, 84, 84 }, .{ 76, 74, 76 }, n), patch);
+    c = mix(c, .{ 92, 86, 80 }, stain * 0.6);
+    c = mix(c, .{ 104, 98, 92 }, (1 - t.smooth(1.38, 1.48, seam)) * (1 - patch));
+
+    return api.shade(c, l);
 }
 
 fn alley(l: f32, n: f32) api.Rgb {
@@ -368,6 +382,8 @@ fn lineSide(b: *Builder, s: Side) void {
 
         if (chance(b, 0.3)) wallDress(b, s, a + sz[0] / 2, sz[1]);
 
+        backDress(b, s, e, a + sz[0] / 2, sz[0], sz[1]);
+
         a += sz[0];
     }
 }
@@ -446,11 +462,249 @@ fn alleySide(b: *Builder, s: Side) void {
     }
 }
 
+fn atl(b: *Builder, e: K, cx: f32, cz: f32, yaw: f32, lx: f32, lz: f32, y: f32, turn: f32) void {
+    const p = wd.rotPoint(cx, cz, yaw, lx, lz);
+
+    b.putAt(kit.of(e), vec(p[0], t.height(p[0], p[1]) + y, p[1]), yaw + turn, 1);
+}
+
+fn clear(b: *Builder, cx: f32, cz: f32, r: f32) bool {
+    for ([_][2]f32{ .{ 0, 0 }, .{ -1, -1 }, .{ 1, -1 }, .{ -1, 1 }, .{ 1, 1 }, .{ 0, 1 }, .{ 0, -1 }, .{ 1, 0 }, .{ -1, 0 } }) |o| {
+        if (wd.covered(b, cx + o[0] * r, cz + o[1] * r, 0.6)) return false;
+    }
+
+    return true;
+}
+
+fn stack(b: *Builder, cx: f32, cz: f32, yaw: f32, lx: f32, lz: f32, n: usize) void {
+    var i: usize = 0;
+
+    while (i < n) : (i += 1) atl(b, .pallet, cx, cz, yaw, lx, lz, @as(f32, @floatFromInt(i)) * 0.14, jitter(b, 0.08));
+}
+
+fn fenceRun(b: *Builder, cx: f32, cz: f32, yaw: f32, lx0: f32, lz0: f32, lx1: f32, lz1: f32, gap: f32) void {
+    const dx = lx1 - lx0;
+    const dz = lz1 - lz0;
+    const len = @sqrt(dx * dx + dz * dz);
+    const n: usize = @intFromFloat(@max(1, @round(len / 4)));
+    const turn = std.math.atan2(dz, dx);
+    var i: usize = 0;
+
+    while (i < n) : (i += 1) {
+        const u = (@as(f32, @floatFromInt(i)) + 0.5) / @as(f32, @floatFromInt(n));
+
+        if (gap >= 0 and @abs(u - gap) < 0.5 / @as(f32, @floatFromInt(n))) continue;
+
+        atl(b, .chainlink, cx, cz, yaw, lx0 + dx * u, lz0 + dz * u, 0, -turn);
+    }
+}
+
+fn loading(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    atl(b, .palletload, cx, cz, yaw, -2.8, -2.4, 0, 0);
+    atl(b, .palletload, cx, cz, yaw, -1.6, -2.4, 0, 0.1);
+    atl(b, .palletload, cx, cz, yaw, -2.8, -1.3, 0, -0.1);
+    atl(b, .palletload, cx, cz, yaw, -2.8, -1.3, 1.21, 0);
+    stack(b, cx, cz, yaw, 1.4, -2.6, 4);
+    stack(b, cx, cz, yaw, 2.8, -2.6, 2);
+    atl(b, .crates, cx, cz, yaw, 2.2, 0.4, 0, 0.3);
+    atl(b, .crates, cx, cz, yaw, -0.4, 1.6, 0, hp);
+    atl(b, .drum, cx, cz, yaw, 3.2, 2.6, 0, 0);
+    atl(b, .drum, cx, cz, yaw, 3.8, 2.4, 0, 0.5);
+    atl(b, .drum, cx, cz, yaw, 3.4, 3.2, 0, 1);
+    atl(b, .hvac, cx, cz, yaw, -3.2, 2.6, 0, 0);
+    atl(b, .hvac, cx, cz, yaw, -2.1, 2.6, 0, 0);
+}
+
+fn binYard(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    atl(b, .dumpster, cx, cz, yaw, -1.7, -2.4, 0, 0);
+    atl(b, .dumpster, cx, cz, yaw, 1.6, -2.3, 0, 0.05);
+    atl(b, .can, cx, cz, yaw, -3.6, -0.6, 0, 0);
+    atl(b, .can, cx, cz, yaw, -3.1, 0.1, 0, 0.6);
+    atl(b, .can, cx, cz, yaw, -3.7, 0.5, 0, 1.2);
+    atl(b, .drum, cx, cz, yaw, 3.6, -0.2, 0, 0);
+    atl(b, .crates, cx, cz, yaw, 2.6, 2.4, 0, 0.6);
+    stack(b, cx, cz, yaw, -1, 2.6, 3);
+    fenceRun(b, cx, cz, yaw, -4, -3.8, 4, -3.8, -1);
+    fenceRun(b, cx, cz, yaw, -4.1, -3.6, -4.1, 0.4, -1);
+}
+
+fn market(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    atl(b, .stall, cx, cz, yaw, -2.4, -0.6, 0, 0);
+    atl(b, .stall, cx, cz, yaw, 1.6, -0.6, 0, 0);
+    atl(b, .crates, cx, cz, yaw, -2.6, 1.8, 0, 0.2);
+    atl(b, .crates, cx, cz, yaw, 1.4, 1.9, 0, -0.3);
+    atl(b, .planterbox, cx, cz, yaw, -4.2, 3, 0, 0);
+    atl(b, .planterbox, cx, cz, yaw, 4.2, 3, 0, 0);
+    atl(b, .planterbox, cx, cz, yaw, 4.2, -3, 0, 0);
+    atl(b, .picnic, cx, cz, yaw, -0.4, 3.6, 0, 0);
+    atl(b, .can, cx, cz, yaw, 3.6, 1.2, 0, 0);
+    atl(b, .palletload, cx, cz, yaw, -4.2, -2.6, 0, 0.3);
+}
+
+fn scaffoldTower(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    for ([_]f32{ -2, 2 }) |lx| {
+        atl(b, .scaffold, cx, cz, yaw, lx, -1.5, 0, 0);
+        atl(b, .scaffold, cx, cz, yaw, lx, -1.5, 3, 0);
+    }
+
+    const p = wd.rotPoint(cx, cz, yaw, 0, -1.5);
+    const y = t.height(p[0], p[1]);
+    const r = wd.rotBox(p[0], p[1], yaw, -4, -1, 4, 1);
+
+    b.deco(vec(r[0], y + 2.9, r[1]), vec(r[2], y + 3.05, r[3]), .f_wood_pallet);
+    b.solid(.{ .box = .{ .min = vec(r[0], y + 2.9, r[1]), .max = vec(r[2], y + 3.05, r[3]) } });
+    atl(b, .hoarding, cx, cz, yaw, -2, 1.4, 0, 0);
+    atl(b, .palletload, cx, cz, yaw, 2.2, 1.6, 0, 0.2);
+    atl(b, .palletload, cx, cz, yaw, 3.3, 1.7, 0, -0.1);
+    stack(b, cx, cz, yaw, 1.2, 3.2, 3);
+    atl(b, .barricade, cx, cz, yaw, -2.4, 3.4, 0, 0);
+    atl(b, .cone, cx, cz, yaw, 0, 3.4, 0, 0);
+}
+
+fn plant(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    atl(b, .generator, cx, cz, yaw, 0, -2.2, 0, 0);
+    atl(b, .hvac, cx, cz, yaw, -3.4, 1.4, 0, 0);
+    atl(b, .hvac, cx, cz, yaw, -2.3, 1.4, 0, 0);
+    atl(b, .hvac, cx, cz, yaw, -1.2, 1.4, 0, 0);
+    atl(b, .drum, cx, cz, yaw, 2.8, 1.2, 0, 0);
+    atl(b, .drum, cx, cz, yaw, 3.4, 1.5, 0, 0.4);
+    atl(b, .barricade, cx, cz, yaw, 2.2, 3.4, 0, 0);
+    atl(b, .cone, cx, cz, yaw, 0.4, 3.3, 0, 0);
+    fenceRun(b, cx, cz, yaw, -4, -4, 4, -4, -1);
+    fenceRun(b, cx, cz, yaw, 4.1, -3.8, 4.1, 0.2, -1);
+}
+
+fn picnicYard(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    atl(b, .picnic, cx, cz, yaw, -1.8, -1.2, 0, 0);
+    atl(b, .picnic, cx, cz, yaw, 1.8, 1.2, 0, 0.1);
+    atl(b, .tree, cx, cz, yaw, 3, -2.6, 0, 0);
+    atl(b, .tree, cx, cz, yaw, -3, 2.8, 0, 1);
+
+    for ([_][2]f32{ .{ -4, -3.6 }, .{ -2.8, -3.6 }, .{ 4, 3.6 }, .{ 2.8, 3.6 }, .{ 4.1, -0.4 } }) |q| atl(b, .planterbox, cx, cz, yaw, q[0], q[1], 0, 0);
+
+    atl(b, .can, cx, cz, yaw, -4, 0.8, 0, 0);
+    atl(b, .globe, cx, cz, yaw, 0, -3.8, 0, 0);
+}
+
+fn fencedLot(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    fenceRun(b, cx, cz, yaw, -4, -4, 4, -4, -1);
+    fenceRun(b, cx, cz, yaw, -4, 4, 4, 4, 0.25);
+    fenceRun(b, cx, cz, yaw, -4, -4, -4, 4, -1);
+    fenceRun(b, cx, cz, yaw, 4, -4, 4, 4, 0.75);
+
+    for ([_][2]f32{ .{ -2.6, -2.6 }, .{ -1.5, -2.7 }, .{ -2.7, -1.5 }, .{ 2.5, 2.2 } }) |q| atl(b, .palletload, cx, cz, yaw, q[0], q[1], 0, jitter(b, 0.2));
+
+    atl(b, .crates, cx, cz, yaw, 1.6, -2.4, 0, 0.1);
+    atl(b, .crates, cx, cz, yaw, 1.6, -2.4, 0.9, 0.4);
+    stack(b, cx, cz, yaw, -2.4, 2.4, 5);
+    atl(b, .drum, cx, cz, yaw, 0.4, 0.6, 0, 0);
+    atl(b, .drum, cx, cz, yaw, 1, 0.9, 0, 0);
+}
+
+fn court(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    const y = t.height(cx, cz);
+    const r = wd.rotBox(cx, cz, yaw, -3.4, -4.4, 3.4, 4.4);
+
+    b.deco(vec(r[0], y + 0.01, r[1]), vec(r[2], y + 0.03, r[3]), .f_mint_dark);
+    atl(b, .hoop, cx, cz, yaw, 0, -3.8, 0, 0);
+    atl(b, .hoop, cx, cz, yaw, 0, 3.8, 0, std.math.pi);
+    fenceRun(b, cx, cz, yaw, -4.4, -4.6, 4.4, -4.6, -1);
+    fenceRun(b, cx, cz, yaw, -4.6, -4.4, -4.6, 4.4, 0.5);
+    fenceRun(b, cx, cz, yaw, 4.6, -4.4, 4.6, 4.4, 0.5);
+    atl(b, .bench, cx, cz, yaw, 3.6, 4.8, 0, 0);
+}
+
+fn stackYard(b: *Builder, cx: f32, cz: f32, yaw: f32) void {
+    var lx: f32 = -3.4;
+
+    while (lx < 3.5) : (lx += 1.1) {
+        atl(b, .palletload, cx, cz, yaw, lx, -2.6, 0, jitter(b, 0.05));
+
+        if (@abs(lx) > 0.8) atl(b, .palletload, cx, cz, yaw, lx, -2.6, 1.21, jitter(b, 0.08));
+    }
+
+    atl(b, .crates, cx, cz, yaw, -2.6, 0.6, 0, 0);
+    atl(b, .crates, cx, cz, yaw, -2.6, 0.6, 0.9, 0.3);
+    atl(b, .crates, cx, cz, yaw, 2.4, 1.2, 0, -0.2);
+    stack(b, cx, cz, yaw, 0, 1.6, 6);
+    stack(b, cx, cz, yaw, 1.3, 3, 2);
+    atl(b, .dumpster, cx, cz, yaw, -1.4, 3.4, 0, 0);
+    atl(b, .drum, cx, cz, yaw, 3.6, -0.4, 0, 0);
+}
+
+fn cluster(b: *Builder, cx: f32, cz: f32) void {
+    const yaw = @round(b.rng.range(0, 4)) * hp;
+    const r = b.rng.next();
+
+    if (r < 0.16) loading(b, cx, cz, yaw) else if (r < 0.28) binYard(b, cx, cz, yaw) else if (r < 0.4) market(b, cx, cz, yaw) else if (r < 0.54) scaffoldTower(b, cx, cz, yaw) else if (r < 0.64) plant(b, cx, cz, yaw) else if (r < 0.72) picnicYard(b, cx, cz, yaw) else if (r < 0.82) fencedLot(b, cx, cz, yaw) else if (r < 0.94) stackYard(b, cx, cz, yaw) else court(b, cx, cz, yaw);
+}
+
+fn small(b: *Builder, cx: f32, cz: f32) void {
+    const yaw = @round(b.rng.range(0, 4)) * hp + jitter(b, 0.1);
+    const r = b.rng.next();
+
+    if (r < 0.25) {
+        atl(b, .palletload, cx, cz, yaw, -0.6, -0.5, 0, 0);
+        atl(b, .palletload, cx, cz, yaw, 0.5, -0.5, 0, 0.1);
+        stack(b, cx, cz, yaw, 0, 0.9, 3);
+        atl(b, .crates, cx, cz, yaw, 1.4, 1.2, 0, 0.4);
+    } else if (r < 0.45) {
+        atl(b, .dumpster, cx, cz, yaw, 0, 0, 0, 0);
+        atl(b, .can, cx, cz, yaw, 1.9, 0.2, 0, 0);
+        atl(b, .can, cx, cz, yaw, 1.9, -0.6, 0, 0.5);
+    } else if (r < 0.6) {
+        atl(b, .hvac, cx, cz, yaw, -1.1, 0, 0, 0);
+        atl(b, .hvac, cx, cz, yaw, 0, 0, 0, 0);
+        atl(b, .hvac, cx, cz, yaw, 1.1, 0, 0, 0);
+        atl(b, .drum, cx, cz, yaw, 0.4, 1.3, 0, 0);
+    } else if (r < 0.75) {
+        atl(b, .chainlink, cx, cz, yaw, 0, -1, 0, 0);
+        atl(b, .crates, cx, cz, yaw, -0.8, 0.2, 0, 0);
+        atl(b, .drum, cx, cz, yaw, 0.9, 0.1, 0, 0);
+        atl(b, .drum, cx, cz, yaw, 1.5, 0.3, 0, 0);
+    } else if (r < 0.88) {
+        atl(b, .barricade, cx, cz, yaw, 0, 0, 0, 0);
+        atl(b, .cone, cx, cz, yaw, 1.6, 0.4, 0, 0);
+        atl(b, .palletload, cx, cz, yaw, -0.4, 1.1, 0, 0.2);
+    } else {
+        atl(b, .planterbox, cx, cz, yaw, -0.6, 0, 0, 0);
+        atl(b, .planterbox, cx, cz, yaw, 0.6, 0, 0, 0);
+        atl(b, .picnic, cx, cz, yaw, 0, 1.6, 0, 0);
+    }
+}
+
+fn backDress(b: *Builder, s: Side, e: K, along: f32, w: f32, deep: f32) void {
+    const h = roofOf(e);
+
+    switch (e) {
+        .tenement, .brownstone, .walkup, .cornerten, .loft, .prewar, .slab, .school => {},
+        else => return,
+    }
+
+    if (chance(b, 0.75)) {
+        const p = local(s, along + jitter(b, w * 0.2), -deep - 0.7);
+        var y: f32 = 3.2;
+
+        while (y + 4.1 < h) : (y += 4.13) putY(b, .escape, p[0], t.height(p[0], p[1]) + y, p[1], s.yaw + pi);
+    }
+
+    if (chance(b, 0.6)) {
+        const q = local(s, along - w * 0.3, -deep - 0.6);
+
+        put(b, .hvac, q[0], q[1], s.yaw + pi);
+
+        const q2 = local(s, along - w * 0.3 + 1.1, -deep - 0.6);
+
+        put(b, .hvac, q2[0], q2[1], s.yaw + pi);
+    }
+}
+
 fn courtyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
     const inner = [_]K{ .repair, .shoprow, .diner, .firehouse, .shoprow };
     var m: usize = 0;
+    var built: usize = 0;
 
-    while (m < 10) : (m += 1) {
+    while (m < 14 and built < 1) : (m += 1) {
         const e = inner[@intFromFloat(@floor(b.rng.range(0, 4.99)))];
         const sz = size(e);
         const yaw = @round(b.rng.range(0, 4)) * hp;
@@ -469,36 +723,65 @@ fn courtyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         if (!free) continue;
 
         place(b, e, px, pz, yaw);
+        built += 1;
+    }
+
+    var tries: usize = 0;
+
+    while (tries < 120) : (tries += 1) {
+        const cx = b.rng.range(x0 + 4, x1 - 4);
+        const cz = b.rng.range(z0 + 4, z1 - 4);
+
+        if (clear(b, cx, cz, 4.0)) cluster(b, cx, cz);
+    }
+
+    tries = 0;
+
+    while (tries < 260) : (tries += 1) {
+        const cx = b.rng.range(x0 + 2, x1 - 2);
+        const cz = b.rng.range(z0 + 2, z1 - 2);
+
+        if (clear(b, cx, cz, 2.2)) small(b, cx, cz);
     }
 
     var n: usize = 0;
 
-    while (n < 60) : (n += 1) {
+    while (n < 160) : (n += 1) {
         const px = b.rng.range(x0, x1);
         const pz = b.rng.range(z0, z1);
 
-        if (wd.covered(b, px, pz, 1.6)) continue;
+        if (wd.covered(b, px, pz, 1.2)) continue;
 
         const r = b.rng.next();
-        const yaw = @round(b.rng.range(0, 4)) * hp;
+        const yaw = @round(b.rng.range(0, 4)) * hp + jitter(b, 0.15);
 
-        if (r < 0.2) {
+        if (r < 0.06) {
             put(b, .dumpster, px, pz, yaw);
-        } else if (r < 0.35) {
+        } else if (r < 0.16) {
+            put(b, .tree, px, pz, b.rng.range(0, 6));
+            put(b, .planterbox, px + 1.2, pz + 0.4, 0);
+        } else if (r < 0.26) {
             put(b, .can, px, pz, 0);
             put(b, .can, px + 0.7, pz + 0.3, 0);
-        } else if (r < 0.45) {
-            put(b, .dumpster, px, pz, yaw);
-        } else if (r < 0.55) {
-            put(b, .ac, px, pz, yaw);
-        } else if (r < 0.65) {
+        } else if (r < 0.38) {
+            stack(b, px, pz, yaw, 0, 0, 3);
+            put(b, .palletload, px + 1.3, pz, yaw);
+        } else if (r < 0.5) {
+            put(b, .crates, px, pz, yaw);
+        } else if (r < 0.6) {
+            put(b, .hvac, px, pz, yaw);
+            put(b, .hvac, px + 1.1, pz, yaw);
+        } else if (r < 0.7) {
+            put(b, .drum, px, pz, 0);
+            put(b, .drum, px + 0.65, pz + 0.2, 0.4);
+        } else if (r < 0.78) {
             put(b, .barricade, px, pz, yaw);
-        } else if (r < 0.75) {
-            put(b, .steam, px, pz, 0);
         } else if (r < 0.85) {
-            put(b, .barricade, px, pz, yaw);
+            put(b, .steam, px, pz, 0);
+        } else if (r < 0.93) {
+            put(b, .planterbox, px, pz, 0);
         } else {
-            put(b, .scaffold, px, pz, yaw);
+            put(b, .chainlink, px, pz, yaw);
         }
     }
 }
@@ -675,7 +958,20 @@ fn site(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
 
     var n: usize = 0;
 
-    while (n < 40) : (n += 1) {
+    var tries: usize = 0;
+
+    while (tries < 60) : (tries += 1) {
+        const cx = b.rng.range(x0 + 5, x1 - 5);
+        const cz = b.rng.range(z0 + 5, z1 - 5);
+
+        if (!clear(b, cx, cz, 3.6)) continue;
+
+        const yaw = @round(b.rng.range(0, 4)) * hp;
+
+        if (chance(b, 0.4)) stackYard(b, cx, cz, yaw) else if (chance(b, 0.5)) loading(b, cx, cz, yaw) else plant(b, cx, cz, yaw);
+    }
+
+    while (n < 90) : (n += 1) {
         const px = b.rng.range(x0 + 3, x1 - 3);
         const pz = b.rng.range(z0 + 3, z1 - 3);
 
@@ -685,7 +981,7 @@ fn site(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         const yaw = @round(b.rng.range(0, 4)) * hp;
 
         if (r < 0.2) {
-            put(b, .dumpster, px, pz, yaw);
+            if (chance(b, 0.5)) small(b, px, pz) else put(b, .dumpster, px, pz, yaw);
         } else if (r < 0.4) {
             put(b, .scaffold, px, pz, yaw);
 
@@ -888,6 +1184,50 @@ fn skyline(b: *Builder) void {
             b.putAt(kit.of(e1), vec(a, t.height(a, s * off), s * off), if (s > 0) pi else 0, b.rng.range(0.9, 1.3));
             b.putAt(kit.of(e2), vec(s * off, t.height(s * off, a), a), if (s > 0) -hp else hp, b.rng.range(0.9, 1.3));
             i += 1;
+        }
+    }
+
+    const ring = [_]K{ .brownstone, .tenement, .walkup, .loft, .cornerten, .tenement, .garage, .brownstone };
+    var side: usize = 0;
+
+    while (side < 4) : (side += 1) {
+        var u: f32 = -edge - 10;
+        var j: usize = side * 3;
+
+        while (u < edge + 10) {
+            const e = ring[j % ring.len];
+            const sz = size(e);
+            const off = edge + 5 + sz[1] / 2;
+            const m = u + sz[0] / 2;
+            const p: [3]f32 = switch (side) {
+                0 => .{ m, off, pi },
+                1 => .{ m, -off, 0 },
+                2 => .{ off, m, -hp },
+                else => .{ -off, m, hp },
+            };
+
+            b.putAt(kit.of(e), vec(p[0], t.height(p[0], p[1]), p[1]), p[2], 1);
+
+            const c = if (side < 2) [2]f32{ m, (edge + 3.6) * (if (side == 0) @as(f32, 1) else -1) } else [2]f32{ (edge + 3.6) * (if (side == 2) @as(f32, 1) else -1), m };
+            const r = b.rng.next();
+
+            if (@abs(m) < edge - 4) {
+                if (r < 0.25) {
+                    put(b, .dumpster, c[0], c[1], p[2] + hp);
+                } else if (r < 0.45) {
+                    put(b, .can, c[0], c[1], 0);
+                    put(b, .can, c[0] + 0.6, c[1] + 0.5, 0);
+                    put(b, .palletload, c[0] - 0.8, c[1] - 0.6, p[2]);
+                } else if (r < 0.6) {
+                    put(b, .hvac, c[0], c[1], p[2]);
+                    put(b, .drum, c[0] + 1, c[1] + 0.4, 0);
+                } else if (r < 0.72) {
+                    put(b, .tree, c[0], c[1], r * 9);
+                }
+            }
+
+            u += sz[0] + 0.2;
+            j += 1;
         }
     }
 }

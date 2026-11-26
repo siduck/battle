@@ -106,7 +106,15 @@ def split_long(bm, limit):
         bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])
 
 
+def weld(bm):
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
+
+    for f in bm.faces:
+        f.smooth = False
+
+
 def ao(bm, dist, strength, ground=True, floor=0.0, sky=0.0):
+    weld(bm)
     bm.normal_update()
     bm.verts.ensure_lookup_table()
     tree = BVHTree.FromBMesh(bm)
@@ -332,6 +340,8 @@ def roof_height(bm):
 
 
 def finish(bm, name, info_extra):
+    weld(bm)
+
     if info_extra.get("group") == "building":
         bm.normal_update()
         info_extra["roof"] = roof_height(bm)
@@ -448,29 +458,28 @@ def main():
     only = os.environ.get("ONLY")
     infos = {}
     jobs = [
-        ("deco", lambda: build("deco", "art-deco-setback-tower-b3a788", dist=8, split=6, dy=4.0, cell=1.0)),
-        ("slab", lambda: build("slab", "postwar-apartment-slab-cee5f9", dist=8, split=6, dy=4.0, cell=1.0)),
-        ("prewar", lambda: build("prewar", "prewar-apartment-house-1081a6", dist=8, split=6, dy=4.0, cell=1.0)),
-        ("office", lambda: build("office", "office-tower-1538cc", dist=6, split=5, dy=4.0, cell=1.0)),
-        ("tenement", lambda: build("tenement", "brick-tenement-7d2014", dist=5, split=4, dy=2.0)),
-        ("cornerten", lambda: build("cornerten", "corner-tenement-92fb62", dist=5, split=4, dy=2.0)),
-        ("loft", lambda: build("loft", "cast-iron-loft-b04b5a", dist=5, split=4, dy=2.0)),
-        ("brownstone", lambda: build("brownstone", "brownstone-row-house-1b84fd", dist=5, split=4, dy=2.0)),
-        ("garage", lambda: build("garage", "parking-garage-6e4f2c", dist=5, split=4, dy=2.0)),
-        ("dept", lambda: build("dept", "department-store-ffbd58", dist=5, split=4, dy=2.0)),
-        ("theater", lambda: build("theater", "movie-theater-40eeef", dist=5, split=4, dy=2.0)),
-        ("walkup", lambda: build("walkup", "narrow-walk-up-41f10c", dist=4, split=4, dy=2.0)),
-        ("school", lambda: build("school", "public-school-19ade5", dist=5, split=4, dy=2.0)),
-        ("bank", lambda: build("bank", "classical-bank-04954e", dist=5, split=4, dy=2.0)),
-        ("repair", lambda: build("repair", "auto-repair-garage-b91464", dist=4, split=4, dy=1.5)),
-        ("firehouse", lambda: build("firehouse", "fire-station-e2b756", dist=4, split=4, dy=1.5)),
-        ("cornershop", lambda: build("cornershop", "corner-shop-5aec8c", dist=4, split=4, dy=1.5)),
-        ("shoprow", lambda: build("shoprow", "one-storey-shop-row-83c958", dist=4, split=4, dy=1.0)),
-        ("diner", lambda: build("diner", "street-diner-40fc87", dist=3, split=3, dy=1.0)),
-        ("subway", lambda: build("subway", "subway-entrance-9ccc8b", dist=2, split=2, dy=0.5, fill=False, cell=0.5, min_area=0.05)),
+        ("deco", lambda: build("deco", "art-deco-setback-tower-b3a788", dist=8, split=12, dy=4.0, cell=1.0)),
+        ("slab", lambda: build("slab", "postwar-apartment-slab-cee5f9", dist=8, split=12, dy=4.0, cell=1.0)),
+        ("prewar", lambda: build("prewar", "prewar-apartment-house-1081a6", dist=8, split=12, dy=4.0, cell=1.0)),
+        ("office", lambda: build("office", "office-tower-1538cc", dist=6, split=10, dy=4.0, cell=1.0)),
+        ("tenement", lambda: build("tenement", "brick-tenement-7d2014", dist=5, split=8, dy=2.0)),
+        ("cornerten", lambda: build("cornerten", "corner-tenement-92fb62", dist=5, split=8, dy=2.0)),
+        ("loft", lambda: build("loft", "cast-iron-loft-b04b5a", dist=5, split=8, dy=2.0)),
+        ("brownstone", lambda: build("brownstone", "brownstone-row-house-1b84fd", dist=5, split=8, dy=2.0)),
+        ("garage", lambda: build("garage", "parking-garage-6e4f2c", dist=5, split=8, dy=2.0)),
+        ("dept", lambda: build("dept", "department-store-ffbd58", dist=5, split=8, dy=2.0)),
+        ("theater", lambda: build("theater", "movie-theater-40eeef", dist=5, split=8, dy=2.0)),
+        ("walkup", lambda: build("walkup", "narrow-walk-up-41f10c", dist=4, split=8, dy=2.0)),
+        ("school", lambda: build("school", "public-school-19ade5", dist=5, split=8, dy=2.0)),
+        ("bank", lambda: build("bank", "classical-bank-04954e", dist=5, split=8, dy=2.0)),
+        ("repair", lambda: build("repair", "auto-repair-garage-b91464", dist=4, split=8, dy=1.5)),
+        ("firehouse", lambda: build("firehouse", "fire-station-e2b756", dist=4, split=8, dy=1.5)),
+        ("cornershop", lambda: build("cornershop", "corner-shop-5aec8c", dist=4, split=8, dy=1.5)),
+        ("shoprow", lambda: build("shoprow", "one-storey-shop-row-83c958", dist=4, split=8, dy=1.0)),
+        ("diner", lambda: build("diner", "street-diner-40fc87", dist=3, split=5, dy=1.0)),
+        ("subway", lambda: build("subway", "subway-entrance-9ccc8b", dist=2, split=3, dy=0.5, fill=False, cell=0.5, min_area=0.05)),
         ("railing", lambda: prop("railing", "area-railing-a771da")),
         ("bikerack", lambda: prop("bikerack", "bike-rack-a1e7c3", collide="none")),
-        ("shelter", lambda: prop("shelter", "bus-shelter-f786b4")),
         ("dumpster", lambda: prop("dumpster", "construction-dumpster-2de7ae")),
         ("hoarding", lambda: prop("hoarding", "construction-hoarding-c286ac")),
         ("dining", lambda: prop("dining", "curbside-dining-shed-606329")),
@@ -486,7 +495,6 @@ def main():
         ("bench", lambda: prop("bench", "park-bench-dc8b62")),
         ("barricade", lambda: prop("barricade", "police-barricade-0bbf37")),
         ("sign", lambda: prop("sign", "projecting-shop-sign-aa1867", collide="none")),
-        ("bulkhead", lambda: prop("bulkhead", "roof-bulkhead-0f0acc")),
         ("ac", lambda: prop("ac", "rooftop-ac-unit-6ccb3c")),
         ("billboard", lambda: prop("billboard", "rooftop-billboard-48a23e", collide="none")),
         ("watertower", lambda: prop("watertower", "rooftop-water-tower-b38362", collide="cylinder")),
@@ -499,6 +507,17 @@ def main():
         ("theatersign", lambda: prop("theatersign", "theatre-vertical-sign-21c29b", collide="none")),
         ("cone", lambda: prop("cone", "traffic-cone-33e81e", collide="none")),
         ("light", lambda: prop("light", "traffic-light-b217a2", collide="cylinder")),
+        ("pallet", lambda: prop("pallet", ex("timber-eur-pallet-a1f655"), scale=1.0)),
+        ("palletload", lambda: prop("palletload", ex("stretch-wrapped-pallet-load-b4169b"), scale=1.0)),
+        ("crates", lambda: prop("crates", ex("freight-crate-and-sack-f49cbb"), scale=1.0)),
+        ("chainlink", lambda: prop("chainlink", ex("chain-link-fence-run-6c3d68"), scale=1.0)),
+        ("hvac", lambda: prop("hvac", ex("hvac-condenser-unit-a41b8d"), scale=1.0)),
+        ("generator", lambda: prop("generator", ex("standby-generator-enclosure-9d48f6"), scale=1.0)),
+        ("drum", lambda: prop("drum", ex("oil-drum-386c30"), scale=1.0, collide="cylinder")),
+        ("picnic", lambda: prop("picnic", ex("picnic-table-4ee33a"), scale=1.0)),
+        ("stall", lambda: prop("stall", ex("welcome-week-tent-stall-c27020"), scale=1.0, collide="none")),
+        ("planterbox", lambda: prop("planterbox", ex("campus-planter-box-10970a"), scale=1.0)),
+        ("hoop", lambda: prop("hoop", ex("driveway-basketball-hoop-40deb7"), scale=1.0, collide="cylinder")),
     ]
 
     for name, fn in jobs:

@@ -430,7 +430,6 @@ def main():
         ("parlour", lambda: build("parlour", "amusement-parlour-7eb45f", dist=4, split=3)),
         ("apartment", lambda: build("apartment", apt, dist=4, split=3)),
         ("tower", lambda: assemble("tower", [(apt, (0, 0, 0), 0), (apt, (0, 0, 9.4), 0)])),
-        ("bath", lambda: build("bath", "bathhouse-4ac41a", dist=4, split=3)),
         ("barhut", lambda: build("barhut", "alley-bar-hut-3e41f8", dist=3, split=2)),
         ("konbini", lambda: build("konbini", "convenience-store-c30e1d", dist=3, split=2)),
         ("corner", lambda: build("corner", "corner-shophouse-ad15c2", dist=3, split=3)),
@@ -471,6 +470,19 @@ def main():
         ("maple", lambda: prop("maple", ex("maple-tree-65fa12"), group="tree", collide="trunk", dist=3, sky=0.3)),
         ("bush", lambda: prop("bush", ex("round-bush-cd2ac0"), group="bush", collide="none", sky=0.3)),
         ("wheelie", lambda: prop("wheelie", ex("roll-out-wheelie-bin-3b540e"))),
+        ("shed", lambda: prop("shed", ex("backyard-garden-shed-38d79f"), dist=2)),
+        ("toolshed", lambda: prop("toolshed", ex("tool-shed-f61f49"), dist=2)),
+        ("fence", lambda: prop("fence", ex("board-privacy-fence-run-319bef"))),
+        ("bamboo", lambda: prop("bamboo", ex("takegaki-bamboo-fence-c6718b"))),
+        ("laundry", lambda: prop("laundry", ex("laundry-line-run-dcbc64"), collide="none")),
+        ("bed", lambda: prop("bed", ex("flower-bed-708e73"), collide="none")),
+        ("greenhouse", lambda: prop("greenhouse", ex("greenhouse-53ab6d"), dist=2)),
+        ("grill", lambda: prop("grill", ex("backyard-barbecue-grill-84d4ef"))),
+        ("barrow", lambda: prop("barrow", ex("wheelbarrow-0f8406"), collide="none")),
+        ("olive", lambda: prop("olive", ex("potted-olive-tree-7eee05"), collide="cylinder")),
+        ("firewood", lambda: prop("firewood", ex("firewood-stack-810f49"))),
+        ("compost", lambda: prop("compost", ex("compost-heap-dfec38"))),
+        ("sunflower", lambda: prop("sunflower", ex("sunflower-80ce15"), group="bush", collide="none")),
     ]
 
     for name, fn in jobs:

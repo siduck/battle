@@ -4,7 +4,23 @@ import pf
 from pf import *
 from mathutils.bvhtree import BVHTree
 
-pf.SKIP = re.compile(pf.SKIP.pattern + r"|wisp|steam|billow", re.I)
+BASE_SKIP = pf.SKIP
+pf.SKIP = re.compile(BASE_SKIP.pattern + r"|wisp|steam|billow", re.I)
+STEAMY = {"steamspring", "steamvent"}
+EXTRA = os.path.join(pf.P, "extra")
+_make_prop = pf.make_prop
+
+
+def make_prop_steam(name, src, **kw):
+    keep = pf.SKIP
+    pf.SKIP = BASE_SKIP if name in STEAMY else keep
+    info = _make_prop(name, src, **kw)
+    pf.SKIP = keep
+
+    return info
+
+
+pf.make_prop = make_prop_steam
 
 SNOW = (0.9, 0.93, 0.97)
 SNOWY = {}
@@ -164,7 +180,9 @@ PROPS = [
     ("fumarole", "fumarole-vent-8280ba", {"group": "street", "collide": "box", "scale": 1.8}),
     ("geyser", "geyser-cone-2b5033", {"group": "street", "collide": "none", "scale": 1.8}),
     ("spring", "hot-spring-pool-26312c", {"group": "street", "collide": "none", "scale": 2.0}),
-    ("vine", "hanging-vine-run-4184f3", {"group": "street", "collide": "none", "scale": 2.0}),
+    ("steamspring", "hot-spring-pool-26312c", {"group": "street", "collide": "none", "scale": 2.6}),
+    ("steamvent", "fumarole-vent-8280ba", {"group": "street", "collide": "box", "scale": 2.4}),
+    ("boardwalk", os.path.join(EXTRA, "boardwalk-run-461f03.glb"), {"group": "street", "collide": "box", "scale": 1.0}),
     ("ropebridge", "rope-bridge-span-159f8c", {"group": "street", "collide": "none", "scale": 2.4}),
 ]
 

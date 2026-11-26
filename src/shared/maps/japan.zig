@@ -139,8 +139,8 @@ fn ground(x: f32, z: f32) api.Rgb {
 
     return switch (blockUse(i, j)) {
         .park => api.shade(mix(.{ 108, 146, 80 }, .{ 96, 132, 72 }, @mod(@floor(x / 4) + @floor(z / 4), 2)), l),
-        .parking => api.shade(mix(.{ 88, 90, 96 }, .{ 96, 98, 104 }, n), l),
-        .lot => api.shade(mix(.{ 168, 150, 120 }, .{ 150, 132, 104 }, n), l),
+        .parking => api.shade(mix(.{ 112, 140, 80 }, .{ 128, 118, 92 }, t.smooth(0.4, 0.6, t.fbm(x * 0.08, z * 0.08))), l),
+        .lot => yard(x, z, l, n),
         .row => yard(x, z, l, n),
     };
 }
@@ -514,8 +514,262 @@ fn rowBlock(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, kw: Street, ke: Str
     backyard(b, x0 + 4.6, z0 + 4.6, x1 - 4.6, z1 - 4.6);
 }
 
+fn fenceLen(e: K) f32 {
+    return switch (e) {
+        .bamboo => 2,
+        else => 4,
+    };
+}
+
+fn wallLine(b: *Builder, e: K, ax: f32, az: f32, bx: f32, bz: f32, gap: f32) void {
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = @sqrt(dx * dx + dz * dz);
+
+    if (len < 1) return;
+
+    const piece = fenceLen(e);
+    const n: usize = @intFromFloat(@max(1, @round(len / piece)));
+    const step = len / @as(f32, @floatFromInt(n));
+    const yaw = std.math.atan2(dx, dz) + hp;
+    var i: usize = 0;
+
+    while (i < n) : (i += 1) {
+        const u = (@as(f32, @floatFromInt(i)) + 0.5) * step;
+
+        if (gap >= 0 and @abs(u - gap) < step * 0.5) continue;
+
+        put(b, e, ax + dx / len * u, az + dz / len * u, yaw);
+    }
+}
+
+fn laundryPole(b: *Builder, x: f32, z: f32, along_x: bool) void {
+    const y = t.height(x, z);
+    const ex: f32 = if (along_x) 2.1 else 0.04;
+    const ez: f32 = if (along_x) 0.04 else 2.1;
+
+    for ([_]f32{ -1, 1 }) |sd| {
+        const px = x + (if (along_x) sd * 2.1 else 0);
+        const pz = z + (if (along_x) 0 else sd * 2.1);
+
+        b.deco(vec(px - 0.05, y, pz - 0.05), vec(px + 0.05, y + 2.15, pz + 0.05), .f_metal);
+        b.deco(vec(px - 0.18, y, pz - 0.18), vec(px + 0.18, y + 0.12, pz + 0.18), .concrete);
+    }
+
+    b.deco(vec(x - ex, y + 2.05, z - ez), vec(x + ex, y + 2.12, z + ez), .f_metal);
+    putY(b, .laundry, x, y + 0.86, z, if (along_x) 0 else hp);
+}
+
+const Plot = struct { x0: f32, z0: f32, x1: f32, z1: f32 };
+
+fn spot(b: *Builder, p: Plot, pad: f32) [2]f32 {
+    return .{ b.rng.range(p.x0 + pad, p.x1 - pad), b.rng.range(p.z0 + pad, p.z1 - pad) };
+}
+
+fn quarter(b: *Builder) f32 {
+    return @round(b.rng.range(0, 4)) * hp;
+}
+
+fn scatterPlot(b: *Builder, p: Plot, kinds: []const K, n: usize, pad: f32) void {
+    var i: usize = 0;
+    var tries: usize = 0;
+
+    while (i < n and tries < n * 8) : (tries += 1) {
+        const q = spot(b, p, 0.9);
+
+        if (wd.covered(b, q[0], q[1], pad)) continue;
+
+        const e = kinds[@intFromFloat(@floor(b.rng.range(0, @as(f32, @floatFromInt(kinds.len)) - 0.01)))];
+
+        put(b, e, q[0], q[1], quarter(b) + jitter(b, 0.2));
+        i += 1;
+    }
+}
+
+fn gardenPlot(b: *Builder, p: Plot) void {
+    const w = p.x1 - p.x0;
+    const d = p.z1 - p.z0;
+    const cx = (p.x0 + p.x1) / 2;
+    const cz = (p.z0 + p.z1) / 2;
+
+    b.deco(vec(cx - w * 0.3, 0.005, cz - d * 0.3), vec(cx + w * 0.3, 0.03, cz + d * 0.3), .mud);
+
+    var u: f32 = -w * 0.25;
+
+    while (u <= w * 0.25) : (u += 1.6) {
+        var v: f32 = -d * 0.25;
+
+        while (v <= d * 0.25) : (v += 1.6) {
+            if (chance(b, 0.8)) put(b, .bed, cx + u, cz + v, 0) else put(b, .sunflower, cx + u, cz + v, b.rng.range(0, 6));
+        }
+    }
+
+    for ([_]f32{ -1, 1 }) |sd| {
+        if (chance(b, 0.6)) put(b, .sunflower, cx + sd * w * 0.38, cz + jitter(b, d * 0.3), b.rng.range(0, 6));
+    }
+
+    if (chance(b, 0.5)) {
+        put(b, .greenhouse, p.x0 + 2.2, p.z1 - 3.2, 0);
+    } else {
+        put(b, .compost, p.x0 + 1, p.z1 - 1, quarter(b));
+        put(b, .barrow, p.x0 + 2.2, p.z1 - 1.2, 0.6);
+    }
+
+    scatterPlot(b, p, &.{ .olive, .potted, .planter, .compost, .bush }, 5, 1);
+}
+
+fn laundryPlot(b: *Builder, p: Plot) void {
+    const w = p.x1 - p.x0;
+    const d = p.z1 - p.z0;
+    const along_x = w >= d;
+    const cx = (p.x0 + p.x1) / 2;
+    const cz = (p.z0 + p.z1) / 2;
+
+    b.deco(vec(p.x0 + 0.8, 0.005, p.z0 + 0.8), vec(p.x1 - 0.8, 0.03, p.z1 - 0.8), .concrete);
+    laundryPole(b, cx, cz - (if (along_x) d * 0.18 else 0), along_x);
+
+    if (@max(w, d) > 9) laundryPole(b, cx + (if (along_x) 0 else w * 0.2), cz + (if (along_x) d * 0.2 else 0), along_x);
+
+    put(b, .wheelie, p.x0 + 0.8, p.z0 + 0.8, 0);
+    put(b, .wheelie, p.x0 + 1.6, p.z0 + 0.8, 0);
+    scatterPlot(b, p, &.{ .potted, .olive, .planter, .drum, .crate, .ac }, 7, 1);
+}
+
+fn shedPlot(b: *Builder, p: Plot) void {
+    const big = (p.x1 - p.x0) > 6.5 and (p.z1 - p.z0) > 6.5;
+
+    if (big) put(b, .shed, p.x1 - 2.4, p.z1 - 2.4, quarter(b)) else put(b, .toolshed, p.x1 - 1.4, p.z1 - 1.4, quarter(b));
+
+    put(b, .firewood, p.x0 + 1.4, p.z1 - 0.8, 0);
+    put(b, .barrow, p.x0 + 3, p.z1 - 1.4, 1.2);
+    put(b, .drum, p.x1 - 0.7, p.z0 + 0.7, 0);
+    put(b, .drum, p.x1 - 1.3, p.z0 + 0.8, 0);
+    scatterPlot(b, p, &.{ .crate, .compost, .potted, .rock, .firewood, .drum }, 6, 1);
+}
+
+fn patioPlot(b: *Builder, p: Plot) void {
+    const cx = (p.x0 + p.x1) / 2;
+    const cz = (p.z0 + p.z1) / 2;
+
+    b.deco(vec(cx - 2.2, 0.005, cz - 2.2), vec(cx + 2.2, 0.06, cz + 2.2), .f_floor);
+    put(b, .grill, cx - 1.2, cz - 1.2, quarter(b));
+    put(b, .bench, cx + 0.8, cz + 1.4, 0);
+    put(b, if (chance(b, 0.5)) .maple else .cherry, p.x0 + 1.6, p.z1 - 1.6, b.rng.range(0, 6));
+    put(b, .olive, p.x1 - 0.9, p.z0 + 0.9, 0);
+    put(b, .rock, p.x1 - 1.2, p.z1 - 1, b.rng.range(0, 6));
+    scatterPlot(b, p, &.{ .potted, .planter, .bush, .rock, .olive }, 6, 1);
+}
+
+fn storePlot(b: *Builder, p: Plot) void {
+    place(b, .barhut, p.x1 - 2.2, p.z0 + 2.2, quarter(b));
+    put(b, .crate, p.x0 + 0.8, p.z0 + 0.8, 0.3);
+    putY(b, .crate, p.x0 + 0.8, t.height(p.x0 + 0.8, p.z0 + 0.8) + 0.36, p.z0 + 0.8, 0.1);
+    put(b, .crate, p.x0 + 1.3, p.z0 + 0.9, 0.2);
+    scatterPlot(b, p, &.{ .drum, .wheelie, .crate, .compost, .potted }, 7, 1);
+}
+
+fn fillPlot(b: *Builder, p: Plot) void {
+    if (p.x1 - p.x0 < 3.5 or p.z1 - p.z0 < 3.5) return;
+
+    const r = b.rng.next();
+
+    if (allot_mode == 1) {
+        if (r < 0.55) gardenPlot(b, p) else if (r < 0.8) shedPlot(b, p) else patioPlot(b, p);
+
+        return;
+    }
+
+    if (allot_mode == 2) {
+        if (r < 0.4) storePlot(b, p) else if (r < 0.7) shedPlot(b, p) else if (r < 0.85) laundryPlot(b, p) else gardenPlot(b, p);
+
+        return;
+    }
+
+    if (r < 0.24) gardenPlot(b, p) else if (r < 0.48) laundryPlot(b, p) else if (r < 0.66) shedPlot(b, p) else if (r < 0.84) patioPlot(b, p) else storePlot(b, p);
+}
+
+var allot_mode: u8 = 0;
+
+fn allotment(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, mode: u8) void {
+    const cx = (x0 + x1) / 2;
+    const cz = (z0 + z1) / 2;
+
+    wallLine(b, .stonefence, x0 + 0.3, z0 + 0.3, x1 - 0.3, z0 + 0.3, (x1 - x0) / 2);
+    wallLine(b, .stonefence, x0 + 0.3, z1 - 0.3, x1 - 0.3, z1 - 0.3, (x1 - x0) / 2);
+    wallLine(b, .stonefence, x0 + 0.3, z0 + 0.3, x0 + 0.3, z1 - 0.3, (z1 - z0) / 2);
+    wallLine(b, .stonefence, x1 - 0.3, z0 + 0.3, x1 - 0.3, z1 - 0.3, (z1 - z0) / 2);
+    b.deco(vec(cx - 1.2, 0.004, z0), vec(cx + 1.2, 0.03, z1), .concrete);
+    b.deco(vec(x0, 0.004, cz - 1.2), vec(x1, 0.03, cz + 1.2), .concrete);
+    allot_mode = mode;
+
+    const plot: f32 = 8;
+    const path: f32 = 1.6;
+
+    for ([_][4]f32{ .{ x0 + 1, z0 + 1, cx - 1.2, cz - 1.2 }, .{ cx + 1.2, z0 + 1, x1 - 1, cz - 1.2 }, .{ x0 + 1, cz + 1.2, cx - 1.2, z1 - 1 }, .{ cx + 1.2, cz + 1.2, x1 - 1, z1 - 1 } }) |q| {
+        const nx: usize = @intFromFloat(@max(1, @floor((q[2] - q[0] + path) / (plot + path))));
+        const nz: usize = @intFromFloat(@max(1, @floor((q[3] - q[1] + path) / (plot + path))));
+        const pw = (q[2] - q[0] - path * @as(f32, @floatFromInt(nx - 1))) / @as(f32, @floatFromInt(nx));
+        const pd = (q[3] - q[1] - path * @as(f32, @floatFromInt(nz - 1))) / @as(f32, @floatFromInt(nz));
+        var i: usize = 0;
+
+        while (i < nx) : (i += 1) {
+            var j: usize = 0;
+
+            while (j < nz) : (j += 1) {
+                const px = q[0] + @as(f32, @floatFromInt(i)) * (pw + path);
+                const pz = q[1] + @as(f32, @floatFromInt(j)) * (pd + path);
+                const fence: K = if (mode == 1) .bamboo else .blockwall;
+
+                wallLine(b, fence, px, pz, px + pw, pz, pw * 0.5);
+                wallLine(b, fence, px, pz, px, pz + pd, -1);
+                fillPlot(b, .{ .x0 = px + 0.5, .z0 = pz + 0.5, .x1 = px + pw - 0.3, .z1 = pz + pd - 0.3 });
+            }
+        }
+    }
+
+    allot_mode = 0;
+    put(b, .lamp, cx + 1.6, cz + 1.6, 0);
+    put(b, .vending, x0 + 1.5, cz + 2.4, hp);
+    put(b, .bench, cx - 2.2, z0 + 2.2, 0);
+}
+
 fn backyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
     if (x1 - x0 < 4 or z1 - z0 < 4) return;
+
+    const cx = (x0 + x1) / 2 + jitter(b, 2);
+    const cz = (z0 + z1) / 2 + jitter(b, 2);
+    const lane: f32 = 1.3;
+    const quads = [_]Plot{
+        .{ .x0 = x0, .z0 = z0, .x1 = cx - lane, .z1 = cz - lane },
+        .{ .x0 = cx + lane, .z0 = z0, .x1 = x1, .z1 = cz - lane },
+        .{ .x0 = x0, .z0 = cz + lane, .x1 = cx - lane, .z1 = z1 },
+        .{ .x0 = cx + lane, .z0 = cz + lane, .x1 = x1, .z1 = z1 },
+    };
+
+    b.deco(vec(cx - lane + 0.2, 0.004, z0), vec(cx + lane - 0.2, 0.03, z1), .concrete);
+    b.deco(vec(x0, 0.004, cz - lane + 0.2), vec(x1, 0.03, cz + lane - 0.2), .concrete);
+
+    for (quads, 0..) |q, qi| {
+        const w = q.x1 - q.x0;
+        const lane_z = if (qi < 2) q.z1 else q.z0;
+        const lane_x = if (qi % 2 == 0) q.x1 else q.x0;
+        const wall: K = if (chance(b, 0.5)) .blockwall else .bamboo;
+        const split_x = q.x0 + w / 2 + jitter(b, 1.5);
+
+        wallLine(b, wall, q.x0 + 0.2, lane_z, split_x, lane_z, (split_x - q.x0) * 0.5);
+        wallLine(b, wall, split_x, lane_z, q.x1 - 0.2, lane_z, (q.x1 - split_x) * 0.5);
+        wallLine(b, wall, lane_x, q.z0 + 0.2, lane_x, q.z1 - 0.2, -1);
+        wallLine(b, .fence, split_x, q.z0 + 0.4, split_x, q.z1 - 0.4, -1);
+
+        const inset: f32 = 0.5;
+
+        fillPlot(b, .{ .x0 = q.x0 + inset, .z0 = q.z0 + inset, .x1 = split_x - inset, .z1 = q.z1 - inset });
+        fillPlot(b, .{ .x0 = split_x + inset, .z0 = q.z0 + inset, .x1 = q.x1 - inset, .z1 = q.z1 - inset });
+    }
+
+    for ([_][2]f32{ .{ cx, z0 + 1 }, .{ cx, z1 - 1 }, .{ x0 + 1, cz }, .{ x1 - 1, cz } }) |m| {
+        if (chance(b, 0.5)) put(b, .mirror, m[0] + 1.1, m[1], 0);
+    }
 
     var a: f32 = x0 + 1;
 
@@ -534,53 +788,15 @@ fn backyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         if (chance(b, 0.15)) put(b, .meter, x0 + 0.3, c + 1, hp);
     }
 
-    const cx = (x0 + x1) / 2;
-    const cz = (z0 + z1) / 2;
-
-    if (chance(b, 0.5)) {
-        var w = x0 + 2;
-
-        while (w < x1 - 2) : (w += 4) {
-            if (@abs(w - cx) < 3) continue;
-
-            put(b, .blockwall, w, cz, 0);
-        }
-    }
-
     var n: usize = 0;
 
-    while (n < 30) : (n += 1) {
+    while (n < 14) : (n += 1) {
         const px = b.rng.range(x0 + 2, x1 - 2);
         const pz = b.rng.range(z0 + 2, z1 - 2);
 
-        if (wd.covered(b, px, pz, 1.4)) continue;
+        if (wd.covered(b, px, pz, 1.6)) continue;
 
-        const r = b.rng.next();
-
-        if (r < 0.14) {
-            place(b, .barhut, px, pz, @round(b.rng.range(0, 4)) * hp);
-        } else if (r < 0.26) {
-            put(b, .crate, px, pz, b.rng.range(0, 6));
-            put(b, .crate, px + 0.9, pz + 0.2, b.rng.range(0, 6));
-        } else if (r < 0.4) {
-            put(b, .maple, px, pz, b.rng.range(0, 6));
-        } else if (r < 0.52) {
-            put(b, .drum, px, pz, 0);
-            put(b, .drum, px + 0.7, pz + 0.2, 0);
-            put(b, .crate, px - 0.6, pz, 0.3);
-        } else if (r < 0.62) {
-            put(b, .bikerack, px + 1, pz, 0);
-        } else if (r < 0.72) {
-            put(b, .potted, px, pz, 0);
-            put(b, .rock, px + 1.2, pz, b.rng.range(0, 6));
-        } else if (r < 0.8) {
-            put(b, .wheelie, px, pz, 0);
-            put(b, .wheelie, px + 0.8, pz, 0);
-        } else if (r < 0.88) {
-            put(b, .planter, px, pz, @round(b.rng.range(0, 4)) * hp);
-        } else {
-            put(b, .bush, px, pz, b.rng.range(0, 6));
-        }
+        put(b, if (chance(b, 0.6)) .maple else if (chance(b, 0.5)) .cherry else .tree, px, pz, b.rng.range(0, 6));
     }
 }
 
@@ -636,75 +852,6 @@ fn park(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
     put(b, .vending, x0 + 2, cz + 3, hp);
     put(b, .vending, x0 + 2, cz + 4.2, hp);
     put(b, .bikerack, x1 - 3, cz + 4, hp);
-}
-
-fn parking(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
-    var z = z0 + 4;
-    var ri: usize = 0;
-
-    while (z < z1 - 3) : (z += 7) {
-        var x = x0 + 2;
-
-        while (x < x1 - 2) : (x += 2.6) {
-            paint(b, x - 0.06, z - 2.5, x + 0.06, z + 2.5, .marking);
-
-            if (chance(b, 0.82)) {
-                continue;
-            }
-
-            put(b, if (chance(b, 0.5)) .planter else .blockwall, x + 1.3, z, if (ri % 2 == 0) @as(f32, 0) else pi);
-        }
-
-        ri += 1;
-    }
-
-    put(b, .lamp, x0 + 1, z0 + 1, 0);
-    put(b, .lamp, x1 - 1, z1 - 1, pi);
-    put(b, .vending, x0 + 1, z1 - 1.5, hp);
-    put(b, .bin, x0 + 1, z1 - 3, 0);
-    wallSide(b, .{ .x = x0 + 2, .z = z0, .dx = 1, .dz = 0, .yaw = pi, .len = (x1 - x0) * 0.4, .kind = .alley });
-}
-
-fn lot(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
-    var a: f32 = x0 + 2;
-
-    while (a < x1 - 1) : (a += 4) {
-        if (@abs(a - (x0 + x1) / 2) > 4) {
-            put(b, .guardrail, a, z0 + 0.4, 0);
-            put(b, .guardrail, a, z1 - 0.4, 0);
-        }
-    }
-
-    var n: usize = 0;
-
-    while (n < 70) : (n += 1) {
-        const px = b.rng.range(x0 + 3, x1 - 3);
-        const pz = b.rng.range(z0 + 3, z1 - 3);
-
-        if (wd.covered(b, px, pz, 1.8)) continue;
-
-        const r = b.rng.next();
-        const yaw = @round(b.rng.range(0, 4)) * hp;
-
-        if (r < 0.2) {
-            put(b, .vending, px, pz, yaw);
-        } else if (r < 0.38) {
-            put(b, .guardrail, px, pz, yaw);
-            put(b, .cone, px + 2.4, pz + 0.6, 0);
-        } else if (r < 0.55) {
-            put(b, .drum, px, pz, 0);
-            put(b, .drum, px + 0.7, pz, 0);
-            put(b, .drum, px + 0.35, pz + 0.6, 0);
-        } else if (r < 0.7) {
-            put(b, .blockwall, px, pz, yaw);
-        } else if (r < 0.82) {
-            put(b, .blockwall, px, pz, yaw);
-        } else {
-            put(b, .cone, px, pz, 0);
-            put(b, .cone, px + 1, pz + 1, 0);
-            put(b, .crate, px - 1, pz, 0);
-        }
-    }
 }
 
 fn streets(b: *Builder) void {
@@ -889,9 +1036,12 @@ fn avenue(b: *Builder) void {
 fn perimeter(b: *Builder) void {
     var a: f32 = -t.half + 3;
 
-    while (a < t.half - 3) : (a += 7) {
+    while (a < t.half - 3) : (a += 4.2) {
         for ([_]f32{ -1, 1 }) |s| {
-            const off = edge + 6 + b.rng.range(0, 10);
+            const off = edge + 6 + b.rng.range(0, 18);
+
+            if (b.rng.next() < 0.5) put(b, .bush, a + jitter(b, 2), s * (edge + 5 + b.rng.range(0, 14)), b.rng.range(0, 6));
+            if (b.rng.next() < 0.5) put(b, .bush, s * (edge + 5 + b.rng.range(0, 14)), a + jitter(b, 2), b.rng.range(0, 6));
 
             put(b, if (b.rng.next() < 0.5) .tree else .cherry, a + jitter(b, 2), s * off, b.rng.range(0, 6));
             put(b, if (b.rng.next() < 0.5) .tree else .maple, s * off, a + jitter(b, 2), b.rng.range(0, 6));
@@ -921,8 +1071,8 @@ fn build(b: *Builder) void {
             switch (blockUse(i, j)) {
                 .row => rowBlock(b, x0, z0, x1, z1, xs[i].kind, xs[i + 1].kind, zs[j].kind, zs[j + 1].kind),
                 .park => park(b, x0, z0, x1, z1),
-                .parking => parking(b, x0, z0, x1, z1),
-                .lot => lot(b, x0, z0, x1, z1),
+                .parking => allotment(b, x0, z0, x1, z1, 1),
+                .lot => allotment(b, x0, z0, x1, z1, 2),
             }
         }
     }

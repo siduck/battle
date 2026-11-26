@@ -46,7 +46,9 @@ pub const K = enum {
     fumarole,
     geyser,
     spring,
-    vine,
+    steamspring,
+    steamvent,
+    boardwalk,
     ropebridge,
 };
 
@@ -98,7 +100,9 @@ pub const table = [_]api.Info{
     .{ .file = "prehistoric/fumarole.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.350, 0.000, -1.350 }, .max = .{ 1.350, 1.918, 1.350 } },
     .{ .file = "prehistoric/geyser.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -2.700, 0.000, -2.700 }, .max = .{ 2.700, 2.181, 2.700 } },
     .{ .file = "prehistoric/spring.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -3.000, 0.000, -2.500 }, .max = .{ 3.000, 0.800, 2.500 } },
-    .{ .file = "prehistoric/vine.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -0.403, 0.000, -2.000 }, .max = .{ 0.403, 1.797, 2.000 } },
+    .{ .file = "prehistoric/steamspring.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -3.900, 0.000, -3.250 }, .max = .{ 3.900, 8.668, 3.250 } },
+    .{ .file = "prehistoric/steamvent.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.800, 0.000, -1.800 }, .max = .{ 1.800, 3.873, 1.800 } },
+    .{ .file = "prehistoric/boardwalk.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.000, 0.000, -0.500 }, .max = .{ 1.000, 0.300, 0.500 } },
     .{ .file = "prehistoric/ropebridge.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -4.800, 0.000, -2.400 }, .max = .{ 4.800, 3.216, 2.400 } },
 };
 

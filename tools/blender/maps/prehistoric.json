@@ -1549,22 +1549,56 @@
   "group": "street",
   "collide": "none"
  },
- "vine": {
-  "file": "prehistoric/vine.glb",
+ "steamspring": {
+  "file": "prehistoric/steamspring.glb",
   "min": [
-   -0.4034598469734192,
+   -3.8999998569488525,
    0.0,
-   -2.0
+   -3.25
   ],
   "max": [
-   0.4034598469734192,
-   1.7973371744155884,
-   2.0
+   3.8999998569488525,
+   8.667961120605469,
+   3.25
   ],
-  "tris": 704,
+  "tris": 680,
   "kind": "prop",
   "group": "street",
   "collide": "none"
+ },
+ "steamvent": {
+  "file": "prehistoric/steamvent.glb",
+  "min": [
+   -1.8000000715255737,
+   0.0,
+   -1.8000000715255737
+  ],
+  "max": [
+   1.8000000715255737,
+   3.8730177879333496,
+   1.8000000715255737
+  ],
+  "tris": 898,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
+ },
+ "boardwalk": {
+  "file": "prehistoric/boardwalk.glb",
+  "min": [
+   -1.0,
+   0.0,
+   -0.5
+  ],
+  "max": [
+   1.0,
+   0.30000001192092896,
+   0.5
+  ],
+  "tris": 292,
+  "kind": "prop",
+  "group": "street",
+  "collide": "box"
  },
  "ropebridge": {
   "file": "prehistoric/ropebridge.glb",
