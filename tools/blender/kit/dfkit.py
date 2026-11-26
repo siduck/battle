@@ -54,6 +54,14 @@ PALETTE = [
     ("leaf_dark", "#425a2a"),
     ("bark", "#5a4330"),
     ("sand_paint", "#c9bb98"),
+    ("sandstone", "#d8b98c"),
+    ("sandstone_dark", "#b8956a"),
+    ("pink_plaster", "#d9a48f"),
+    ("pink_dark", "#b9826f"),
+    ("teal", "#3f8f8c"),
+    ("tank_green", "#6f8a5c"),
+    ("awning_red", "#c2442f"),
+    ("cream", "#efe1c2"),
     ("sand_dark", "#9c8e6d"),
 ]
 
@@ -526,3 +534,57 @@ def preview(obs, out, views=("front", "right", "three_quarter", "back"), res=640
     bpy.data.cameras.remove(cam_data)
 
     return os.path.abspath(out)
+
+
+def bake_ao(ob, strength=0.55, samples=24, distance=1.5):
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"
+    sc.cycles.samples = samples
+    sc.cycles.device = "CPU"
+    sc.world = sc.world or bpy.data.worlds.new("w")
+    sc.world.light_settings.distance = distance
+    me = ob.data
+    base = me.color_attributes["Col"]
+    ao = me.color_attributes.new("AO", "BYTE_COLOR", "CORNER")
+    me.color_attributes.active_color = ao
+
+    for o in sc.objects:
+        o.select_set(o == ob)
+
+    bpy.context.view_layer.objects.active = ob
+    bake = sc.render.bake
+    bake.target = "VERTEX_COLORS"
+    bake.margin = 0
+    bpy.ops.object.bake(type="AO", target="VERTEX_COLORS")
+
+    for i, d in enumerate(base.data):
+        a = ao.data[i].color[0]
+        k = 1.0 - strength * (1.0 - a)
+        c = d.color
+        d.color = (c[0] * k, c[1] * k, c[2] * k, 1.0)
+
+    me.color_attributes.remove(me.color_attributes["AO"])
+    me.color_attributes.active_color = me.color_attributes["Col"]
+    me.color_attributes.render_color_index = 0
+    sc.render.engine = "BLENDER_WORKBENCH"
+
+    return ob
+
+
+def grime(ob, height=0.9, dark=0.72):
+    me = ob.data
+    col = me.color_attributes["Col"]
+
+    for poly in me.polygons:
+        z = min(me.vertices[v].co.z for v in poly.vertices)
+
+        if z > height:
+            continue
+
+        k = dark + (1 - dark) * (z / height)
+
+        for li in poly.loop_indices:
+            c = col.data[li].color
+            col.data[li].color = (c[0] * k, c[1] * k, c[2] * k, 1.0)
+
+    return ob

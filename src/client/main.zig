@@ -642,11 +642,11 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
 
 fn placeTestAssets(g: *Game, list: []const u8) void {
     var it = std.mem.tokenizeScalar(u8, list, ',');
-    var i: usize = 0;
-    var offset: f32 = 0;
+    var count: usize = 0;
+    var row: f32 = 0;
 
-    while (it.next()) |path| : (i += 1) {
-        if (i >= render.test_models.len) break;
+    while (it.next()) |path| {
+        if (count >= render.test_models.len) break;
 
         var buf: [512]u8 = undefined;
         const z = std.fmt.bufPrintSentinel(&buf, "{s}", .{path}, 0) catch continue;
@@ -655,14 +655,24 @@ fn placeTestAssets(g: *Game, list: []const u8) void {
         if (model.meshCount == 0) continue;
 
         const box = rl.GetModelBoundingBox(model);
+
+        render.test_models[count] = model;
+        row += box.max.x - box.min.x + 1.5;
+        count += 1;
+    }
+
+    const dist = if (std.c.getenv("DF_ASSET_DIST")) |t| std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 4 else 4;
+    const fwd = shared.math.flatDir(g.yaw);
+    const side = fwd.cross(shared.math.up);
+    var offset: f32 = -(row - 1.5) / 2;
+
+    for (render.test_models[0..count], 0..) |model, i| {
+        const box = rl.GetModelBoundingBox(model.?);
         const half = (box.max.x - box.min.x) / 2;
-        const fwd = shared.math.flatDir(g.yaw);
-        const side = fwd.cross(shared.math.up);
-        const at = g.player.pos.add(fwd.scale(4 + (box.max.z - box.min.z) / 2)).add(side.scale(offset + half));
+        const at = g.player.pos.add(fwd.scale(dist + (box.max.z - box.min.z) / 2)).add(side.scale(offset + half));
         const ground = shared.terrain.height(at.x, at.z);
 
         offset += half * 2 + 1.5;
-        render.test_models[i] = model;
         render.test_spots[i] = mesh_mod.transform(.{ .x = at.x, .y = ground, .z = at.z }, mesh_mod.Basis.yawed(g.yaw + std.math.pi), 1);
     }
 
@@ -1051,6 +1061,8 @@ pub fn main() void {
 
     if (std.c.getenv("DF_SHOWCASE") != null) game.showcase(0);
 
+    if (std.c.getenv("DF_CAM")) |spec| placeCamera(&game, std.mem.sliceTo(spec, 0));
+
     if (std.c.getenv("DF_ASSET")) |list| placeTestAssets(&game, std.mem.sliceTo(list, 0));
 
     if (std.c.getenv("DF_GARAGE")) |pick| game.garage(std.fmt.parseInt(usize, std.mem.sliceTo(pick, 0), 10) catch 0);
@@ -1080,7 +1092,6 @@ pub fn main() void {
 
     if (std.c.getenv("DF_CAR")) |pick| game.spotlight(std.fmt.parseInt(usize, std.mem.sliceTo(pick, 0), 10) catch 0);
 
-    if (std.c.getenv("DF_CAM")) |spec| placeCamera(&game, std.mem.sliceTo(spec, 0));
 
     render.clean_shot = std.c.getenv("DF_NOHUD") != null;
 
