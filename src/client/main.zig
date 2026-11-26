@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const rl = @import("raylib");
 const rlgl = @import("rlgl");
 const gfx = @import("gfx.zig");
@@ -18,6 +19,10 @@ const shared = @import("shared");
 const assets = @import("assets.zig");
 const touch_mod = @import("touch.zig");
 const mapselect = @import("mapselect.zig");
+
+comptime {
+    if (builtin.os.tag == .windows) _ = @import("wingl.zig");
+}
 const mesh_mod = @import("mesh.zig");
 const audio = @import("audio.zig");
 const ui = @import("ui.zig");
@@ -417,12 +422,20 @@ fn placeCamera(game: *Game, spec: []const u8) void {
     game.wave_break = 1e9;
 }
 
+extern "c" fn _execv(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) isize;
+
 fn restart(app_dir: []const u8) void {
     var buf: [1024]u8 = undefined;
-    const path = std.fmt.bufPrintSentinel(&buf, "{s}dronefire", .{app_dir}, 0) catch return;
+    const path = std.fmt.bufPrintSentinel(&buf, "{s}dronefire{s}", .{ app_dir, builtin.os.tag.exeFileExt(builtin.cpu.arch) }, 0) catch return;
     const argv = [_:null]?[*:0]const u8{path.ptr};
 
     logLine("restart", .{});
+
+    if (builtin.os.tag == .windows) {
+        _ = _execv(path.ptr, &argv);
+
+        return;
+    }
 
     const rc = std.c.execve(path.ptr, &argv, @ptrCast(std.c.environ));
 
@@ -479,6 +492,8 @@ extern "c" fn mkdir(path: [*:0]const u8, mode: c_uint) c_int;
 var log_fd: c_int = -1;
 
 fn logLine(comptime fmt: []const u8, args: anytype) void {
+    if (builtin.os.tag == .windows) return;
+
     if (log_fd < 0) return;
 
     var buf: [160]u8 = undefined;
@@ -493,7 +508,7 @@ fn onSignal(sig: c_int) callconv(.c) void {
 }
 
 fn openSessionLog() void {
-    if (assets.mobile) return;
+    if (assets.mobile or builtin.os.tag == .windows) return;
 
     const home = std.c.getenv("HOME") orelse return;
     var dir: [512]u8 = undefined;

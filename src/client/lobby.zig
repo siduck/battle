@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const rl = @import("raylib");
 const shared = @import("shared");
 const ui = @import("ui.zig");
@@ -867,16 +868,18 @@ fn auto(font: rl.Font, spec: []const u8) ?Map {
         mapselect.loading(font, "Connecting", 0.05);
 
         if (net.status == .joined) {
-            var buf: [512]u8 = undefined;
-            const home = std.mem.sliceTo(std.c.getenv("HOME") orelse return null, 0);
-            const path = std.fmt.bufPrintSentinel(&buf, "{s}/.cache/mp/room-{d}.txt", .{ home, std.c.getpid() }, 0) catch return null;
-            var text: [16]u8 = undefined;
-            const line = std.fmt.bufPrint(&text, "{d}\n", .{net.code}) catch "";
-            const f = std.c.open(path.ptr, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, @as(c_uint, 0o644));
+            if (builtin.os.tag != .windows) {
+                var buf: [512]u8 = undefined;
+                const home = std.mem.sliceTo(std.c.getenv("HOME") orelse return null, 0);
+                const path = std.fmt.bufPrintSentinel(&buf, "{s}/.cache/mp/room-{d}.txt", .{ home, std.c.getpid() }, 0) catch return null;
+                var text: [16]u8 = undefined;
+                const line = std.fmt.bufPrint(&text, "{d}\n", .{net.code}) catch "";
+                const f = std.c.open(path.ptr, .{ .ACCMODE = .WRONLY, .CREAT = true, .TRUNC = true }, @as(c_uint, 0o644));
 
-            if (f >= 0) {
-                _ = std.c.write(f, line.ptr, line.len);
-                _ = std.c.close(f);
+                if (f >= 0) {
+                    _ = std.c.write(f, line.ptr, line.len);
+                    _ = std.c.close(f);
+                }
             }
 
             std.debug.print("joined room {d} slot {d} map {s}\n", .{ net.code, net.slot, mapName(net.map) });

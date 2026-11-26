@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const rl = @import("raylib");
 const shared = @import("shared");
 const game_mod = @import("game.zig");
@@ -13,10 +14,45 @@ const net = shared.net;
 const math = shared.math;
 const Vec3 = math.Vec3;
 const Game = game_mod.Game;
-const Addr = c.sockaddr.in;
+const windows = builtin.os.tag == .windows;
+const Addr = if (windows) extern struct { family: u16 = 2, port: u16, addr: u32, zero: [8]u8 = @splat(0) } else c.sockaddr.in;
+const Sock = if (windows) usize else c_int;
+const no_sock: Sock = if (windows) ~@as(usize, 0) else -1;
 
 extern "c" fn recv(fd: c_int, buf: [*]u8, len: usize, flags: c_int) isize;
 extern "c" fn inet_addr(cp: [*:0]const u8) u32;
+
+const win = struct {
+    extern "ws2_32" fn WSAStartup(version: u16, data: *[512]u8) callconv(.winapi) c_int;
+    extern "ws2_32" fn socket(af: c_int, kind: c_int, proto: c_int) callconv(.winapi) usize;
+    extern "ws2_32" fn sendto(s: usize, buf: [*]const u8, len: c_int, flags: c_int, to: *const anyopaque, tolen: c_int) callconv(.winapi) c_int;
+    extern "ws2_32" fn recv(s: usize, buf: [*]u8, len: c_int, flags: c_int) callconv(.winapi) c_int;
+    extern "ws2_32" fn ioctlsocket(s: usize, cmd: c_long, arg: *c_ulong) callconv(.winapi) c_int;
+    extern "ws2_32" fn inet_addr(cp: [*:0]const u8) callconv(.winapi) u32;
+    extern "kernel32" fn QueryPerformanceCounter(out: *i64) callconv(.winapi) c_int;
+    extern "kernel32" fn QueryPerformanceFrequency(out: *i64) callconv(.winapi) c_int;
+};
+
+fn openSocket() Sock {
+    if (!windows) return c.socket(c.AF.INET, c.SOCK.DGRAM, 0);
+
+    var data: [512]u8 = undefined;
+
+    if (win.WSAStartup(0x0202, &data) != 0) return no_sock;
+
+    const s = win.socket(2, 2, 0);
+    var nonblocking: c_ulong = 1;
+
+    if (s != no_sock) _ = win.ioctlsocket(s, @bitCast(@as(u32, 0x8004667E)), &nonblocking);
+
+    return s;
+}
+
+fn recvBytes(buf: []u8) isize {
+    if (windows) return win.recv(fd, buf.ptr, @intCast(buf.len), 0);
+
+    return recv(fd, buf.ptr, buf.len, c.MSG.DONTWAIT);
+}
 
 pub const default_server = "144.24.200.37";
 const interp_ms: f64 = 110;
@@ -59,7 +95,7 @@ pub var ping_ms: f32 = 0;
 pub var lost = false;
 
 var token: u32 = 0;
-var fd: c_int = -1;
+var fd: Sock = no_sock;
 var server: Addr = undefined;
 var nonce: u32 = 0;
 var ask: Ask = .create;
@@ -110,6 +146,16 @@ pub var board_open = false;
 pub var board_rect: ?rl.Rectangle = null;
 
 fn now() f64 {
+    if (windows) {
+        var count: i64 = 0;
+        var freq: i64 = 1;
+
+        _ = win.QueryPerformanceCounter(&count);
+        _ = win.QueryPerformanceFrequency(&freq);
+
+        return @as(f64, @floatFromInt(count)) / @as(f64, @floatFromInt(freq));
+    }
+
     var ts: c.timespec = undefined;
 
     _ = c.clock_gettime(c.CLOCK.MONOTONIC, &ts);
@@ -136,7 +182,7 @@ fn resolve() void {
     }
 
     @memcpy(host_buf[0..@min(host.len, 63)], host[0..@min(host.len, 63)]);
-    server = .{ .port = std.mem.nativeToBig(u16, port), .addr = inet_addr(&host_buf) };
+    server = .{ .port = std.mem.nativeToBig(u16, port), .addr = if (windows) win.inet_addr(&host_buf) else inet_addr(&host_buf) };
 }
 
 pub fn savedName() []const u8 {
@@ -149,7 +195,7 @@ pub fn defaultName() [net.name_len]u8 {
     if (savedName().len > 0) return net.nameOf(savedName());
 
     if (!assets.mobile) {
-        if (c.getenv("USER")) |n| {
+        if (c.getenv(if (windows) "USERNAME" else "USER")) |n| {
             var name = net.nameOf(std.mem.sliceTo(n, 0));
 
             if (name[0] >= 'a' and name[0] <= 'z') name[0] -= 32;
@@ -187,11 +233,11 @@ fn pickName() void {
 }
 
 pub fn open() bool {
-    if (fd >= 0) return true;
+    if (fd != no_sock) return true;
 
-    fd = c.socket(c.AF.INET, c.SOCK.DGRAM, 0);
+    fd = openSocket();
 
-    if (fd < 0) return false;
+    if (fd == no_sock) return false;
 
     epoch = now() - 1;
     prng = std.Random.DefaultPrng.init(@intFromFloat(now() * 1e6));
@@ -202,7 +248,13 @@ pub fn open() bool {
 }
 
 fn sendBytes(data: []const u8) void {
-    if (fd < 0) return;
+    if (fd == no_sock) return;
+
+    if (windows) {
+        _ = win.sendto(fd, data.ptr, @intCast(data.len), 0, &server, @sizeOf(Addr));
+
+        return;
+    }
 
     _ = c.sendto(fd, data.ptr, data.len, 0, @ptrCast(&server), @sizeOf(Addr));
 }
@@ -260,7 +312,7 @@ pub fn cancel() void {
 }
 
 pub fn leave() void {
-    if (fd < 0 or token == 0) return;
+    if (fd == no_sock or token == 0) return;
 
     var w: net.Writer = .{};
 
@@ -421,13 +473,13 @@ fn onRoster(r: *net.Reader, h: net.Header) void {
 }
 
 pub fn pump() void {
-    if (fd < 0) return;
+    if (fd == no_sock) return;
 
     var count: u32 = 0;
 
     while (count < 256) : (count += 1) {
         var buf: [net.max_packet]u8 = undefined;
-        const n = recv(fd, &buf, buf.len, c.MSG.DONTWAIT);
+        const n = recvBytes(&buf);
 
         if (n <= 0) break;
 

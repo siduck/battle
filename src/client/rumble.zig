@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const c = std.c;
+const supported = builtin.os.tag == .linux and !builtin.abi.isAndroid();
 
 const FfReplay = extern struct {
     length: u16,
@@ -52,7 +53,7 @@ pub const Rumble = struct {
     sent: f32 = 0,
 
     pub fn attach(r: *Rumble, gamepad_name: []const u8) void {
-        if (builtin.os.tag != .linux or builtin.abi.isAndroid()) return;
+        if (!supported) return;
 
         if (r.fd >= 0 and std.mem.eql(u8, r.name[0..r.name_len], gamepad_name)) return;
 
@@ -102,6 +103,8 @@ pub const Rumble = struct {
     }
 
     pub fn detach(r: *Rumble) void {
+        if (!supported) return;
+
         if (r.fd >= 0) _ = c.close(r.fd);
 
         r.fd = -1;
@@ -126,6 +129,8 @@ pub const Rumble = struct {
         }
 
         r.left -= dt;
+
+        if (!supported) return;
 
         if (r.fd < 0 or r.sent > 0) return;
 

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const rl = @import("raylib");
 const assets = @import("assets.zig");
 
@@ -124,8 +125,19 @@ fn readPath() ?[:0]const u8 {
     return writePath();
 }
 
+extern "c" fn _mkdir(path: [*:0]const u8) c_int;
+
 fn writePath() ?[:0]const u8 {
     if (assets.mobile) return "settings.ini";
+
+    if (builtin.os.tag == .windows) {
+        const base = std.c.getenv("APPDATA") orelse return null;
+        const dir = std.fmt.bufPrintSentinel(&path_buf, "{s}\\dronefire", .{std.mem.sliceTo(base, 0)}, 0) catch return null;
+
+        _ = _mkdir(dir.ptr);
+
+        return std.fmt.bufPrintSentinel(&path_buf, "{s}\\dronefire\\settings.ini", .{std.mem.sliceTo(base, 0)}, 0) catch null;
+    }
 
     if (std.c.getenv("XDG_CONFIG_HOME")) |base| {
         const dir = std.fmt.bufPrintSentinel(&path_buf, "{s}/dronefire", .{std.mem.sliceTo(base, 0)}, 0) catch return null;
