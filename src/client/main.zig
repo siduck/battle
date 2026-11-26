@@ -45,6 +45,7 @@ const pitch_rate: f32 = 2.4;
 const hold_to_pick: f32 = 0.3;
 
 const font_data = @embedFile("assets/BarlowCondensed-SemiBold.ttf");
+const icon_png = @embedFile("assets/icon/icon-256.png");
 const extra_mappings = "03000000373500001201000011010000,GameSir G8+ MFi,a:b0,b:b1,back:b10,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b12,leftshoulder:b6,leftstick:b13,lefttrigger:a5,leftx:a0,lefty:a1,misc1:b15,rightshoulder:b7,rightstick:b14,righttrigger:a4,rightx:a2,righty:a3,start:b11,x:b3,y:b4,platform:Linux,\n";
 const controller_db = @embedFile("assets/gamecontrollerdb.txt") ++ "\n" ++ extra_mappings;
 
@@ -899,6 +900,11 @@ pub fn main() void {
     defer logLine("exit normal", .{});
     rl.InitWindow(winSize(0, 1280), winSize(1, 720), "dronefire");
         vsync_on = settings.vsync;
+
+        const icon = rl.LoadImageFromMemory(".png", icon_png, icon_png.len);
+
+        rl.SetWindowIcon(icon);
+        rl.UnloadImage(icon);
     }
     defer rl.CloseWindow();
 

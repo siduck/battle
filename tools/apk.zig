@@ -26,13 +26,14 @@ pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const args = try init.minimal.args.toSlice(arena);
 
-    if (args.len < 6) std.process.fatal("usage: apk <sdk> <manifest> <lib> <assets> <out>", .{});
+    if (args.len < 7) std.process.fatal("usage: apk <sdk> <manifest> <lib> <assets> <res> <out>", .{});
 
     const sdk = args[1];
     const manifest = args[2];
     const lib = args[3];
     const assets = args[4];
-    const out = args[5];
+    const res = args[5];
+    const out = args[6];
     const tmp = try std.fmt.allocPrint(arena, "{s}.tmp", .{out});
     const ctx: Ctx = .{ .gpa = arena, .io = init.io, .tmp = tmp };
     const cwd = Io.Dir.cwd();
@@ -47,10 +48,12 @@ pub fn main(init: std.process.Init) !void {
     const cert = try std.fs.path.join(arena, &.{ sdk, "debug-cert.der" });
     const base = try std.fs.path.join(arena, &.{ tmp, "base.apk" });
     const aligned = try std.fs.path.join(arena, &.{ tmp, "aligned.apk" });
+    const res_zip = try std.fs.path.join(arena, &.{ tmp, "res.zip" });
     const aapt2 = try std.fs.path.join(arena, &.{ tools, "aapt2" });
     const zipalign = try std.fs.path.join(arena, &.{ tools, "zipalign" });
 
-    _ = try exec(ctx, &.{ aapt2, "link", "-o", base, "--manifest", manifest, "-I", android_jar, "-A", assets });
+    _ = try exec(ctx, &.{ aapt2, "compile", "--dir", res, "-o", res_zip });
+    _ = try exec(ctx, &.{ aapt2, "link", "-o", base, "--manifest", manifest, "-I", android_jar, "-A", assets, res_zip });
     try appendStored(ctx, base, lib, lib_name);
     _ = try exec(ctx, &.{ zipalign, "-f", "-p", "4", base, aligned });
     try sign(ctx, aligned, out, key, cert);

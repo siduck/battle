@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Dronefire
+Comment=Drone and supercar FPS
+Exec=dronefire
+Icon=dronefire
+Terminal=false
+Categories=Game;ActionGame;

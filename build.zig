@@ -43,6 +43,16 @@ pub fn build(b: *std.Build) void {
         .root_module = client,
     });
 
+    switch (target.result.os.tag) {
+        .windows => client.addWin32ResourceFile(.{ .file = b.path("src/client/assets/icon/dronefire.rc") }),
+        .linux => {
+            b.installFile("src/client/assets/icon/dronefire.desktop", "share/applications/dronefire.desktop");
+            b.installFile("src/client/assets/icon/icon-256.png", "share/icons/hicolor/256x256/apps/dronefire.png");
+            b.installFile("src/client/assets/icon/icon-512.png", "share/icons/hicolor/512x512/apps/dronefire.png");
+        },
+        else => {},
+    }
+
     b.installArtifact(exe);
     b.installDirectory(.{
         .source_dir = b.path("src/client/assets/ui"),
@@ -146,7 +156,7 @@ const manifest_xml =
     \\    <uses-feature android:glEsVersion="0x00030000" android:required="true"/>
     \\    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     \\    <uses-feature android:name="android.hardware.gamepad" android:required="false"/>
-    \\    <application android:label="Dronefire" android:hasCode="false" android:extractNativeLibs="true" android:isGame="true" android:appCategory="game">
+    \\    <application android:label="Dronefire" android:icon="@mipmap/ic_launcher" android:hasCode="false" android:extractNativeLibs="true" android:isGame="true" android:appCategory="game">
     \\        <profileable android:shell="true" />
     \\        <activity android:name="android.app.NativeActivity" android:exported="true" android:launchMode="singleTask" android:screenOrientation="sensorLandscape" android:resizeableActivity="false" android:theme="@android:style/Theme.NoTitleBar.Fullscreen" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|smallestScreenSize|navigation|uiMode|density">
     \\            <meta-data android:name="android.app.lib_name" android:value="main"/>
@@ -264,6 +274,7 @@ fn buildAndroid(b: *std.Build, optimize: std.builtin.OptimizeMode) void {
     pack.addFileArg(manifest);
     pack.addArtifactArg(lib);
     pack.addDirectoryArg(staged.getDirectory().path(b, "assets"));
+    pack.addDirectoryArg(b.path("src/client/android/res"));
 
     const apk = pack.addOutputFileArg("dronefire.apk");
 
