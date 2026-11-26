@@ -163,6 +163,23 @@ Military, War, Sci-Fi Space, Sci-Fi City, Nature and Farm packs:
 - **Characters, animate beings, religious buildings and hate symbols in these packs are out of
   scope** for Dronefire.
 
+## Side-by-side with POLYGON Military buildings (Nov 2026)
+
+Our outpost v2 against their layout sheets: their buildings have fewer parts than ours, and still
+look better. The gap is surface, shape and light, not part count:
+- **Wear:** chipped plaster showing brick, cracks, stains and speckle, painted into the texture.
+  Our flat vertex colours look brand new and plastic. Fix: a small shared wear atlas (UV-mapped
+  patches) or wear geometry (chipped corners, broken plaster plates, brick clusters set into
+  recesses), not flat stickers.
+- **Hand-made shapes:** edges slightly soft and uneven, parapets rounded, nothing perfectly
+  straight. Our boxes are machine-perfect. Fix: jitter vertices a few cm, round the parapet tops.
+- **Deep dark openings:** windows and doors are deep holes into dark interiors, often with no
+  glass. Our glass sits nearly flush and reads flat.
+- **Local character:** beam ends sticking out under the roof line, outside stairs built into the
+  mass, arcades. Our corner stones and cornice read European, not desert.
+- **Light:** their shadows and AO do half the work. Without shadows in the game, the depth
+  has to come from deeper geometry and darker baked recesses.
+
 ## Measured reference comparison (how to do it right)
 
 ```
