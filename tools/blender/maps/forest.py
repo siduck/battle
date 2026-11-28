@@ -6,6 +6,56 @@ from mathutils.bvhtree import BVHTree
 
 pf.SKIP = re.compile(pf.SKIP.pattern + r"|wisp|steam", re.I)
 
+OWN = os.environ.get("OWN", "")
+STONE = (0.47, 0.47, 0.43)
+_load = pf.load
+
+
+def own(name):
+    path = os.path.join(OWN, name + ".glb") if OWN else ""
+
+    return path if path and os.path.exists(path) else None
+
+
+def load_own(path, door_to=None):
+    if not (OWN and os.path.abspath(path).startswith(os.path.abspath(OWN))):
+        return _load(path, door_to)
+
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=path)
+    bm = bmesh.new()
+
+    for o in [o for o in bpy.data.objects if o.type == "MESH"]:
+        me = o.data
+        src = me.color_attributes[0]
+        tmp = bmesh.new()
+        tmp.from_mesh(me)
+        tmp.transform(o.matrix_world)
+
+        for layer in list(tmp.loops.layers.float_color):
+            tmp.loops.layers.float_color.remove(layer)
+        for layer in list(tmp.loops.layers.color):
+            tmp.loops.layers.color.remove(layer)
+
+        col = tmp.loops.layers.float_color.new("Col")
+        tmp.faces.ensure_lookup_table()
+
+        for f, p in zip(tmp.faces, me.polygons):
+            for l, li in zip(f.loops, p.loop_indices):
+                c = src.data[li].color
+                l[col] = (c[0], c[1], c[2], 1.0)
+
+        me2 = bpy.data.meshes.new("t")
+        tmp.to_mesh(me2)
+        tmp.free()
+        bm.from_mesh(me2)
+        bpy.data.meshes.remove(me2)
+
+    return bm
+
+
+pf.load = load_own
+
 SNOW = (0.9, 0.93, 0.97)
 SNOWY = {}
 RAYS = 16
@@ -174,4 +224,25 @@ PROPS = [
     ("stone", "slab-path-stone-e526f7", {"group": "ground", "collide": "none", "scale": 1.6}),
 ]
 
-run("forest", BUILDINGS, PROPS)
+def swap(entries, building):
+    out = []
+
+    for name, src, opts in entries:
+        mine = own(name)
+
+        if not mine:
+            out.append((name, src, opts))
+            continue
+
+        keep = {k: v for k, v in opts.items() if k in ("group", "collide")}
+        keep["scale"] = 1.0
+
+        if building:
+            keep = {"scale": 1.0, "plinth": STONE}
+
+        out.append((name, mine, keep))
+
+    return out
+
+
+run("forest", swap(BUILDINGS, True), swap(PROPS, False))

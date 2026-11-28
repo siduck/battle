@@ -8,11 +8,8 @@ const props = @import("props.zig");
 
 const Vec3 = math.Vec3;
 
-pub const Class = enum { car, bike, scooter, cycle, tank };
-
 pub const Spec = struct {
     name: [:0]const u8,
-    class: Class,
     length: f32,
     width: f32,
     height: f32,
@@ -26,53 +23,9 @@ pub const Spec = struct {
 };
 
 pub const specs = [_]Spec{
-    .{ .name = "Ranger Jeep", .class = .car, .length = 3.98, .width = 1.73, .height = 1.60, .seat = 0.55, .wheel = 0.339, .top_speed = 38.0, .accel = 11.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Conquer Pickup", .class = .car, .length = 5.22, .width = 2.10, .height = 1.60, .seat = 0.55, .wheel = 0.351, .top_speed = 36.0, .accel = 10.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Utility Truck", .class = .car, .length = 5.37, .width = 2.00, .height = 1.60, .seat = 0.55, .wheel = 0.356, .top_speed = 30.0, .accel = 7.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Box Truck", .class = .car, .length = 4.60, .width = 2.00, .height = 1.60, .seat = 0.55, .wheel = 0.273, .top_speed = 28.0, .accel = 6.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Armored Car", .class = .car, .length = 4.60, .width = 1.95, .height = 1.60, .seat = 0.55, .wheel = 0.349, .top_speed = 32.0, .accel = 8.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Ace Hatchback", .class = .car, .length = 3.84, .width = 1.83, .height = 1.45, .seat = 0.55, .wheel = 0.298, .top_speed = 36.0, .accel = 10.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Kiri Sedan", .class = .car, .length = 4.54, .width = 1.80, .height = 1.42, .seat = 0.55, .wheel = 0.298, .top_speed = 40.0, .accel = 11.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Traveller Van", .class = .car, .length = 5.18, .width = 2.10, .height = 1.60, .seat = 0.55, .wheel = 0.350, .top_speed = 32.0, .accel = 8.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Enforcer SUV", .class = .car, .length = 4.36, .width = 1.88, .height = 1.60, .seat = 0.55, .wheel = 0.348, .top_speed = 42.0, .accel = 12.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Taxi", .class = .car, .length = 5.27, .width = 2.09, .height = 1.60, .seat = 0.55, .wheel = 0.322, .top_speed = 38.0, .accel = 10.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "JDM Sport", .class = .car, .length = 4.68, .width = 1.97, .height = 1.35, .seat = 0.55, .wheel = 0.325, .top_speed = 52.0, .accel = 15.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "NFR Coupe", .class = .car, .length = 4.44, .width = 1.97, .height = 1.15, .seat = 0.55, .wheel = 0.303, .top_speed = 54.0, .accel = 16.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Cheetah", .class = .car, .length = 4.56, .width = 1.94, .height = 1.18, .seat = 0.55, .wheel = 0.306, .top_speed = 56.0, .accel = 16.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Interceptor", .class = .car, .length = 4.56, .width = 2.10, .height = 1.53, .seat = 0.55, .wheel = 0.325, .top_speed = 58.0, .accel = 17.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Lifted Truck", .class = .car, .length = 4.93, .width = 2.10, .height = 1.60, .seat = 0.55, .wheel = 0.349, .top_speed = 34.0, .accel = 10.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Phoenix Muscle", .class = .car, .length = 4.89, .width = 2.09, .height = 1.33, .seat = 0.55, .wheel = 0.322, .top_speed = 46.0, .accel = 13.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Stinger GT", .class = .car, .length = 4.17, .width = 1.95, .height = 1.23, .seat = 0.55, .wheel = 0.314, .top_speed = 48.0, .accel = 14.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Roadster", .class = .car, .length = 3.74, .width = 1.82, .height = 1.09, .seat = 0.55, .wheel = 0.301, .top_speed = 44.0, .accel = 13.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Fire Wagon", .class = .car, .length = 5.07, .width = 1.83, .height = 1.49, .seat = 0.55, .wheel = 0.303, .top_speed = 36.0, .accel = 10.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Hazer Turbo", .class = .car, .length = 4.23, .width = 1.97, .height = 1.13, .seat = 0.55, .wheel = 0.282, .top_speed = 46.0, .accel = 14.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Asti Stradale", .class = .car, .length = 3.90, .width = 1.84, .height = 1.39, .seat = 0.55, .wheel = 0.299, .top_speed = 50.0, .accel = 15.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "El Alamo", .class = .car, .length = 5.13, .width = 1.91, .height = 1.38, .seat = 0.55, .wheel = 0.319, .top_speed = 38.0, .accel = 11.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Street Bike", .class = .bike, .length = 2.02, .width = 0.76, .height = 1.26, .seat = 0.95, .wheel = 0.290, .top_speed = 48.0, .accel = 15.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Scrambler", .class = .bike, .length = 2.02, .width = 0.76, .height = 1.26, .seat = 0.95, .wheel = 0.291, .top_speed = 44.0, .accel = 14.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Sport Bike", .class = .bike, .length = 2.07, .width = 0.67, .height = 1.06, .seat = 0.95, .wheel = 0.284, .top_speed = 56.0, .accel = 18.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Police Bike", .class = .bike, .length = 2.07, .width = 0.67, .height = 1.06, .seat = 0.95, .wheel = 0.284, .top_speed = 54.0, .accel = 17.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Dirt Bike", .class = .bike, .length = 2.02, .width = 0.61, .height = 1.03, .seat = 0.95, .wheel = 0.285, .top_speed = 42.0, .accel = 16.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Chopper", .class = .bike, .length = 2.19, .width = 0.52, .height = 1.21, .seat = 0.95, .wheel = 0.306, .top_speed = 40.0, .accel = 12.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Enduro", .class = .bike, .length = 2.07, .width = 0.88, .height = 1.21, .seat = 0.95, .wheel = 0.309, .top_speed = 44.0, .accel = 16.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Scooter", .class = .bike, .length = 1.90, .width = 0.85, .height = 1.30, .seat = 0.95, .wheel = 0.209, .top_speed = 30.0, .accel = 9.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Moped", .class = .bike, .length = 1.90, .width = 0.90, .height = 1.29, .seat = 0.95, .wheel = 0.309, .top_speed = 28.0, .accel = 9.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Cruiser", .class = .bike, .length = 2.41, .width = 0.90, .height = 1.40, .seat = 0.95, .wheel = 0.346, .top_speed = 46.0, .accel = 13.0, .steer = 0.5, .grip = 9, .hp = 260 },
-    .{ .name = "Mountain Bike", .class = .cycle, .length = 1.35, .width = 0.59, .height = 0.72, .seat = 1.00, .wheel = 0.213, .top_speed = 12.0, .accel = 4.0, .steer = 0.55, .grip = 10, .hp = 120 },
-    .{ .name = "City Bike", .class = .cycle, .length = 1.90, .width = 0.50, .height = 1.09, .seat = 1.00, .wheel = 0.294, .top_speed = 12.0, .accel = 4.0, .steer = 0.55, .grip = 10, .hp = 120 },
-    .{ .name = "Road Bike", .class = .cycle, .length = 1.90, .width = 0.50, .height = 1.09, .seat = 1.00, .wheel = 0.294, .top_speed = 14.0, .accel = 4.5, .steer = 0.55, .grip = 10, .hp = 120 },
-    .{ .name = "Aventador", .class = .car, .length = 4.96, .width = 2.10, .height = 1.14, .seat = 0.55, .wheel = 0.320, .top_speed = 46.0, .accel = 16.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "720S", .class = .car, .length = 4.60, .width = 2.10, .height = 1.21, .seat = 0.55, .wheel = 0.341, .top_speed = 45.0, .accel = 17.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "993 Carrera", .class = .car, .length = 4.49, .width = 2.01, .height = 1.36, .seat = 0.55, .wheel = 0.334, .top_speed = 40.0, .accel = 15.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Venom F5", .class = .car, .length = 4.12, .width = 1.84, .height = 1.03, .seat = 0.55, .wheel = 0.252, .top_speed = 51.0, .accel = 18.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Urus", .class = .car, .length = 5.09, .width = 2.10, .height = 1.60, .seat = 0.55, .wheel = 0.357, .top_speed = 40.0, .accel = 14.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Huayra", .class = .car, .length = 4.98, .width = 2.10, .height = 1.30, .seat = 0.55, .wheel = 0.386, .top_speed = 45.0, .accel = 16.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Aventador SVJ", .class = .car, .length = 4.87, .width = 2.09, .height = 1.21, .seat = 0.55, .wheel = 0.333, .top_speed = 47.0, .accel = 17.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Centenario", .class = .car, .length = 4.98, .width = 2.10, .height = 1.16, .seat = 0.55, .wheel = 0.324, .top_speed = 49.0, .accel = 17.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "Terzo", .class = .car, .length = 4.60, .width = 2.10, .height = 0.99, .seat = 0.55, .wheel = 0.282, .top_speed = 50.0, .accel = 18.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "P72", .class = .car, .length = 4.60, .width = 2.01, .height = 1.08, .seat = 0.55, .wheel = 0.309, .top_speed = 42.0, .accel = 15.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "SF90", .class = .car, .length = 4.84, .width = 2.10, .height = 1.22, .seat = 0.55, .wheel = 0.340, .top_speed = 49.0, .accel = 18.0, .steer = 0.55, .grip = 8, .hp = 600 },
-    .{ .name = "T-62", .class = .tank, .length = 9.30, .width = 3.79, .height = 2.40, .seat = 1.60, .wheel = 0.330, .top_speed = 9, .accel = 3, .steer = 1.0, .grip = 12, .hp = 3000 },
+    .{ .name = "Rescue Pickup", .length = 5.30, .width = 2.62, .height = 2.30, .seat = 0.95, .wheel = 0.500, .top_speed = 37.0, .accel = 11.0, .steer = 0.52, .grip = 8.5, .hp = 800 },
+    .{ .name = "Utility Carrier", .length = 5.49, .width = 2.62, .height = 2.56, .seat = 0.95, .wheel = 0.500, .top_speed = 31.0, .accel = 8.0, .steer = 0.48, .grip = 8.5, .hp = 1000 },
+    .{ .name = "Farm Tractor", .length = 4.22, .width = 2.67, .height = 2.73, .seat = 1.45, .wheel = 0.407, .top_speed = 14.0, .accel = 9.0, .steer = 0.62, .grip = 11, .hp = 900 },
 };
 
 pub const regen_delay: f32 = 5;
@@ -101,7 +54,6 @@ pub const Vehicle = struct {
     side: f32 = 0,
     vy: f32 = 0,
     steer: f32 = 0,
-    lean: f32 = 0,
     pitch: f32 = 0,
     roll: f32 = 0,
     spin: f32 = 0,
@@ -112,9 +64,6 @@ pub const Vehicle = struct {
     wreck: f32 = 0,
     home: Vec3 = .{},
     home_yaw: f32 = 0,
-    turret: f32 = 0,
-    gun: f32 = 0,
-    reload: f32 = 0,
     yaw_kick: f32 = 0,
     jolt: f32 = 0,
     jolt_roll: f32 = 0,
@@ -135,16 +84,8 @@ pub const Vehicle = struct {
     righting: f32 = 0,
     remote: bool = false,
 
-    pub fn hasNitro(v: Vehicle) bool {
-        return v.spec().class != .cycle and v.spec().class != .tank;
-    }
-
     pub fn alive(v: Vehicle) bool {
         return v.wreck <= 0;
-    }
-
-    pub fn twoWheeled(v: Vehicle) bool {
-        return v.spec().class != .car;
     }
 
     pub fn spec(v: Vehicle) Spec {
@@ -173,7 +114,7 @@ pub const Vehicle = struct {
 
     pub fn seat(v: Vehicle) Vec3 {
         const s = v.spec();
-        const back: f32 = if (s.class == .car) -s.length * 0.06 else -s.length * 0.1;
+        const back: f32 = -s.length * 0.06;
 
         return v.pos.add(v.forward().scale(back)).add(.{ .y = s.seat });
     }
@@ -182,11 +123,7 @@ pub const Vehicle = struct {
 const gravity: f32 = 22;
 
 fn climbLimit(s: Spec) f32 {
-    return switch (s.class) {
-        .tank => 0.9,
-        .car => @max(0.32, s.wheel * 1.15),
-        else => @max(0.26, s.wheel),
-    };
+    return @max(0.32, s.wheel * 1.15);
 }
 
 const Ground = struct {
@@ -237,12 +174,11 @@ const Contact = struct {
 fn contact(pieces: []const map.Piece, v: Vehicle, base: Vec3) Contact {
     const s = v.spec();
     const climb = climbLimit(s);
-    const two = s.class != .car and s.class != .tank;
     const half_l = s.length * 0.34;
-    const half_w: f32 = if (two) 0 else s.width * 0.4;
+    const half_w: f32 = s.width * 0.4;
     const f = v.forward().scale(half_l);
     const r = v.right().scale(half_w);
-    const pr: f32 = if (two) 0.12 else 0.18;
+    const pr: f32 = 0.18;
     const fl = groundAt(pieces, base.add(f).sub(r), pr, climb);
     const fr = groundAt(pieces, base.add(f).add(r), pr, climb);
     const bl = groundAt(pieces, base.sub(f).sub(r), pr, climb);
@@ -254,7 +190,7 @@ fn contact(pieces: []const map.Piece, v: Vehicle, base: Vec3) Contact {
     const mean = (front + back) * 0.5;
     const high = @max(@max(fl.y, fr.y), @max(bl.y, br.y));
     const pitch = std.math.clamp(std.math.atan2(front - back, half_l * 2), -0.6, 0.6);
-    const roll = if (two) 0 else std.math.clamp(std.math.atan2(right_y - left, @max(half_w * 2, 0.5)), -0.5, 0.5);
+    const roll = std.math.clamp(std.math.atan2(right_y - left, @max(half_w * 2, 0.5)), -0.5, 0.5);
     const road = terrain.roadDistance(base.x, base.z) < terrain.road_half + 1;
 
     return .{
@@ -277,17 +213,8 @@ fn surfaceGrip(paved: bool) f32 {
     };
 }
 
-fn mass(s: Spec) f32 {
-    return switch (s.class) {
-        .tank => 10,
-        .car => 1.5,
-        .bike, .scooter => 0.45,
-        .cycle => 0.25,
-    };
-}
-
-pub fn massOf(v: Vehicle) f32 {
-    return mass(v.spec());
+pub fn massOf(_: Vehicle) f32 {
+    return 1.5;
 }
 
 fn massive(file: []const u8) bool {
@@ -321,6 +248,12 @@ fn insideMassive(p: Vec3, r: f32) bool {
     return false;
 }
 
+fn seaward(pieces: []const map.Piece, from: Vec3, to: Vec3) bool {
+    const adrift = @import("movement.zig").adrift;
+
+    return adrift(pieces, to) and !adrift(pieces, from);
+}
+
 fn hull(pieces: []const map.Piece, v: Vehicle, at: Vec3, dir_sign: f32) bool {
     const s = v.spec();
     const climb = climbLimit(s);
@@ -338,11 +271,11 @@ fn hull(pieces: []const map.Piece, v: Vehicle, at: Vec3, dir_sign: f32) bool {
 
     if (blocked(pieces, lead, r, climb, h)) return true;
 
-    if (s.class == .car or s.class == .tank) {
-        const w = side.scale(s.width * 0.28);
+    if (seaward(pieces, v.pos, at) or seaward(pieces, v.pos.add(fwd.scale(half * dir_sign)), lead)) return true;
 
-        if (blocked(pieces, lead.add(w), r * 0.6, climb, h) or blocked(pieces, lead.sub(w), r * 0.6, climb, h)) return true;
-    }
+    const w = side.scale(s.width * 0.28);
+
+    if (blocked(pieces, lead.add(w), r * 0.6, climb, h) or blocked(pieces, lead.sub(w), r * 0.6, climb, h)) return true;
 
     return false;
 }
@@ -351,15 +284,13 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
     if (rightingStep(v, pieces, dt)) return;
 
     const s = v.spec();
-    const two = s.class != .car and s.class != .tank;
-    const tank = s.class == .tank;
     const throttle = std.math.clamp(input.throttle, -1, 1);
 
     v.prev = v.pos;
 
     const was = v.boosting;
 
-    v.boosting = input.boost and v.hasNitro() and v.nitro > 0.02 and v.speed > -0.5;
+    v.boosting = input.boost and v.nitro > 0.02 and v.speed > -0.5;
 
     if (v.boosting) {
         v.nitro = @max(0, v.nitro - dt / nitro_burn);
@@ -376,7 +307,8 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
 
     const mu = surfaceGrip(v.paved);
     const soft = 1 - mu;
-    const top = (if (v.boosting) s.top_speed * 1.35 else s.top_speed) * (1 - soft * 0.5);
+    const cruise = @min(s.top_speed, terrain.car_top);
+    const top = (if (v.boosting) cruise * 1.35 else cruise) * (1 - soft * 0.5);
     const before = v.speed;
     var long_accel: f32 = 0;
 
@@ -388,15 +320,15 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
 
         if (throttle > 0) {
             if (v.speed < -0.5) {
-                v.speed = math.approach(v.speed, 0, brakeDecel(s) * throttle * dt);
+                v.speed = math.approach(v.speed, 0, brake_decel * throttle * dt);
             } else {
                 v.speed += throttle * s.accel * dt * curve;
             }
         } else if (throttle < 0) {
             if (v.speed > 0.5) {
-                v.speed = math.approach(v.speed, 0, brakeDecel(s) * -throttle * dt);
+                v.speed = math.approach(v.speed, 0, brake_decel * -throttle * dt);
             } else {
-                const reverse_top = s.top_speed * (if (tank) @as(f32, 0.6) else 0.28);
+                const reverse_top = s.top_speed * 0.28;
 
                 v.speed = @max(v.speed + throttle * s.accel * 0.55 * dt, -reverse_top);
             }
@@ -404,7 +336,7 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
             v.speed = math.approach(v.speed, 0, (2.2 + soft * 4) * dt);
         }
 
-        if (input.brake and !tank) v.speed = math.approach(v.speed, 0, (if (two) brakeDecel(s) else 3.5) * dt);
+        if (input.brake) v.speed = math.approach(v.speed, 0, 3.5 * dt);
 
         v.speed = math.approach(v.speed, 0, (soft * 1.5 + v.speed * v.speed * 0.0004) * dt);
 
@@ -419,13 +351,11 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
     v.steer = math.approach(v.steer, steer_target, dt * (if (toward_center) @as(f32, 6) else 3.5));
 
     const wheelbase = @max(s.length * 0.6, 0.9);
-    const handbrake = input.brake and !two and !tank and @abs(v.speed) > 4;
-    const lat_max = mu * gravity * (if (two) @as(f32, 0.95) else 1.05);
+    const handbrake = input.brake and @abs(v.speed) > 4;
+    const lat_max = mu * gravity * 1.05;
     var target_rate: f32 = 0;
 
-    if (tank) {
-        target_rate = input.steer * 0.85 * (if (v.speed < -0.3) @as(f32, -1) else 1);
-    } else if (v.grounded) {
+    if (v.grounded) {
         target_rate = v.speed * @tan(v.steer) / wheelbase;
 
         const cap = lat_max * 1.25 / @max(@abs(v.speed), 1);
@@ -435,7 +365,7 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
         if (handbrake) target_rate *= 1.7;
     }
 
-    const yaw_response: f32 = if (!v.grounded) 3 else if (handbrake) 3 else if (two) 7 else 9;
+    const yaw_response: f32 = if (!v.grounded) 3 else if (handbrake) 3 else 9;
 
     v.yaw_rate += (target_rate - v.yaw_rate) * @min(1, dt * yaw_response);
 
@@ -454,8 +384,7 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
 
     if (v.grounded) {
         const counter = v.side * v.steer < 0;
-        const base_grip = if (two) lat_max * 1.5 else lat_max;
-        const lat_grip: f32 = if (tank) 60 else if (handbrake) lat_max * 0.22 else if (counter) base_grip * 1.3 else base_grip;
+        const lat_grip: f32 = if (handbrake) lat_max * 0.22 else if (counter) lat_max * 1.3 else lat_max;
         const slide = @abs(v.side);
 
         v.side = math.approach(v.side, 0, lat_grip * dt);
@@ -568,9 +497,9 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
         v.ground_roll += (0 - v.ground_roll) * @min(1, dt * 1.5);
     }
 
-    const soft_body: f32 = if (tank) 0.004 else if (two) 0.006 else 0.012;
+    const soft_body: f32 = 0.012;
     const pitch_target = if (v.grounded) std.math.clamp(long_accel * soft_body, -0.09, 0.07) else 0;
-    const roll_target = if (v.grounded and !two) std.math.clamp(lat_accel * soft_body * 0.55, -0.08, 0.08) else 0;
+    const roll_target = if (v.grounded) std.math.clamp(lat_accel * soft_body * 0.55, -0.08, 0.08) else 0;
     const k: f32 = 90;
     const c: f32 = 13;
 
@@ -581,8 +510,6 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
     v.body_pitch = std.math.clamp(v.body_pitch, -0.15, 0.15);
     v.body_roll = std.math.clamp(v.body_roll, -0.12, 0.12);
 
-    const target_lean = if (two) std.math.clamp(-std.math.atan2(lat_accel, gravity), -0.75, 0.75) else 0;
-
     v.jolt = math.approach(v.jolt, 0, dt * 2.2) * (1 - @min(1, dt * 3));
     v.jolt_roll = math.approach(v.jolt_roll, 0, dt * 2.2) * (1 - @min(1, dt * 3));
     v.impact = @max(0, v.impact - dt * 2.5);
@@ -591,9 +518,8 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
 
     v.pitch = std.math.clamp(v.ground_pitch + v.body_pitch + v.jolt * (1 + wobble), -0.75, 0.75);
     v.roll = v.ground_roll + v.body_roll + v.jolt_roll * (1 - wobble);
-    v.lean += (target_lean - v.lean) * @min(1, dt * 7);
 
-    const tilted = @abs(v.pitch) > 0.45 or @abs(v.roll + v.lean) > 0.6;
+    const tilted = @abs(v.pitch) > 0.45 or @abs(v.roll) > 0.6;
     const slow = @abs(v.speed) < 0.6 and @abs(v.side) < 0.6;
 
     v.tilt_time = if (tilted and slow and v.grounded) v.tilt_time + dt else 0;
@@ -602,14 +528,7 @@ pub fn step(v: *Vehicle, input: Input, pieces: []const map.Piece, dt: f32) void 
     v.spin += v.speed * dt / @max(s.wheel, 0.1);
 }
 
-fn brakeDecel(s: Spec) f32 {
-    return switch (s.class) {
-        .tank => 7,
-        .car => 15,
-        .bike, .scooter => 13,
-        .cycle => 7,
-    };
-}
+const brake_decel: f32 = 15;
 
 fn slideAlong(v: *Vehicle, kept: Vec3, fwd: Vec3, right: Vec3, dt: f32) void {
     const scrub = 1 - dt * 1.5;
@@ -635,10 +554,8 @@ pub fn hit(v: *Vehicle, speed: f32, side: f32) void {
 
     const k = @min(1, force / 30);
     const glance = std.math.clamp(side / @max(force, 1) + @sin(v.pos.x * 3.1 + v.pos.z * 1.7) * 0.35, -1, 1);
-    const two = v.spec().class != .car and v.spec().class != .tank;
-
-    v.jolt = -std.math.sign(speed) * k * (if (two) @as(f32, 0.3) else 0.16);
-    v.jolt_roll = glance * k * (if (two) @as(f32, 0.6) else 0.2);
+    v.jolt = -std.math.sign(speed) * k * 0.16;
+    v.jolt_roll = glance * k * 0.2;
     v.yaw_kick += glance * k * 2.5;
     v.impact = @max(v.impact, k);
 
@@ -698,7 +615,6 @@ fn rightingStep(v: *Vehicle, pieces: []const map.Piece, dt: f32) bool {
     v.jolt_roll = 0;
     v.pitch = v.ground_pitch;
     v.roll = v.ground_roll;
-    v.lean += (0 - v.lean) * k;
 
     const touch = contact(pieces, v.*, v.pos);
 

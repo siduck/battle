@@ -8,7 +8,7 @@ pub var play: f32 = 98;
 pub const town: f32 = 54;
 pub const road_half: f32 = 7;
 
-pub const Map = enum { town, desert, valley, islands, facility, conquest, prism, courtyard, airport, alpine, coast, construction, japan, forest, nyc, pirate, prehistoric, racing, lab, salvage, stadium, warehouse };
+pub const Map = enum { town, desert, valley, islands, facility, conquest, prism, courtyard, airport, alpine, coast, construction, japan, forest, nyc, racing, lab, stadium };
 
 const registry = @import("maps/registry.zig");
 const islands_map = @import("maps/islands.zig");
@@ -140,8 +140,6 @@ pub const districts = [_]District{
 
 pub var runway = [4]f32{ 300, -425, 165, 15 };
 
-pub var helipads = [3][2]f32{ .{ 335, -325 }, .{ 358, -300 }, .{ 380, -270 } };
-
 pub fn pocketMask(x: f32, z: f32) f32 {
     if (current != .desert) return 0;
 
@@ -151,18 +149,6 @@ pub fn pocketMask(x: f32, z: f32) f32 {
         const d = @sqrt((x - p[0]) * (x - p[0]) + (z - p[1]) * (z - p[1]));
 
         best = @max(best, 1 - smooth(p[2] * 0.7, p[2], d));
-    }
-
-    return best;
-}
-
-pub fn padMask(x: f32, z: f32) f32 {
-    var best: f32 = 0;
-
-    for (helipads) |p| {
-        const d = @sqrt((x - p[0]) * (x - p[0]) + (z - p[1]) * (z - p[1]));
-
-        best = @max(best, 1 - smooth(11, 22, d));
     }
 
     return best;
@@ -200,7 +186,7 @@ pub fn facilityRoad(x: f32, z: f32) f32 {
 
 fn facilityHeight(x: f32, z: f32) f32 {
     const box = @max(@abs(x) - compound[0], @abs(z) - compound[1]);
-    const out = smooth(0, 60, box) * (1 - runwayMask(x, z)) * (1 - padMask(x, z)) * smooth(road_half + 1, road_half + 14, facilityRoad(x, z));
+    const out = smooth(0, 60, box) * (1 - runwayMask(x, z)) * smooth(road_half + 1, road_half + 14, facilityRoad(x, z));
     const rolling = (fbm(x * 0.012 + 40, z * 0.012 - 11) - 0.35) * 14;
     const edge = @max(@abs(x), @abs(z));
     const ridge = smooth(play - 20, half, edge) * (7 + fbm(x * 0.04, z * 0.04) * 5);
@@ -210,15 +196,16 @@ fn facilityHeight(x: f32, z: f32) f32 {
 
 pub fn configure() void {
     registry.activate();
+    car_top = 1e9;
+    baked_n = 0;
 
     if (registry.current()) |d| {
         half = d.half;
         play = d.play;
+        car_top = d.car_top;
         facet = d.facet;
 
         if (d.runway) |r| runway = r;
-
-        if (d.helipads) |h| helipads = h;
 
         if (d.configure) |f| f();
 
@@ -244,7 +231,6 @@ pub fn configure() void {
         play = 250;
         facet = 2.2;
         runway = .{ valley_base[0], -222, 70, 12 };
-        helipads = .{ .{ 25, -192 }, .{ 47, -192 }, .{ 69, -192 } };
 
         return;
     }
@@ -253,7 +239,6 @@ pub fn configure() void {
         half = 270;
         play = 250;
         runway = .{ 0, -212, 150, 13 };
-        helipads = .{ .{ -108, -97 }, .{ -84, -97 }, .{ -60, -97 } };
 
         return;
     }
@@ -264,7 +249,6 @@ pub fn configure() void {
     play = 250;
     facet = 2.5;
     runway = .{ 130, -205, 95, 12 };
-    helipads = .{ .{ 180, -155 }, .{ 203, -130 }, .{ 200, -95 } };
     town_center = .{ districts[0].x, districts[0].z };
     town_half = .{ 46, 40 };
     market = .{ districts[0].x + 15, districts[0].z + 8, 11 };
@@ -507,6 +491,7 @@ fn valley(x: f32, z: f32) f32 {
 }
 
 pub var facet: f32 = 3.5;
+pub var car_top: f32 = 1e9;
 
 pub fn rawHeight(x: f32, z: f32) f32 {
     if (registry.current()) |d| return d.height(x, z);
@@ -523,6 +508,44 @@ pub fn rawHeight(x: f32, z: f32) f32 {
 pub const void_floor: f32 = -60;
 pub const sea_level: f32 = 0.4;
 
+var baked: []f32 = &.{};
+var baked_n: usize = 0;
+
+pub fn bakeHeights(gpa: std.mem.Allocator) void {
+    baked_n = 0;
+
+    if (current == .town) return;
+
+    const n: usize = @as(usize, @intFromFloat(@ceil(2 * half / facet))) + 2;
+
+    if (baked.len < n * n) {
+        if (baked.len > 0) gpa.free(baked);
+
+        baked = gpa.alloc(f32, n * n) catch &.{};
+
+        if (baked.len < n * n) return;
+    }
+
+    for (0..n) |j| {
+        for (0..n) |i| {
+            baked[j * n + i] = rawHeight(@as(f32, @floatFromInt(i)) * facet - half, @as(f32, @floatFromInt(j)) * facet - half);
+        }
+    }
+
+    baked_n = n;
+}
+
+fn vertex(gx: f32, gz: f32) f32 {
+    if (baked_n > 0 and gx >= 0 and gz >= 0) {
+        const i: usize = @intFromFloat(gx);
+        const j: usize = @intFromFloat(gz);
+
+        if (i < baked_n and j < baked_n) return baked[j * baked_n + i];
+    }
+
+    return rawHeight(gx * facet - half, gz * facet - half);
+}
+
 pub fn height(x: f32, z: f32) f32 {
     if (current == .town) return townHeight(x, z);
 
@@ -532,16 +555,16 @@ pub fn height(x: f32, z: f32) f32 {
     const z0 = gz * facet - half;
     const fx = (x - x0) / facet;
     const fz = (z - z0) / facet;
-    const h00 = rawHeight(x0, z0);
-    const h11 = rawHeight(x0 + facet, z0 + facet);
+    const h00 = vertex(gx, gz);
+    const h11 = vertex(gx + 1, gz + 1);
 
     if (fz > fx) {
-        const h01 = rawHeight(x0, z0 + facet);
+        const h01 = vertex(gx, gz + 1);
 
         return h00 + (h11 - h01) * fx + (h01 - h00) * fz;
     }
 
-    const h10 = rawHeight(x0 + facet, z0);
+    const h10 = vertex(gx + 1, gz);
 
     return h00 + (h10 - h00) * fx + (h11 - h10) * fz;
 }

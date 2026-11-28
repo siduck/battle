@@ -25,24 +25,18 @@ The engine side lives in `src/shared/maps/api.zig` (the `Def` struct and helpers
 | `japan` | `japanese-suburban-city-street-baa482` | Suburb |
 | `forest` | `nature-forest-kit-f29d6a` | Forest Camp |
 | `nyc` | `nyc-city-kit-fbca88` | Downtown |
-| `pirate` | `pirate-cove-2ebea4` | Pirate Cove |
-| `prehistoric` | `prehistoric-valley-8638dc` | Volcano |
 | `racing` | `racing-cars-kit-660d53` | Highway |
 | `lab` | `research-lab-9b9b5d` | Research Lab |
-| `salvage` | `salvage-commons-d0be9f` | Scrapyard |
 | `stadium` | `stadium-5db167` | Stadium |
-| `warehouse` | `warehouse-and-logistics-activity-f7e79d` | Depot |
 | `desert` | `frontier-town-a0085b` | Frontier Town (done) |
 | `islands` | `mediterranean-island-village-4ac936` | Islands (done) |
-
-`warehouse` holds a small pipeline sample (a yard of pallets). Replace it entirely.
 
 ## Steps
 
 1. **Download the kit.** `tools/polyfork_fetch.sh <kit-slug> ~/.cache/polyfork/<map>` downloads every GLB, its hero render (`<id>.png`), the kit cover (`cover.jpg`) and `index.tsv` (id and name). Look at the renders and pick what you need. One kit is often not enough for a 300 to 500 m map: you may also pull single models from other kits in the same style (`https://polyfork.dev/cdn/<id>.glb`, ids in the catalog's `catalog.json`).
-2. **Write `tools/blender/maps/<map>.py`.** Copy `tools/blender/maps/warehouse.py`. Each building entry is `(name, polyfork_id_or_parts, {opts})`, where a part list is `[(id, (x, y, z), yaw), ...]` to glue modules into one building. Each prop entry is `(name, id, {opts})` with `scale`, `k` (rgb tint multiplier), `group` (`tree`, `rock`, `bush`, `ground`, `building`, `road`, `street`, `car`) and `collide` (`none`, `box`, `cylinder`, `trunk`).
+2. **Write `tools/blender/maps/<map>.py`.** Copy `tools/blender/maps/racing.py`. Each building entry is `(name, polyfork_id_or_parts, {opts})`, where a part list is `[(id, (x, y, z), yaw), ...]` to glue modules into one building. Each prop entry is `(name, id, {opts})` with `scale`, `k` (rgb tint multiplier), `group` (`tree`, `rock`, `bush`, `ground`, `building`, `road`, `street`, `car`) and `collide` (`none`, `box`, `cylinder`, `trunk`).
 3. **Export.** `tools/mapkit.sh <map>` runs Blender headless. It writes the GLBs to `src/client/assets/props/<map>/` and generates `src/shared/maps/<map>_kit.zig`, then prints triangle counts. Polyfork vertex colours are kept as they are, so the palette stays coherent with the kit.
-4. **Write `src/shared/maps/<map>.zig`.** Start from `warehouse.zig`. Set `.ready = true` only when the map passes the quality bar below. In `build`:
+4. **Write `src/shared/maps/<map>.zig`.** Start from `racing.zig`. Set `.ready = true` only when the map passes the quality bar below. In `build`:
    - `api.building(b, k.buildings[i], x, z, yaw)` places a building on the lowest ground under it and adds its collision boxes.
    - `b.put(kit.of(.name), x, z, yaw, scale)` places a prop on the terrain.
    - `b.putAt(kind, pos, yaw, scale)` places a prop at an exact height.
@@ -51,7 +45,7 @@ The engine side lives in `src/shared/maps/api.zig` (the `Def` struct and helpers
    - `api.scatter(b, kinds, count, x0, z0, x1, z1, keep)` scatters props.
    - `b.rng` gives deterministic randomness.
 
-   Set terrain with `height` and `ground`, the light with `palette`, the horizon colour with `backdrop` and `floor_y` (set `floor_y` to the sea level for sea maps), and the flags `aircraft`, `tanks`, `grip`, `tufts` (0 to 1 grass tuft density), `runway` and `helipads`.
+   Set terrain with `height` and `ground`, the light with `palette`, the horizon colour with `backdrop` and `floor_y` (set `floor_y` to the sea level for sea maps), and the flags `aircraft` (parks the jet on `runway`), `grip` and `runway`.
 5. **Spots.** `.spots = api.autoSpots` finds spawns, loot and parking on open ground. Write your own `spots(gpa)` if the layout needs hand-picked spawns. It must set `world.spawns`, `world.spawn_yaws`, `world.weapon_spots`, `world.drone_anchors` and `world.vehicle_spots`. See `islands.zig` `islandSpots`.
 6. **Build.** Use your own install prefix so parallel builders never overwrite each other:
 

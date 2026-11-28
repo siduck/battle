@@ -1,7 +1,9 @@
 const std = @import("std");
 const rl = @import("raylib");
 const shared = @import("shared");
-const ui = @import("ui.zig");
+const theme = @import("theme.zig");
+const mips = @import("mips.zig");
+const backdrop = @import("backdrop.zig");
 
 const Map = shared.terrain.Map;
 
@@ -13,8 +15,13 @@ const Entry = struct {
 };
 
 const max_entries = 32;
+const map_count = @typeInfo(Map).@"enum".field_names.len;
 
 var entry_buf: [max_entries]Entry = undefined;
+var shots: [map_count]?rl.Texture2D = @splat(null);
+var dir_buf: [512]u8 = undefined;
+var dir_len: usize = 0;
+var picked: usize = 0;
 
 fn collect() []const Entry {
     var n: usize = 0;
@@ -43,77 +50,87 @@ fn padId() ?c_int {
     return null;
 }
 
-pub fn pick(font: rl.Font, dir: []const u8) ?Map {
-    const entries = collect();
-    var shots: [max_entries]?rl.Texture2D = @splat(null);
+pub fn setDir(dir: []const u8) void {
+    dir_len = @min(dir.len, dir_buf.len);
+    @memcpy(dir_buf[0..dir_len], dir[0..dir_len]);
+}
 
-    for (entries, 0..) |e, i| {
-        var buf: [512]u8 = undefined;
-        const path = std.fmt.bufPrintSentinel(&buf, "{s}/maps/{s}.png", .{ dir, @tagName(e.map) }, 0) catch continue;
+pub fn thumb(m: Map) ?rl.Texture2D {
+    const i: usize = @backingInt(m);
 
-        const tex = rl.LoadTexture(path.ptr);
+    if (shots[i]) |t| return t;
 
-        if (tex.id == 0) continue;
+    if (dir_len == 0) return null;
 
-        rl.SetTextureFilter(tex, rl.TEXTURE_FILTER_BILINEAR);
-        shots[i] = tex;
+    var buf: [640]u8 = undefined;
+    const path = std.fmt.bufPrintSentinel(&buf, "{s}/maps/{s}.png", .{ dir_buf[0..dir_len], @tagName(m) }, 0) catch return null;
+    const tex = mips.load(path.ptr);
+
+    if (tex.id == 0) return null;
+
+    rl.SetTextureFilter(tex, rl.TEXTURE_FILTER_TRILINEAR);
+    rl.SetTextureWrap(tex, rl.TEXTURE_WRAP_CLAMP);
+    shots[i] = tex;
+
+    return tex;
+}
+
+pub fn release(keep: ?Map) void {
+    for (&shots, 0..) |*s, i| {
+        if (keep) |m| {
+            if (@backingInt(m) == i) continue;
+        }
+
+        if (s.*) |t| rl.UnloadTexture(t);
+
+        s.* = null;
+    }
+}
+
+pub fn picture(m: Map, r: rl.Rectangle, radius: f32, frame: rl.Color, tint: rl.Color, a: f32) void {
+    if (thumb(m)) |tex| {
+        const tw: f32 = @floatFromInt(tex.width);
+        const th: f32 = @floatFromInt(tex.height);
+        const want = r.width / r.height;
+        const src_w = @min(tw, th * want);
+        const src_h = @min(th, tw / want);
+        const src: rl.Rectangle = .{ .x = (tw - src_w) / 2, .y = (th - src_h) / 2, .width = src_w, .height = src_h };
+
+        rl.DrawTexturePro(tex, src, r, .{ .x = 0, .y = 0 }, 0, theme.fade(tint, a));
+    } else {
+        rl.DrawRectangleRec(r, theme.fade(theme.teal, a));
     }
 
-    defer for (shots[0..entries.len]) |s| {
-        if (s) |t| rl.UnloadTexture(t);
-    };
+    theme.notch(r, radius, theme.fade(frame, a));
+}
 
-    var sel: usize = 0;
-    var t: f32 = 0;
+pub fn pick() ?Map {
+    const entries = collect();
     var cool: f32 = 0;
+
+    if (entries.len == 0) return null;
+
+    var sel: usize = @min(picked, entries.len - 1);
 
     rl.EnableCursor();
 
     while (!rl.WindowShouldClose()) {
         const dt = rl.GetFrameTime();
-        const w: f32 = @floatFromInt(rl.GetScreenWidth());
-        const h: f32 = @floatFromInt(rl.GetScreenHeight());
-        const u = h / 900;
-        const margin = 56 * u;
-        const gap = 18 * u;
-        const gy = h * 0.1 + 128 * u;
-        const avail_w = w - margin * 2;
-        const avail_h = h - gy - 40 * u;
-        var cols: usize = 3;
-        var cw: f32 = 0;
-        var try_cols: usize = 3;
-
-        while (try_cols <= 8) : (try_cols += 1) {
-            const tc: f32 = @floatFromInt(try_cols);
-            const tr: f32 = @floatFromInt((entries.len + try_cols - 1) / try_cols);
-            const by_w = (avail_w - gap * (tc - 1)) / tc;
-            const by_h = (avail_h - gap * (tr - 1)) / tr / 0.62;
-            const size = @min(by_w, by_h);
-
-            if (size > cw) {
-                cw = size;
-                cols = try_cols;
-            }
-        }
-
-        const ch = cw * 0.62;
-        const fc: f32 = @floatFromInt(cols);
-        const gx = (w - (cw * fc + gap * (fc - 1))) / 2;
-        const pad = padId();
         var choose = false;
-
-        t += dt;
-        cool = @max(0, cool - dt);
-
+        var back = false;
         var dx: i32 = 0;
         var dy: i32 = 0;
+
+        cool = @max(0, cool - dt);
 
         if (rl.IsKeyPressed(rl.KEY_RIGHT) or rl.IsKeyPressed(rl.KEY_D)) dx = 1;
         if (rl.IsKeyPressed(rl.KEY_LEFT) or rl.IsKeyPressed(rl.KEY_A)) dx = -1;
         if (rl.IsKeyPressed(rl.KEY_DOWN) or rl.IsKeyPressed(rl.KEY_S)) dy = 1;
         if (rl.IsKeyPressed(rl.KEY_UP) or rl.IsKeyPressed(rl.KEY_W)) dy = -1;
         if (rl.IsKeyPressed(rl.KEY_ENTER) or rl.IsKeyPressed(rl.KEY_SPACE)) choose = true;
-        if (rl.IsKeyPressed(rl.KEY_ESCAPE) or rl.IsKeyPressed(rl.KEY_BACK)) return null;
+        if (rl.IsKeyPressed(rl.KEY_ESCAPE) or rl.IsKeyPressed(rl.KEY_BACK)) back = true;
+
+        const pad = padId();
 
         if (pad) |id| {
             const ax = rl.GetGamepadAxisMovement(id, rl.GAMEPAD_AXIS_LEFT_X);
@@ -124,93 +141,107 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
             if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN) or (ay > 0.6 and cool == 0)) dy = 1;
             if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_LEFT_FACE_UP) or (ay < -0.6 and cool == 0)) dy = -1;
             if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_DOWN)) choose = true;
-            if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) return null;
-            if (@abs(ax) > 0.6 or @abs(ay) > 0.6) {
-                if (cool == 0) cool = 0.22;
+            if (rl.IsGamepadButtonPressed(id, rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) back = true;
+
+            if ((@abs(ax) > 0.6 or @abs(ay) > 0.6) and cool == 0) cool = 0.22;
+        }
+
+        backdrop.open(dt);
+        theme.enterScene(theme.tag("maps", 0));
+        theme.dim(0.6);
+
+        const v = theme.view();
+        const u = v.u;
+        const gap = 22 * u;
+        const keyed = v.keyed();
+        const top = v.top + theme.headerHeight(v) + 30 * u;
+        const avail_w = v.width();
+        const avail_h = v.bottom - top - (if (keyed) 56 * u else 0);
+        const ratio = 0.72;
+        var cols: usize = 3;
+        var cw: f32 = 0;
+        var try_cols: usize = 3;
+
+        while (try_cols <= 8) : (try_cols += 1) {
+            const tc: f32 = @floatFromInt(try_cols);
+            const tr: f32 = @floatFromInt((entries.len + try_cols - 1) / try_cols);
+            const by_w = (avail_w - gap * (tc - 1)) / tc;
+            const by_h = (avail_h - gap * (tr - 1)) / tr / ratio;
+            const size = @min(by_w, by_h);
+
+            if (size > cw) {
+                cw = size;
+                cols = try_cols;
             }
         }
 
         const n: i32 = @intCast(entries.len);
-        var s: i32 = @intCast(sel);
 
-        s += dx + dy * @as(i32, @intCast(cols));
-        s = @mod(s, n);
-        sel = @intCast(s);
+        sel = @intCast(@mod(@as(i32, @intCast(sel)) + dx + dy * @as(i32, @intCast(cols)), n));
 
-        const mouse = rl.GetMousePosition();
-        const moved = rl.GetMouseDelta().x != 0 or rl.GetMouseDelta().y != 0;
+        const rows: f32 = @floatFromInt((entries.len + cols - 1) / cols);
+        const fc: f32 = @floatFromInt(cols);
+        const ch = cw * ratio;
+        const gx = v.cx() - (cw * fc + gap * (fc - 1)) / 2;
+        const gy = top + @max(0, (avail_h - (ch * rows + gap * (rows - 1))) / 2);
 
-        rl.BeginDrawing();
-        rl.ClearBackground(.{ .r = 11, .g = 13, .b = 20, .a = 255 });
-        rl.DrawRectangleGradientV(0, 0, @intFromFloat(w), @intFromFloat(h), .{ .r = 20, .g = 24, .b = 36, .a = 255 }, .{ .r = 9, .g = 11, .b = 17, .a = 255 });
-
-        const kicker: [:0]const u8 = "DRONEFIRE";
-        const ks = 14 * u;
-
-        ui.caps(font, kicker, gx, h * 0.1, ks, ui.accent);
-
-        const title: [:0]const u8 = "SELECT MAP";
-        const ts = 46 * u;
-
-        ui.caps(font, title, gx, h * 0.1 + 22 * u, ts, ui.white);
-
-        const sub: [:0]const u8 = "Arrows or stick to move    Enter or A to play";
-        const ss = 15 * u;
-
-        ui.text(font, sub, gx, h * 0.1 + 22 * u + ts + 10 * u, ss, ui.fade(ui.white, 0.5));
+        if (theme.header("CHOOSE A MAP", "")) back = true;
 
         for (entries, 0..) |e, i| {
             const col: f32 = @floatFromInt(i % cols);
             const row: f32 = @floatFromInt(i / cols);
             const r: rl.Rectangle = .{ .x = gx + (cw + gap) * col, .y = gy + (ch + gap) * row, .width = cw, .height = ch };
+            const in = theme.reveal(1 + (col + row) * 0.8);
+            const b = theme.button(theme.tag("map", i), r, 20 * u, theme.tones.cream_tone, i == sel, in);
 
-            if (rl.CheckCollisionPointRec(mouse, r)) {
-                if (moved) sel = i;
+            if (b.hot) sel = i;
 
-                if (rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT)) {
-                    sel = i;
-                    choose = true;
-                }
+            if (b.click) {
+                sel = i;
+                choose = true;
             }
 
-            const on = i == sel;
-            const lift: f32 = if (on) -4 * u else 0;
-            const card: rl.Rectangle = .{ .x = r.x, .y = r.y + lift, .width = r.width, .height = r.height };
-            const img_h = card.height * 0.7;
-            const round: f32 = 0.06;
+            const f = b.face;
+            const pad_in = @max(6 * u, cw * 0.022);
+            const iw = f.width - pad_in * 2;
+            const ih = @min(iw * 0.52, f.height * 0.7);
+            const image: rl.Rectangle = .{ .x = f.x + pad_in, .y = f.y + pad_in, .width = iw, .height = ih };
 
-            rl.DrawRectangleRounded(card, round, 8, .{ .r = 22, .g = 26, .b = 38, .a = 255 });
+            picture(e.map, image, 14 * u, theme.cream, rl.WHITE, in.a);
 
-            if (shots[i]) |tex| {
-                const tw: f32 = @floatFromInt(tex.width);
-                const th: f32 = @floatFromInt(tex.height);
-                const want = card.width / img_h;
-                const src_h = @min(th, tw / want);
-                const src: rl.Rectangle = .{ .x = 0, .y = (th - src_h) / 2, .width = tw, .height = src_h };
-                const dst: rl.Rectangle = .{ .x = card.x, .y = card.y, .width = card.width, .height = img_h };
+            const room = f.y + f.height - (image.y + image.height);
+            const name_size = @min(room * 0.6, cw * 0.11);
+            const note_size = @min(room * 0.36, cw * 0.064);
+            const tx = f.x + pad_in + 6 * u;
+            const mid = image.y + image.height;
+            const name_w = iw - 12 * u;
 
-                rl.BeginScissorMode(@intFromFloat(card.x), @intFromFloat(card.y), @intFromFloat(card.width), @intFromFloat(img_h));
-                rl.DrawTexturePro(tex, src, dst, .{ .x = 0, .y = 0 }, 0, if (on) rl.WHITE else rl.Color{ .r = 170, .g = 174, .b = 184, .a = 255 });
-                rl.EndScissorMode();
-            } else {
-                rl.DrawRectangleRec(.{ .x = card.x, .y = card.y, .width = card.width, .height = img_h }, ui.fade(e.tint, 0.5));
+            theme.write(theme.heavy, e.name, tx, mid + room * 0.36, theme.fit(theme.heavy, e.name, name_size, name_w), theme.fade(theme.navy, in.a));
+            theme.write(theme.body, e.note, tx, mid + room * 0.75, theme.fit(theme.body, e.note, note_size, name_w), theme.fade(theme.soft, in.a));
+
+            if (i == sel) {
+                const s = cw * 0.16;
+                const badge: rl.Rectangle = .{ .x = image.x + image.width - s - 10 * u, .y = image.y + image.height - s - 10 * u, .width = s, .height = s };
+
+                theme.round(theme.offset(badge, 0, 5 * u), s / 2, theme.fade(theme.rust, in.a));
+                theme.round(badge, s / 2, theme.fade(theme.coral, in.a));
+                theme.icon(.play, badge.x + s / 2, badge.y + s / 2, s * 0.62, theme.fade(theme.cream, in.a));
             }
-
-            rl.DrawRectangleGradientV(@intFromFloat(card.x), @intFromFloat(card.y + img_h * 0.55), @intFromFloat(card.width), @intFromFloat(img_h * 0.45 + 1), ui.fade(ui.ink, 0), ui.fade(.{ .r = 22, .g = 26, .b = 38, .a = 255 }, 1));
-
-            const ns = @min(24 * u, cw * 0.075);
-            const name_y = card.y + img_h + 6 * u;
-
-            ui.caps(font, e.name, card.x + 18 * u, name_y, ns, ui.white);
-            ui.text(font, e.note, card.x + 18 * u, name_y + ns + 6 * u, @min(15 * u, cw * 0.045), ui.fade(ui.white, 0.55));
-            rl.DrawRectangleRec(.{ .x = card.x + 18 * u, .y = name_y - 6 * u, .width = 22 * u, .height = 2 * u }, ui.fade(e.tint, 0.9));
-
-            rl.DrawRectangleRoundedLinesEx(card, round, 8, if (on) 2 * u else 1, if (on) ui.fade(ui.white, 0.85) else ui.edge);
         }
 
-        rl.EndDrawing();
+        if (keyed) {
+            const items: []const theme.Hint = if (theme.pad_live) &.{ .{ .key = "D-PAD", .label = "Choose" }, .{ .key = "A", .label = "Play" }, .{ .key = "B", .label = "Back" } } else &.{ .{ .key = "ARROWS", .label = "Choose" }, .{ .key = "ENTER", .label = "Play" }, .{ .key = "ESC", .label = "Back" } };
+            const size = 19 * u;
+
+            theme.hints(items, v.cx() - theme.hintsWidth(items, size) / 2, v.bottom - 16 * u, size, theme.reveal(3).a);
+        }
+
+        backdrop.close(dt);
+
+        if (back) return null;
 
         if (choose) {
+            picked = sel;
             rl.DisableCursor();
 
             return entries[sel].map;
@@ -220,31 +251,51 @@ pub fn pick(font: rl.Font, dir: []const u8) ?Map {
     return null;
 }
 
-pub fn loading(font: rl.Font, label: [:0]const u8, progress: f32) void {
-    const w: f32 = @floatFromInt(rl.GetScreenWidth());
-    const h: f32 = @floatFromInt(rl.GetScreenHeight());
-    const u = h / 900;
-    const t: f32 = @floatCast(rl.GetTime());
-    const c: rl.Vector2 = .{ .x = w / 2, .y = h / 2 - 20 * u };
-    const r = 30 * u;
-    const head = @mod(t * 320, 360);
-    const span = 80 + 40 * @sin(t * 3);
+pub fn loading(label: [:0]const u8, progress: f32) void {
+    const v = theme.view();
+    const u = v.u;
     const p = std.math.clamp(progress, 0, 1);
+    const m = shared.terrain.current;
+    const def = shared.maps.get(m);
 
     rl.BeginDrawing();
-    rl.DrawRectangleGradientV(0, 0, @intFromFloat(w), @intFromFloat(h), .{ .r = 20, .g = 24, .b = 36, .a = 255 }, .{ .r = 9, .g = 11, .b = 17, .a = 255 });
-    rl.DrawRing(c, r - 2.5 * u, r, 0, 360, 64, ui.fade(ui.white, 0.1));
-    rl.DrawRing(c, r - 2.5 * u, r, head, head + span, 48, ui.accent);
+    rl.ClearBackground(theme.night);
 
-    const ls = 14 * u;
-    const lw = ui.capsWidth(font, label, ls);
+    const iw = @min(680 * u, v.width() * 0.62);
+    const ih = iw * 0.5;
+    const total = ih + 250 * u;
+    const x = v.cx() - iw / 2;
+    var y = v.h / 2 - total / 2;
 
-    ui.caps(font, label, c.x - lw / 2, c.y + r + 26 * u, ls, ui.fade(ui.white, 0.7));
+    if (def) |d| {
+        const frame: rl.Rectangle = .{ .x = x - 12 * u, .y = y, .width = iw + 24 * u, .height = ih + 24 * u };
 
-    const bw = 220 * u;
-    const by = c.y + r + 52 * u;
+        theme.panel(frame, 28 * u, theme.cream, 1);
+        picture(m, .{ .x = x, .y = y + 12 * u, .width = iw, .height = ih }, 18 * u, theme.cream, rl.WHITE, 1);
+        y += ih + 78 * u;
+        theme.extruded(theme.heavy, d.name, v.cx() - theme.measure(theme.heavy, d.name, 76 * u) / 2, y, 76 * u, theme.cream, 1);
+        y += 56 * u;
+        theme.center(theme.body, d.note, v.cx(), y, 28 * u, theme.fade(theme.cream, 0.72));
+        y += 56 * u;
+    } else {
+        const lw = @min(460 * u, iw);
 
-    rl.DrawRectangleRec(.{ .x = c.x - bw / 2, .y = by, .width = bw, .height = 2 * u }, ui.fade(ui.white, 0.12));
-    rl.DrawRectangleRec(.{ .x = c.x - bw / 2, .y = by, .width = bw * p, .height = 2 * u }, ui.accent);
+        theme.lockup(v.cx() - lw / 2, v.h / 2 - theme.lockupHeight(lw) * 0.85, lw, .{}, .{});
+        y = v.h / 2 + 130 * u;
+    }
+
+    const bw = @min(520 * u, iw);
+    const bar: rl.Rectangle = .{ .x = v.cx() - bw / 2, .y = y, .width = bw, .height = 20 * u };
+
+    theme.round(theme.offset(bar, 0, 5 * u), 10 * u, theme.fade(rl.BLACK, 0.35));
+    theme.round(bar, 10 * u, theme.slate);
+
+    if (p > 0.001) theme.round(.{ .x = bar.x, .y = bar.y, .width = @max(bar.height, bw * p), .height = bar.height }, 10 * u, theme.sun);
+
+    var pct_buf: [64]u8 = undefined;
+    const line = std.fmt.bufPrintSentinel(&pct_buf, "{s}  {d}%", .{ label, @as(u32, @intFromFloat(p * 100)) }, 0) catch label;
+
+    theme.center(theme.body, line, v.cx(), bar.y + 52 * u, 25 * u, theme.fade(theme.cream, 0.82));
+    theme.spinner(v.right - 30 * u, v.bottom - 30 * u, 24 * u, theme.fade(theme.cream, 0.14), theme.coral);
     rl.EndDrawing();
 }

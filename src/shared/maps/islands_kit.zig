@@ -78,7 +78,7 @@ pub const table = [_]api.Info{
     .{ .file = "islands/stair.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.230, -1.925, -0.050 }, .max = .{ 2.230, 4.300, 4.430 } },
     .{ .file = "islands/parapet.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.230, 0.000, -0.220 }, .max = .{ 2.230, 0.950, 0.220 } },
     .{ .file = "islands/windmill.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -5.200, 0.000, -2.750 }, .max = .{ 5.200, 12.600, 3.600 } },
-    .{ .file = "islands/foam.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -3.500, 0.000, -1.083 }, .max = .{ 3.550, 0.035, 0.578 } },
+    .{ .file = "islands/foam.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -3.500, 0.000, -0.690 }, .max = .{ 3.500, 0.035, 0.590 } },
     .{ .file = "islands/ripple.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -4.500, 0.000, -0.496 }, .max = .{ 4.320, 0.020, 0.520 } },
     .{ .file = "islands/qface.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -3.000, 0.000, -0.800 }, .max = .{ 3.000, 2.950, 0.330 } },
     .{ .file = "islands/sblock.glb", .scale = 1.00, .collide = .box, .group = .street, .foliage = false, .min = .{ -1.000, 0.000, -0.600 }, .max = .{ 1.000, 1.140, 0.600 } },

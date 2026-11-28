@@ -210,6 +210,32 @@ fn rank(o: Optic) u8 {
     return @intFromEnum(o);
 }
 
+pub fn magnified(o: Optic) bool {
+    return rank(o) >= rank(.scope2);
+}
+
+pub fn spreadFor(s: Spec, ads: f32, moving: f32, grounded: bool) f32 {
+    const airborne: f32 = if (grounded) 0 else 0.02;
+
+    return s.spread + (s.ads_spread - s.spread) * ads + (moving * 0.015 + airborne) * (1 - ads);
+}
+
+const hitch: f32 = 0.05;
+
+pub fn cool(left: f32, dt: f32) f32 {
+    if (left <= 0) return 0;
+
+    const next = left - dt;
+
+    return if (next < 0 and dt > hitch) 0 else next;
+}
+
+pub fn rearm(left: f32, interval: f32) f32 {
+    return interval + @min(left, 0);
+}
+
+const sight_zoom: f32 = 1.31;
+
 fn defaultOptic(s: Spec) ?Optic {
     if (s.flame) return null;
 
@@ -236,6 +262,8 @@ fn outfit(comptime raw: []const Spec) [raw.len]Spec {
             s.look.optic = o;
             s.ads_zoom = @max(s.ads_zoom, zoomFor(o));
         }
+
+        if (!magnified(s.look.optic) and s.ads_zoom >= 2) s.ads_zoom *= sight_zoom / 2.0;
     }
 
     return out;

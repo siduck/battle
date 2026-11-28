@@ -224,6 +224,38 @@ PALETTE = [
     ("headlight", "#efe8d4"),
     ("taillight", "#c42a2b"),
     ("tint", "#1f2a33"),
+    ("ny_brick", "#6e2f22"),
+    ("ny_brick_dark", "#55261b"),
+    ("ny_brick_light", "#84402d"),
+    ("ny_brown", "#5f3a2c"),
+    ("ny_brown_dark", "#48302a"),
+    ("ny_lime", "#b8a98a"),
+    ("ny_lime_dark", "#988a6e"),
+    ("ny_lime_light", "#cfc3a8"),
+    ("ny_tan", "#9a8261"),
+    ("ny_tan_dark", "#7d684c"),
+    ("ny_conc", "#8e8b84"),
+    ("ny_conc_dark", "#6c6a65"),
+    ("ny_iron", "#34373a"),
+    ("ny_iron_light", "#55595d"),
+    ("ny_glass", "#3a5463"),
+    ("ny_glass_light", "#6b8998"),
+    ("ny_green", "#3f6a52"),
+    ("ny_green_dark", "#2c4b3a"),
+    ("ny_yellow", "#d9a826"),
+    ("ny_orange", "#cd6530"),
+    ("ny_red", "#b03a2e"),
+    ("ny_red_dark", "#862c24"),
+    ("ny_navy", "#38496d"),
+    ("ny_cream", "#e3d6b8"),
+    ("ny_copper", "#5f8f80"),
+    ("ny_tar", "#47464a"),
+    ("ny_wood", "#7a5a3c"),
+    ("ny_wood_dark", "#54402c"),
+    ("ny_leaf", "#5f8a45"),
+    ("ny_leaf_dark", "#47683a"),
+    ("ny_leaf_light", "#7da454"),
+    ("ny_white", "#e6e1d4"),
 ]
 
 _INDEX = {n: i for i, (n, _) in enumerate(PALETTE)}
@@ -251,8 +283,8 @@ def set_mid(on=True):
     MID = on
 
 
-def chamfer(ob, width=0.02, angle=30.0, segments=1):
-    if MID:
+def chamfer(ob, width=0.02, angle=30.0, segments=1, mid=True):
+    if MID and mid:
         width *= 1.7
         segments = max(segments, 3)
 
@@ -275,13 +307,13 @@ def chamfer(ob, width=0.02, angle=30.0, segments=1):
 MIN_BEVEL_SIZE = 0.12
 
 
-def beveled_box(name, size, at=(0, 0, 0), color=0, bevel=0.02, taper_top=(1.0, 1.0)):
+def beveled_box(name, size, at=(0, 0, 0), color=0, bevel=0.02, taper_top=(1.0, 1.0), mid=True):
     b = box(name, size, at, color, taper_top)
 
     if bevel <= 0 or min(size) < MIN_BEVEL_SIZE:
         return b
 
-    return chamfer(b, bevel)
+    return chamfer(b, bevel, mid=mid)
 
 
 def window(name, width, height, at, facing=0.0, depth=0.12, frame=0.07, mullions=(1, 1), sill=True, shutters=False, colors=None):

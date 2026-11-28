@@ -1,14 +1,1 @@
-Aircraft models (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/), converted, scaled and split for the game:
-raptor: "Low poly F22 Raptor" by S1Priv, https://sketchfab.com/3d-models/6a6014b7c88745fb94e7dfa1c015cc55
-su57: "Low poly SU-57" by S1Priv, https://sketchfab.com/3d-models/b9031bc2e94947b18812ce0eca6b8345
-mig29: "Low poly Mig 29" by S1Priv, https://sketchfab.com/3d-models/c0f08d656dae4214b82b8647614f3ec4
-f14: "Low poly F14 Tomcat" by S1Priv, https://sketchfab.com/3d-models/e99d03987b574e80971c1c8cc2b75925
-rafale: "Low poly Dassault Rafale" by S1Priv, https://sketchfab.com/3d-models/1a4be5c0ebaa4e99b1ba2d7ea213818b
-a10: "Low poly A-10 Warthog" by S1Priv, https://sketchfab.com/3d-models/c808e69e65e842b1934766175693a8e3
-harrier: "Low poly AV-8B Harrier II" by S1Priv, https://sketchfab.com/3d-models/de581a7b541c4ae29e73557e054d4b68
-su47: "Low poly SU-47" by S1Priv, https://sketchfab.com/3d-models/cd6b863e879a4edd92b24faeb30a56da
-wyvern: "Low-poly X-02 Strike wyvern" by S1Priv, https://sketchfab.com/3d-models/1f8db8c4db804228accc366d95c15817
-b1: "Low-poly B1 Lancer" by S1Priv, https://sketchfab.com/3d-models/e303aa7fcff549a889ab7e5d188225c6
-ka52: "Lowpoly Ka-52" by S1Priv, https://sketchfab.com/3d-models/1b47fb709d634ea987a3bb1a30c1507b
-uh60: "Low poly UH-60 Black hawk" by S1Priv, https://sketchfab.com/3d-models/695bd6dd43cf45a0ac7ec6a123cccf2d
-md500: "MD-500 Defender Helicopter" by duanesmind, https://sketchfab.com/3d-models/da5daae0fe354269895b58c2ed72e2b8
+rafale ("Kestrel"): our own model, built for Dronefire in Blender from photo reference, no third-party assets.

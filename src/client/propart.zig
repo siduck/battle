@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const rlgl = @import("rlgl");
 const shared = @import("shared");
 const gfx = @import("gfx.zig");
 const settings = @import("settings.zig");
@@ -33,6 +34,8 @@ const Cell = struct {
     count: u32,
     center: Vec3,
     radius: f32,
+    bound: Vec3,
+    bound_radius: f32,
 };
 
 const cell_size: f32 = 32;
@@ -70,7 +73,7 @@ pub fn dumpTris() void {
 
     std.debug.print("props tris total {d}\n", .{total});
 
-    for (order[0..12]) |k| std.debug.print("  {s} {d}\n", .{ props.info(@enumFromInt(k)).file, tri_count[k] });
+    for (order[0..12]) |k| std.debug.print("  {s} {d}\n", .{ props.info(@fromBackingInt(@intCast(k))).file, tri_count[k] });
 }
 
 fn cellKey(p: Vec3) i64 {
@@ -126,21 +129,37 @@ fn buildCells(gpa: std.mem.Allocator, slot: *Slot, scales: []const f32) void {
         var j = i;
         var lo_y: f32 = 1e9;
         var hi_y: f32 = -1e9;
+        var lo_x: f32 = 1e9;
+        var hi_x: f32 = -1e9;
+        var lo_z: f32 = 1e9;
+        var hi_z: f32 = -1e9;
 
         while (j < n and cellKey(slot.spots[j]) == key) : (j += 1) {
+            lo_x = @min(lo_x, slot.spots[j].x);
+            hi_x = @max(hi_x, slot.spots[j].x);
             lo_y = @min(lo_y, slot.spots[j].y);
             hi_y = @max(hi_y, slot.spots[j].y);
+            lo_z = @min(lo_z, slot.spots[j].z);
+            hi_z = @max(hi_z, slot.spots[j].z);
         }
 
         const cx = (@floor(slot.spots[i].x / cell_size) + 0.5) * cell_size;
         const cz = (@floor(slot.spots[i].z / cell_size) + 0.5) * cell_size;
         const half_y = (hi_y - lo_y) / 2;
+        const half_x = (hi_x - lo_x) / 2;
+        const half_z = (hi_z - lo_z) / 2;
+        const center: Vec3 = .{ .x = cx, .y = (lo_y + hi_y) / 2, .z = cz };
+        const radius = @sqrt(cell_size * cell_size / 2 + half_y * half_y) + margin;
+        const bound: Vec3 = .{ .x = (lo_x + hi_x) / 2, .y = center.y, .z = (lo_z + hi_z) / 2 };
+        const bound_radius = @sqrt(half_x * half_x + half_y * half_y + half_z * half_z) + margin;
 
         cells.append(gpa, .{
             .start = @intCast(i),
             .count = @intCast(j - i),
-            .center = .{ .x = cx, .y = (lo_y + hi_y) / 2, .z = cz },
-            .radius = @sqrt(cell_size * cell_size / 2 + half_y * half_y) + margin,
+            .center = center,
+            .radius = radius,
+            .bound = bound,
+            .bound_radius = bound_radius,
         }) catch return;
         i = j;
     }
@@ -209,8 +228,44 @@ fn levelModel(slot: *const Slot, model: rl.Model, level: usize) ?rl.Model {
     };
 }
 
+const deep_footing: f32 = -10;
+
+fn drawnLate(i: usize) bool {
+    return props.info(@fromBackingInt(@intCast(i))).min[1] < deep_footing;
+}
+
+fn dropModel(model: rl.Model) void {
+    for (model.materials[0..@intCast(model.materialCount)]) |m| {
+        for (m.maps[0..11]) |map| {
+            if (map.texture.id > 0 and map.texture.id != rlgl.rlGetTextureIdDefault()) rl.UnloadTexture(map.texture);
+        }
+    }
+
+    rl.UnloadModel(model);
+}
+
 pub const Props = struct {
     slots: [kind_count]Slot = @splat(.{}),
+
+    pub fn unload(p: *Props, gpa: std.mem.Allocator) void {
+        for (&p.slots) |*slot| {
+            if (slot.model) |m| dropModel(m);
+
+            if (slot.lod) |m| dropModel(m);
+
+            if (slot.vbo != 0) rlgl.rlUnloadVertexBuffer(slot.vbo);
+
+            gpa.free(slot.all);
+            gpa.free(slot.spots);
+            gpa.free(slot.visible);
+            gpa.free(slot.cells);
+            slot.* = .{};
+        }
+
+        for (step_pool[0..step_used]) |m| dropModel(m);
+
+        step_used = 0;
+    }
 
     pub fn load(gpa: std.mem.Allocator, dir: []const u8) Props {
         step_used = 0;
@@ -218,18 +273,18 @@ pub const Props = struct {
         var p: Props = .{};
         var counts: [kind_count]usize = @splat(0);
 
-        for (world.placements) |pl| counts[@intFromEnum(pl.kind)] += 1;
+        for (world.placements) |pl| counts[@backingInt(pl.kind)] += 1;
 
         for (&p.slots, 0..) |*slot, i| {
             if (counts[i] == 0) continue;
 
             var buf: [512]u8 = undefined;
-            const path = std.fmt.bufPrintSentinel(&buf, "{s}/{s}", .{ dir, props.info(@enumFromInt(i)).file }, 0) catch continue;
+            const path = std.fmt.bufPrintSentinel(&buf, "{s}/{s}", .{ dir, props.info(@fromBackingInt(@intCast(i))).file }, 0) catch continue;
             const model = rl.LoadModel(path.ptr);
 
             if (model.meshCount == 0) continue;
 
-            const file = props.info(@enumFromInt(i)).file;
+            const file = props.info(@fromBackingInt(@intCast(i))).file;
 
             if (std.mem.endsWith(u8, std.mem.sliceTo(file, 0), ".glb")) {
                 var lod_buf: [512]u8 = undefined;
@@ -249,7 +304,7 @@ pub const Props = struct {
                 }
             }
 
-            tint(model, std.mem.sliceTo(props.info(@enumFromInt(i)).file, 0));
+            tint(model, std.mem.sliceTo(props.info(@fromBackingInt(@intCast(i))).file, 0));
 
             const box = rl.GetModelBoundingBox(model);
 
@@ -269,7 +324,7 @@ pub const Props = struct {
         }
 
         for (world.placements) |pl| {
-            const k = @intFromEnum(pl.kind);
+            const k = @backingInt(pl.kind);
             const slot = &p.slots[k];
 
             if (slot.model == null or slot.count >= slot.all.len) continue;
@@ -306,29 +361,33 @@ pub const Props = struct {
     }
 
     fn glassy(i: usize) bool {
-        return std.mem.startsWith(u8, props.info(@enumFromInt(i)).file, "prism/glass_pane");
+        return std.mem.startsWith(u8, props.info(@fromBackingInt(@intCast(i))).file, "prism/glass_pane");
     }
 
     pub fn drawGlass(p: *Props, r: *gfx.Renderer, eye: Vec3, forward: Vec3) void {
         if (r.phase == .shadow) return;
 
         r.setGlass(0.22);
-        p.drawWhere(r, eye, forward, true);
+        p.drawWhere(r, eye, forward, true, false);
         r.setGlass(0);
     }
 
     pub fn draw(p: *Props, r: *gfx.Renderer, eye: Vec3, forward: Vec3) void {
-        p.drawWhere(r, eye, forward, false);
+        p.drawWhere(r, eye, forward, false, false);
     }
 
-    fn drawWhere(p: *Props, r: *gfx.Renderer, eye: Vec3, forward: Vec3, glass: bool) void {
+    pub fn drawFootings(p: *Props, r: *gfx.Renderer, eye: Vec3, forward: Vec3) void {
+        p.drawWhere(r, eye, forward, false, true);
+    }
+
+    fn drawWhere(p: *Props, r: *gfx.Renderer, eye: Vec3, forward: Vec3, glass: bool, late: bool) void {
         const shadow = r.phase == .shadow;
 
         for (&p.slots, 0..) |*slot, i| {
             const model = slot.model orelse continue;
-            const info = props.info(@enumFromInt(i));
+            const info = props.info(@fromBackingInt(@intCast(i)));
 
-            if (glassy(i) != glass) continue;
+            if (glassy(i) != glass or (!glass and drawnLate(i) != late)) continue;
             const limit = reach(info.group, shadow) * (if (shadow) @min(settings.view_dist, 1) else settings.view_dist);
             const limit2 = limit * limit;
             var n: usize = 0;
@@ -349,17 +408,32 @@ pub const Props = struct {
                 const pixel_limit = gfx.pixelAngle() * min_pixels;
                 const lod_from = if (slot.lod != null) slot.size / (gfx.pixelAngle() * lod_pixels) else 1e9;
 
+                var levels: [512]u8 = undefined;
+                const cells = slot.cells[0..@min(slot.cells.len, levels.len)];
+
+                tri_count[i] = 0;
+
+                for (cells, 0..) |c, ci| {
+                    const d = c.center.sub(eye);
+                    const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
+
+                    levels[ci] = 255;
+
+                    if (flat < limit and slot.size > pixel_limit * @max(flat, 1) and gfx.sphereVisible(c.bound, c.bound_radius) and pvs.visible(eye, c.bound, c.bound_radius)) {
+                        const level = pickLevel(slot, flat, lod_from);
+
+                        levels[ci] = @intCast(level);
+                        tri_count[i] += c.count * modelTris(levelModel(slot, model, level) orelse model);
+                    }
+                }
+
                 for (0..4) |level| {
                     const m = levelModel(slot, model, level) orelse continue;
                     var run_start: usize = 0;
                     var run_len: usize = 0;
 
-                    for (slot.cells) |c| {
-                        const d = c.center.sub(eye);
-                        const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
-                        const show = flat < limit and slot.size > pixel_limit * @max(flat, 1) and pickLevel(slot, flat, lod_from) == level and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius);
-
-                        if (!show) continue;
+                    for (cells, 0..) |c, ci| {
+                        if (levels[ci] != level) continue;
 
                         if (run_len > 0 and run_start + run_len == c.start) {
                             run_len += c.count;
@@ -371,15 +445,6 @@ pub const Props = struct {
                     }
 
                     r.drawStaticRange(m, slot.vbo, run_start, run_len, info.foliage);
-                }
-
-                tri_count[i] = 0;
-
-                for (slot.cells) |c| {
-                    const d = c.center.sub(eye);
-                    const flat = @sqrt(d.x * d.x + d.z * d.z) - c.radius;
-
-                    if (flat < limit and slot.size > pixel_limit * @max(flat, 1) and gfx.sphereVisible(c.center, c.radius) and pvs.visible(eye, c.center, c.radius)) tri_count[i] += c.count * modelTris(levelModel(slot, model, pickLevel(slot, flat, lod_from)) orelse model);
                 }
 
                 r.setMatId(-1);
@@ -485,7 +550,7 @@ const kit_mats = [_]KitMat{
 fn kitMaterial(i: usize) f32 {
     if (i >= props.named_kinds) return -1;
 
-    const name = @tagName(@as(props.Kind, @enumFromInt(i)));
+    const name = @tagName(@as(props.Kind, @fromBackingInt(@intCast(i))));
 
     for (kit_mats) |k| {
         if (std.mem.startsWith(u8, name, k.prefix)) return @floatFromInt(@as(u32, k.side) * 32 + k.top);

@@ -5,6 +5,7 @@ const rl = @import("raylib");
 const mesh = @import("mesh.zig");
 const shared = @import("shared");
 const assets = @import("assets.zig");
+const etc = @import("etc.zig");
 
 const weapons = shared.weapons;
 const Vec3 = shared.math.Vec3;
@@ -31,6 +32,7 @@ pub const Mount = struct {
     z: f32,
     scale: f32,
     eye: f32,
+    risers: [4]f32 = @splat(0),
 };
 
 const OpticInfo = struct {
@@ -40,11 +42,14 @@ const OpticInfo = struct {
 };
 
 const optic_info = [_]OpticInfo{
-    .{ .file = "Optic_Dot", .length = 0.05, .eye = 0.034 },
+    .{ .file = "Optic_Dot", .length = 0.026, .eye = 0.034 },
     .{ .file = "Optic_Holo", .length = 0.06, .eye = 0.04 },
     .{ .file = "Optic_Scope2", .length = 0.12, .eye = 0.034 },
     .{ .file = "Optic_Scope4", .length = 0.18, .eye = 0.036 },
     .{ .file = "Optic_Scope8", .length = 0.25, .eye = 0.0384 },
+    .{ .file = "Sight_X2", .length = 0.04, .eye = 0.028 },
+    .{ .file = "Sight_X4", .length = 0.046, .eye = 0.041 },
+    .{ .file = "Sight_X8", .length = 0.056, .eye = 0.054 },
 };
 
 pub var optic_models: [optic_info.len]?rl.Model = @splat(null);
@@ -75,14 +80,52 @@ fn lensFree(i: usize, m: rl.Model) rl.Model {
     return out;
 }
 
-const reliefs = [_]f32{ 0.2, 0.2, 0.11, 0.095, 0.085 };
+const reliefs = [_]f32{ 0.15, 0.16, 0.11, 0.095, 0.085, 0.12, 0.11, 0.1 };
+const lenses = [_]f32{ 0.127, 0.176, 0.262, 0.09 };
+const first_sight = 5;
+
+pub fn aimed(o: Mount, zoom: f32, magnified: bool) Mount {
+    const step: usize = if (!magnified) 3 else if (zoom < 3) 0 else if (zoom < 5) 1 else 2;
+    const y = o.y + o.risers[step];
+    const kind = if (magnified) first_sight + step else o.kind;
+
+    return .{ .kind = kind, .y = y, .z = o.z, .scale = o.scale, .eye = y + optic_info[kind].eye * o.scale };
+}
+
+fn riser(body: rl.Model, o: Mount, step: usize) f32 {
+    const kind = if (step == 3) o.kind else first_sight + step;
+    const eye = o.y + optic_info[kind].eye * o.scale;
+    const near = (reliefs[kind] + optic_info[kind].length / 2) * o.scale;
+    var lift: f32 = 0;
+
+    for (body.meshes[0..@intCast(body.meshCount)]) |m| {
+        if (m.vertices == null) continue;
+
+        const v = m.vertices[0..@intCast(m.vertexCount * 3)];
+        var i: usize = 0;
+
+        while (i < v.len) : (i += 3) {
+            const d = near + o.z - v[i + 2];
+
+            if (d < 0.03) continue;
+
+            const open = lenses[step] * d;
+
+            if (@abs(v[i]) > open * 0.7) continue;
+
+            lift = @max(lift, v[i + 1] + open * 0.45 - eye);
+        }
+    }
+
+    return @min(lift, 0.075);
+}
 
 pub fn eyepiece(o: Mount) f32 {
     return o.z + optic_info[o.kind].length * o.scale / 2;
 }
 
 pub fn relief(o: Mount) f32 {
-    return reliefs[o.kind];
+    return reliefs[o.kind] * o.scale;
 }
 
 
@@ -385,6 +428,8 @@ fn load(dir: []const u8, file: []const u8) ?rl.Model {
 
     if (model.meshCount == 0) return null;
 
+    etc.apply(model, path);
+
     return model;
 }
 
@@ -397,6 +442,8 @@ fn loadGlb(dir: []const u8, file: []const u8) ?rl.Model {
     const model = rl.LoadModel(path.ptr);
 
     if (model.meshCount == 0) return null;
+
+    etc.apply(model, path);
 
     return model;
 }
@@ -485,6 +532,11 @@ pub fn loadAll(dir: []const u8) [weapons.count]Art {
             const skip = art.blade or art.tips != null or spec.class == .bow or spec.class == .crossbow or spec.class == .melee or spec.flame;
 
             if (!skip and art.box != null) art.optic = fitOptic(body, art.box.?, spec) orelse fallbackOptic(art.box.?, spec);
+
+            if (art.optic) |*o| {
+                for (&o.risers, 0..) |*lift, step| lift.* = riser(body, o.*, step);
+            }
+
             mesh.smoothModel(body, 38);
             mesh.dropCpu(body);
         }

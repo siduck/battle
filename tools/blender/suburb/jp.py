@@ -13,6 +13,9 @@ MID = os.environ.get("MID") == "1"
 FAR = os.environ.get("FAR") == "1"
 N = 2 if MID else 1
 T = 0.25
+FUSE_BEVEL = 0.035
+FUSE_SEG = 3
+CENTER = True
 KEY = "#e9d7b6"
 ACCENTS = ("jp_red", "jp_red_dark", "jp_indigo", "jp_yellow", "jp_green", "jp_cherry", "jp_cherry_light", "jp_cherry_dark", "jp_maple", "jp_maple_light")
 
@@ -492,9 +495,9 @@ def finish(name, budget=None, fuse_soft=True, gradient=True, shade=None):
     if MID and fuse_soft and len(soft) > 1:
         gone = {id(o) for o in soft[1:]}
         parts = [p for p in parts if id(p) not in gone]
-        k.fuse(list(soft), bevel=0.035, segments=3)
+        k.fuse(list(soft), bevel=FUSE_BEVEL, segments=FUSE_SEG)
 
-    ob = k.finish(name, parts, budget=budget)
+    ob = k.finish(name, parts, budget=budget, center=CENTER)
     k.cull_hidden(ob)
 
     if gradient:

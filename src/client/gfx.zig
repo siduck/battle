@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const mips = @import("mips.zig");
 const rlgl = @import("rlgl");
 const rm = @import("raymath");
 const shared = @import("shared");
@@ -278,7 +279,6 @@ const lit_fs_pre =
     \\}
     \\void main() {
     \\    vec4 texel = texture(texture0, uv);
-
 ;
 
 const lit_fs_cut =
@@ -448,6 +448,7 @@ var inst_vbos: [3]c_uint = .{ 0, 0, 0 };
 var inst_frame: usize = 0;
 var inst_ring: usize = 0;
 var sway_loc: c_int = -2;
+var sheen_loc: c_int = -2;
 var sway_time_loc: c_int = -1;
 var mat_id_loc: c_int = -1;
 var skinned_loc: c_int = -1;
@@ -826,6 +827,21 @@ pub const Renderer = struct {
         };
     }
 
+    pub fn applyPalette(r: *Renderer, p: shared.maps.Palette) void {
+        const mag = (r.sun_color[0] + r.sun_color[1] + r.sun_color[2]) / 3;
+
+        r.sun_dir = (Vec3{ .x = p.sun_dir[0], .y = p.sun_dir[1], .z = p.sun_dir[2] }).normalize();
+        r.sun_color = .{ mag * p.sun_tint[0], mag * p.sun_tint[1], mag * p.sun_tint[2] };
+        r.grade_tint = p.grade_tint;
+        r.grade_sat = p.grade_sat;
+        r.fog = p.fog;
+        r.fog_color = p.fog_color;
+        r.amb_sky = p.amb_sky;
+        r.amb_ground = p.amb_ground;
+        r.shade_tint = p.shade_tint;
+        r.zenith = p.zenith;
+    }
+
     pub fn beginShadow(r: *Renderer, focus: Vec3, cascade: usize) void {
         const far = cascade > 0;
         const span: f32 = if (far) shadow_span_far else shadow_span;
@@ -1019,11 +1035,10 @@ pub const Renderer = struct {
     pub fn loadGround(r: *Renderer, dir: []const u8) void {
         var buf: [512]u8 = undefined;
         const path = std.fmt.bufPrintSentinel(&buf, "{s}/ground.png", .{dir}, 0) catch return;
-        var t = rl.LoadTexture(path.ptr);
+        const t = mips.load(path.ptr);
 
         if (t.id == 0) return;
 
-        rl.GenTextureMipmaps(&t);
         rl.SetTextureFilter(t, rl.TEXTURE_FILTER_TRILINEAR);
         rl.SetTextureWrap(t, rl.TEXTURE_WRAP_REPEAT);
         r.ground_detail = t;
@@ -1044,11 +1059,10 @@ pub const Renderer = struct {
         for (&r.mats, 0..) |*m, i| {
             var buf: [512]u8 = undefined;
             const path = std.fmt.bufPrintSentinel(&buf, "{s}/mat{d}.png", .{ dir, i }, 0) catch return;
-            var t = rl.LoadTexture(path.ptr);
+            const t = mips.load(path.ptr);
 
             if (t.id == 0) return;
 
-            rl.GenTextureMipmaps(&t);
             rl.SetTextureFilter(t, rl.TEXTURE_FILTER_TRILINEAR);
             rl.SetTextureWrap(t, rl.TEXTURE_WRAP_REPEAT);
             m.* = t;
@@ -1089,7 +1103,7 @@ pub const Renderer = struct {
 
         const v: f32 = if (on and shared.terrain.current != .prism and shared.terrain.current != .courtyard) 4 else 0;
 
-        rl.SetShaderValue(r.lit_inst, rl.GetShaderLocation(r.lit_inst, "detail"), &v, rl.SHADER_UNIFORM_FLOAT);
+        rl.SetShaderValue(r.lit_inst, r.inst_locs.detail, &v, rl.SHADER_UNIFORM_FLOAT);
     }
 
     pub fn setDetail(r: *Renderer, on: bool) void {
@@ -1267,7 +1281,15 @@ pub const Renderer = struct {
 
         if (r.phase == .shadow) return;
 
-        const loc = rl.GetShaderLocation(r.lit, "glassAlpha");
+        var clear = false;
+
+        for (0..@intCast(model.meshCount)) |k| {
+            if (model.materials[@intCast(model.meshMaterial[k])].maps[0].color.a < 250) clear = true;
+        }
+
+        if (!clear) return;
+
+        const loc = r.locs.glass;
         const solid: f32 = 0;
 
         rlgl.rlDrawRenderBatchActive();
@@ -1297,7 +1319,9 @@ pub const Renderer = struct {
         if (r.phase == .shadow) return;
 
         rlgl.rlDrawRenderBatchActive();
-        rl.SetShaderValue(r.lit, rl.GetShaderLocation(r.lit, "sheen"), &k, rl.SHADER_UNIFORM_FLOAT);
+        if (sheen_loc == -2) sheen_loc = rl.GetShaderLocation(r.lit, "sheen");
+
+        rl.SetShaderValue(r.lit, sheen_loc, &k, rl.SHADER_UNIFORM_FLOAT);
     }
 
     pub fn ambientBoost(r: *Renderer, k: f32) void {
@@ -1963,7 +1987,6 @@ pub const Post = struct {
     }
 
     pub fn ambientOcclusion(p: *Post, fovy: f32) void {
-
         const tan_half = @tan(fovy * std.math.pi / 360);
         const aspect = @as(f32, @floatFromInt(p.w)) / @as(f32, @floatFromInt(p.h));
         const proj = [2]f32{ tan_half * aspect, tan_half };
@@ -2095,7 +2118,6 @@ fn drop(t: *Target) void {
 }
 
 var additive = false;
-
 
 fn begin(sh: rl.Shader, t: Target) void {
     rlgl.rlDrawRenderBatchActive();

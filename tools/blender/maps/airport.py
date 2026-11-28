@@ -5,6 +5,13 @@ from pf import *
 from mathutils.bvhtree import BVHTree
 
 EXTRA = os.path.join(P, "extra")
+OWN = os.environ.get("OWN", "")
+
+
+def own(name):
+    path = os.path.join(OWN, name + ".glb") if OWN else ""
+
+    return path if path and os.path.exists(path) else None
 
 
 def hemisphere(n):
@@ -321,7 +328,14 @@ def finish(bm, name, info_extra):
 
 
 def build(name, src, skip=None, scale=1.0, k=None, dist=4.0, strength=0.55, split=0.0, dy=1.0, voxel=True, sky=0.18, sat=1.0, cell=0.5, min_area=0.0, spin=0.0, fill=True, glass=True):
-    bm = load_skip(src_path(src), skip, glass)
+    mine = own(name)
+
+    if mine:
+        bm = load_skip(mine, None, False)
+        scale, sat, spin, k, split = 1.0, 1.0, 0.0, None, 0.0
+        strength *= 0.7
+    else:
+        bm = load_skip(src_path(src), skip, glass)
 
     if k:
         tint(bm, k)
@@ -342,7 +356,14 @@ def build(name, src, skip=None, scale=1.0, k=None, dist=4.0, strength=0.55, spli
 
 
 def prop(name, src, scale=1.0, k=None, group="street", collide="box", dist=1.5, strength=0.5, skip=None, sat=1.0, spin=0.0, sky=0.12, glass=False, post=None):
-    bm = load_skip(src_path(src), skip, glass)
+    mine = own(name)
+
+    if mine:
+        bm = load_skip(mine, None, False)
+        scale, sat, spin, k, post = 1.0, 1.0, 0.0, None, None
+        strength *= 0.8
+    else:
+        bm = load_skip(src_path(src), skip, glass)
 
     if k:
         tint(bm, k)

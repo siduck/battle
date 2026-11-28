@@ -3,6 +3,7 @@ const props = @import("../props.zig");
 const api = @import("api.zig");
 
 pub const Def = api.Def;
+pub const Palette = api.Palette;
 pub const Scatter = api.Scatter;
 
 const all = struct {
@@ -15,13 +16,9 @@ const all = struct {
     pub const japan = @import("japan.zig");
     pub const forest = @import("forest.zig");
     pub const nyc = @import("nyc.zig");
-    pub const pirate = @import("pirate.zig");
-    pub const prehistoric = @import("prehistoric.zig");
     pub const racing = @import("racing.zig");
     pub const lab = @import("lab.zig");
-    pub const salvage = @import("salvage.zig");
     pub const stadium = @import("stadium.zig");
-    pub const warehouse = @import("warehouse.zig");
 };
 
 pub fn get(m: terrain.Map) ?*const Def {

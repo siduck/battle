@@ -9,6 +9,7 @@ from mathutils import Vector
 
 out = sys.argv[sys.argv.index("--") + 1]
 os.makedirs(out, exist_ok=True)
+ONLY = [n for n in os.environ.get("ONLY", "").split(",") if n]
 
 PAL = {
     "body": ((0.25, 0.27, 0.3), 0.5, 0.2),
@@ -140,20 +141,55 @@ def tones():
         me.color_attributes.active_color = attr
 
 
+def merge():
+    groups = {}
+
+    for o in bpy.data.objects:
+        if o.type == "MESH":
+            groups.setdefault(o.data.materials[0].name, []).append(o)
+
+    for parts in groups.values():
+        bpy.ops.object.select_all(action="DESELECT")
+
+        for o in parts:
+            o.select_set(True)
+
+        bpy.context.view_layer.objects.active = parts[0]
+
+        if len(parts) > 1:
+            bpy.ops.object.join()
+
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+
 def export(name):
     tones()
+    merge()
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.export_scene.gltf(filepath=os.path.join(out, name + ".glb"), export_format="GLB", export_apply=True, export_materials="EXPORT", export_texcoords=False, export_normals=True, use_selection=False, export_vertex_color="ACTIVE")
 
 
+def barrel(y0, y1, z, outer, inner, m, bevel=0.0008):
+    return tube(y0, y1, z, outer, m, 24, bevel, None, inner)
+
+
+def knob(loc, axis, r, depth, m):
+    turn = {"x": (0, math.pi / 2, 0), "z": (0, 0, 0)}[axis]
+    bpy.ops.mesh.primitive_cylinder_add(vertices=14, radius=r, depth=depth, location=loc, rotation=turn)
+
+    return finish(bpy.context.object, m, 0.0008)
+
+
 def red_dot():
     clear()
-    mount(0.05, 0.006)
-    box((0, 0.004, 0.022), (0.026, 0.032, 0.014), "body", 0.003)
-    tube(-0.014, 0.014, 0.034, 0.016, "body", 14, 0.0, None, 0.0135)
-    ring(-0.014, 0.034, 0.0165, 0.003, "rim")
-    box((0.017, 0.004, 0.026), (0.008, 0.014, 0.01), "dark", 0.002)
-    box((0, 0.012, 0.034), (0.0025, 0.002, 0.0025), "glow", 0.0005)
+    zc = 0.034
+    mount(0.044, 0.004)
+    box((0, 0, 0.0126), (0.018, 0.02, 0.004), "dark", 0.001)
+    barrel(-0.012, -0.006, zc, 0.0212, 0.0186, "dark")
+    barrel(-0.006, 0.006, zc, 0.02, 0.0182, "body", 0.0)
+    barrel(0.006, 0.012, zc, 0.0206, 0.0174, "dark")
+    knob((-0.0235, 0.0, zc), "x", 0.0062, 0.008, "dark")
+    knob((-0.0285, 0.0, zc), "x", 0.0045, 0.003, "rail")
     export("Optic_Dot")
 
 
@@ -178,7 +214,8 @@ def scope(name, length, r_tube, r_obj, r_eye, turrets, bell):
     zc = 0.012 + rise
     mount(length * 0.55, 0.004)
     for y in (-length * 0.18, length * 0.18):
-        box((0, y, 0.012 + rise / 2), (0.016, 0.012, rise), "body", 0.002)
+        post = rise - r_tube + 0.0015
+        box((0, y, 0.012 + post / 2), (0.016, 0.012, post), "body", 0.002)
         ring(y, zc, r_tube + 0.0025, 0.012, "dark")
     front = -length / 2
     back = length / 2
@@ -200,11 +237,141 @@ def scope(name, length, r_tube, r_obj, r_eye, turrets, bell):
     export(name)
 
 
-red_dot()
-holo()
-scope("Optic_Scope2", 0.12, 0.011, 0.015, 0.0135, False, 0.026)
-scope("Optic_Scope4", 0.18, 0.012, 0.02, 0.0145, True, 0.04)
-scope("Optic_Scope8", 0.25, 0.013, 0.026, 0.015, True, 0.06)
+def shell(zc, profile, m, sides=28, phase=0.0):
+    verts = []
+    faces = []
+    count = len(profile)
+
+    for k in range(sides):
+        a = phase + math.tau * k / sides
+        verts += [(r * math.cos(a), y, zc + r * math.sin(a)) for y, r in profile]
+
+    for k in range(sides):
+        for i in range(count):
+            a = k * count + i
+            b = k * count + (i + 1) % count
+            c = ((k + 1) % sides) * count + (i + 1) % count
+            d = ((k + 1) % sides) * count + i
+            faces.append((a, b, c, d))
+
+    me = bpy.data.meshes.new("shell")
+    me.from_pydata(verts, [], faces)
+    me.update()
+    o = bpy.data.objects.new("shell", me)
+    bpy.context.collection.objects.link(o)
+    bpy.context.view_layer.objects.active = o
+    o.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    o.select_set(False)
+
+    return finish(o, m)
+
+
+def band(zc, y0, y1, outer, depth, m):
+    shell(zc, [(y1, outer), (y0, outer), (y0, outer - depth), (y1, outer - depth)], m)
+
+
+def turret(zc, side, y, base, r, depth, cap):
+    at = {"right": lambda d: (-(base + d), y, zc), "left": lambda d: (base + d, y, zc), "top": lambda d: (0, y, zc + base + d)}[side]
+    axis = "z" if side == "top" else "x"
+    knob(at(depth * 0.5), axis, r, depth, "dark")
+    knob(at(depth + cap * 0.5), axis, r * 1.12, cap, "body")
+    knob(at(depth + cap + cap * 0.35), axis, r * 0.66, cap * 0.7, "dark")
+
+    for k in range(10):
+        a = math.tau * k / 10
+        c, s = math.cos(a) * r * 1.12, math.sin(a) * r * 1.12
+        p = at(depth + cap * 0.5)
+
+        if side == "top":
+            box((p[0] + c, p[1] + s, p[2]), (r * 0.2, r * 0.2, cap * 0.8), "dark", 0.0003)
+        else:
+            box((p[0], p[1] + c, p[2] + s), (cap * 0.8, r * 0.2, r * 0.2), "dark", 0.0003)
+
+
+def body(length, eye, rear_in, rear_out, front_in, front_out, waist):
+    half = length / 2
+    lip = length * 0.22
+    shell(eye, [(half, rear_out), (half - lip, rear_out), (half - lip - 0.002, waist), (-half + lip + 0.002, waist), (-half + lip, front_out), (-half, front_out), (-half, front_in), (half - 0.0015, rear_in), (half, rear_in + 0.0008)], "dark")
+    mount(length * 0.92, 0.002)
+    gap = eye - waist
+    box((0, 0, 0.009 + gap / 2), (0.019, length * 0.6, max(gap - 0.001, 0.003)), "body", 0.0015)
+
+    for y in (-length * 0.2, length * 0.2):
+        knob((-0.0115, y, 0.0075), "x", 0.0036, 0.004, "dark")
+
+
+def sight_x2():
+    clear()
+    eye = 0.028
+    body(0.04, eye, 0.0168, 0.0212, 0.0208, 0.0232, 0.0208 + 0.0006)
+    band(eye, -0.0128, -0.0104, 0.0238, 0.0016, "body")
+    turret(eye, "right", 0.002, 0.0222, 0.0072, 0.0058, 0.0028)
+    turret(eye, "top", 0.002, 0.0218, 0.0058, 0.0045, 0.0025)
+    band(eye, 0.0196, 0.0207, 0.0197, 0.0007, "body")
+    front = -0.0212
+    foot = eye - 0.0212
+    tip = eye - 0.0096
+    box((0, front, (foot + tip) / 2), (0.0014, 0.0016, tip - foot), "dark", 0.0003)
+    box((0, front, tip), (0.0028, 0.002, 0.0016), "dark", 0.0004)
+
+    for x in (-0.0052, 0.0052):
+        box((x, front, foot + 0.0045), (0.0012, 0.0016, 0.0085), "dark", 0.0003)
+
+    export("Sight_X2")
+
+
+def sight_x4():
+    clear()
+    eye = 0.041
+    body(0.046, eye, 0.0215, 0.033, 0.028, 0.0318, 0.029)
+    band(eye, 0.017, 0.0235, 0.0342, 0.0022, "body")
+    band(eye, -0.0225, -0.019, 0.0326, 0.0018, "body")
+    turret(eye, "right", 0.003, 0.033, 0.0128, 0.0095, 0.0046)
+    band(eye, 0.0226, 0.0239, 0.0303, 0.0012, "body")
+    band(eye, 0.0226, 0.0235, 0.0258, 0.0006, "rail")
+    turret(eye, "left", 0.003, 0.0322, 0.0072, 0.0042, 0.0028)
+    box((0, 0.004, eye + 0.0345), (0.019, 0.03, 0.0075), "body", 0.0022)
+    box((0, 0.004, eye + 0.0399), (0.008, 0.022, 0.0044), "dark", 0.0012)
+
+    for x in (-0.0058, 0.0058):
+        box((x, 0.019, eye + 0.0372), (0.0034, 0.005, 0.0034), "rail", 0.0008)
+
+    export("Sight_X4")
+
+
+def sight_x8():
+    clear()
+    eye = 0.054
+    body(0.056, eye, 0.029, 0.046, 0.0418, 0.0462, 0.0432)
+    band(eye, 0.023, 0.0285, 0.0478, 0.0028, "dark")
+    band(eye, 0.0145, 0.0175, 0.0472, 0.003, "body")
+    band(eye, -0.006, -0.0015, 0.0446, 0.002, "rail")
+    band(eye, -0.0285, -0.023, 0.0478, 0.0024, "body")
+    turret(eye, "right", 0.004, 0.047, 0.0145, 0.0105, 0.005)
+    band(eye, 0.0275, 0.0292, 0.0432, 0.0024, "body")
+    band(eye, 0.0275, 0.0288, 0.0372, 0.001, "rail")
+    band(eye, 0.0275, 0.0284, 0.0332, 0.0007, "body")
+    turret(eye, "left", 0.004, 0.0465, 0.011, 0.0065, 0.0042)
+    turret(eye, "top", 0.004, 0.0462, 0.012, 0.008, 0.0045)
+    export("Sight_X8")
+
+
+for name, make in (
+    ("Optic_Dot", red_dot),
+    ("Optic_Holo", holo),
+    ("Optic_Scope2", lambda: scope("Optic_Scope2", 0.12, 0.011, 0.015, 0.0135, False, 0.026)),
+    ("Optic_Scope4", lambda: scope("Optic_Scope4", 0.18, 0.012, 0.02, 0.0145, True, 0.04)),
+    ("Optic_Scope8", lambda: scope("Optic_Scope8", 0.25, 0.013, 0.026, 0.015, True, 0.06)),
+    ("Sight_X2", sight_x2),
+    ("Sight_X4", sight_x4),
+    ("Sight_X8", sight_x8),
+):
+    if not ONLY or name in ONLY:
+        make()
 
 
 def preview_all():

@@ -19,8 +19,6 @@ pub const def: api.Def = .{
     .name = "Highway",
     .note = "Desert town inside a road circuit",
     .tint = .{ 214, 120, 72 },
-    .half = 210,
-    .play = 172,
     .facet = 2.0,
     .height = height,
     .ground = groundColor,
@@ -40,15 +38,14 @@ pub const def: api.Def = .{
         .shade_tint = .{ 0.9, 0.9, 1.06 },
         .zenith = .{ 0.1, 0.3, 0.62 },
     },
-    .backdrop = .{ 200, 150, 104 },
+    .backdrop = .{ 194, 152, 114 },
     .floor_y = -4,
     .grip = 0.8,
-    .tufts = 0.3,
 };
 
-const hx: f32 = 140;
-const hz: f32 = 118;
-const corner: f32 = 42;
+const hx: f32 = api.arena_half - 15;
+const hz: f32 = api.arena_half - 21;
+const corner: f32 = 26;
 const track_w: f32 = 7.5;
 const street_w: f32 = 6;
 
@@ -83,7 +80,7 @@ fn height(x: f32, z: f32) f32 {
     const sd = trackSd(x, z);
     const outside = tr.smooth(12, 40, sd);
     const dunes = (tr.fbm(x * 0.02 + 5, z * 0.02 - 3) - 0.35) * 7 * outside;
-    const edge = tr.smooth(150, 200, @max(@abs(x), @abs(z))) * 10;
+    const edge = tr.smooth(tr.play - 2, tr.half - 6, @max(@abs(x), @abs(z))) * 12;
     const town = (tr.fbm(x * 0.01, z * 0.01) - 0.5) * 0.8 * (1 - outside);
 
     return @max(dunes, 0) + edge + town;
@@ -120,10 +117,10 @@ fn groundColor(x: f32, z: f32) api.Rgb {
         return shade(mix3(mix3(dust, zone, 0.75), .{ 150, 140, 96 }, weed * 0.45), light * ao);
     }
 
-    const sand = mix3(.{ 222, 170, 112 }, .{ 200, 140, 92 }, tr.fbm(x * 0.04 + 1, z * 0.04 - 6));
+    const sand = mix3(.{ 214, 170, 122 }, .{ 192, 144, 104 }, tr.fbm(x * 0.04 + 1, z * 0.04 - 6));
     const scrub = tr.smooth(0.55, 0.68, tr.fbm(x * 0.08 + 9, z * 0.08));
 
-    return shade(mix3(mix3(sand, .{ 232, 196, 150 }, std.math.clamp(fleck - 0.5, 0, 0.4)), .{ 150, 132, 88 }, scrub * 0.6), light * ao);
+    return shade(mix3(mix3(sand, .{ 232, 196, 150 }, std.math.clamp(fleck - 0.5, 0, 0.4)), .{ 142, 132, 96 }, scrub * 0.6), light * ao);
 }
 
 const max_lots = 120;
@@ -456,7 +453,7 @@ fn circuit(b: *Builder) void {
             const gx = p[0] - nx * (track_w + 3);
             const gz = p[1] - nz * (track_w + 3);
 
-            if (!(@abs(p[0]) < 70 and p[1] < 0)) {
+            if (!(@abs(p[0]) < stand_half + 3 and p[1] < 0)) {
                 b.putAt(of(.rail), vec(gx, tr.height(gx, gz), gz), yaw, 1);
                 box(b, gx - @abs(@cos(p[2])) * 2 - 0.2, tr.height(gx, gz) - 0.5, gz - @abs(@sin(p[2])) * 2 - 0.2, gx + @abs(@cos(p[2])) * 2 + 0.2, tr.height(gx, gz) + 0.9, gz + @abs(@sin(p[2])) * 2 + 0.2);
             }
@@ -487,14 +484,16 @@ fn circuit(b: *Builder) void {
         park_list.append(b.gpa, .{ .pos = vec(g[0], tr.height(g[0], -hz + g[1]), -hz + g[1]), .yaw = half_pi }) catch {};
     }
 
-    for ([_][2]f32{ .{ 60, 0 }, .{ -60, 0 }, .{ 0, 60 }, .{ 0, -60 } }) |g| park_list.append(b.gpa, .{ .pos = vec(g[0], tr.height(g[0], g[1]), g[1]), .yaw = if (g[0] == 0) 0 else half_pi }) catch {};
+    for ([_][2]f32{ .{ hx, 0 }, .{ -hx, 0 }, .{ 0, hz }, .{ 0, 32 }, .{ 32, 0 } }) |g| park_list.append(b.gpa, .{ .pos = vec(g[0], tr.height(g[0], g[1]), g[1]), .yaw = if (g[0] == 0) half_pi else 0 }) catch {};
 }
 
-fn grandstand(b: *Builder) void {
-    const z: f32 = -hz - track_w - 9;
-    var x: f32 = -48;
+const stand_half: f32 = 36;
 
-    while (x <= 48) : (x += 1) {
+fn grandstand(b: *Builder) void {
+    const z: f32 = -hz - track_w - 6;
+    var x: f32 = -stand_half;
+
+    while (x <= stand_half) : (x += 1) {
         if (@abs(x) < 3) continue;
 
         putAt(b, .stand, x, tr.height(x, z), z, 0);
@@ -507,28 +506,23 @@ fn grandstand(b: *Builder) void {
         const step_z = z + 3.5 - s;
         const top = tr.height(0, z) + (s + 1) * 0.62;
 
-        box(b, -48.5, top - 0.62, step_z - 1, -2.5, top, step_z);
-        box(b, 2.5, top - 0.62, step_z - 1, 48.5, top, step_z);
+        box(b, -stand_half - 0.5, top - 0.62, step_z - 1, -2.5, top, step_z);
+        box(b, 2.5, top - 0.62, step_z - 1, stand_half + 0.5, top, step_z);
     }
 
-    box(b, -48.5, 0, z - 4.5, 48.5, 7.3, z - 3.6);
+    box(b, -stand_half - 0.5, 0, z - 4.5, stand_half + 0.5, 7.3, z - 3.6);
 
-    for ([_]f32{ -30, -10, 10, 30 }) |tx| {
-        house(b, .ticket, tx, z - 8, pi);
-        put(b, .soda, tx + 2.4, z - 8, pi);
+    for ([_]f32{ -1, 1 }) |sd| {
+        house(b, .ticket, sd * (stand_half + 5), z + 2, pi);
+        put(b, .soda, sd * (stand_half + 5), z - 1, pi);
+        put(b, .pylon, sd * (stand_half + 10), z + 2, 0);
+        put(b, .billboard, sd * (stand_half + 18), z + 1, -sd * 0.1);
     }
 
-    put(b, .pylon, -56, z + 2, 0);
-    put(b, .pylon, 56, z + 2, 0);
-    put(b, .billboard, -74, z, 0.1);
-    put(b, .billboard, 74, z, -0.1);
-    claimRect(-80, z - 12, 80, z + 5);
-    loot(b, 0, z);
-    loot(b, -40, z - 6);
-    loot(b, 40, z - 6);
-    spawnAt(b, -60, z - 6, 0);
-    spawnAt(b, 60, z - 6, 0);
-    anchor_list.append(b.gpa, vec(0, 22, z)) catch {};
+    claimRect(-stand_half - 22, z - 6, stand_half + 22, z + 5);
+    loot(b, -stand_half - 5, z + 3);
+    loot(b, stand_half + 5, z + 3);
+    anchor_list.append(b.gpa, vec(0, 22, z + 7)) catch {};
 }
 
 fn mainStreet(b: *Builder) void {
@@ -567,152 +561,91 @@ fn mainStreet(b: *Builder) void {
     claimRect(-street_w - 4, -hz, street_w + 4, hz);
     claimRect(-hx, -street_w - 4, hx, street_w + 4);
 
-    var p: f32 = -100;
+    var l: f32 = 20;
 
-    while (p < 100) : (p += 5.5) {
-        if (@abs(p) < 14) continue;
-
+    while (l < hz - track_w - 6) : (l += 20) {
         for ([_]f32{ -1, 1 }) |sd| {
-            if (rnd(b) < 0.25) car(b, sd * (street_w - 1.6), p, if (sd < 0) 0 else pi);
-
-            if (rnd(b) < 0.2) car(b, p * 1.3, sd * (street_w - 1.6), if (sd < 0) half_pi else -half_pi);
-        }
-    }
-
-    var lz: f32 = -96;
-
-    while (lz < 100) : (lz += 16) {
-        if (@abs(lz) < 12) continue;
-
-        for ([_]f32{ -1, 1 }) |sd| {
-            const lx = sd * (street_w + 3.4);
-
-            put(b, .lamp, lx, lz, if (sd < 0) -half_pi else half_pi);
-            put(b, .lamp, lz * 1.3, sd * (street_w + 3.4), if (sd < 0) pi else 0);
+            put(b, .lamp, sd * (street_w + 3.4), sd * l, if (sd < 0) -half_pi else half_pi);
+            put(b, .lamp, -sd * l * 1.2, sd * (street_w + 3.4), if (sd < 0) pi else 0);
         }
     }
 }
 
 fn quarterNW(b: *Builder) void {
-    house(b, .diner, -34, 20, pi);
-    put(b, .dsign, -22, 13.2, pi);
-    lot(b, -60, 13, -42, 45, false, 0.35);
-    park_list.append(b.gpa, .{ .pos = vec(-51, tr.height(-51, 30), 30), .yaw = 0 }) catch {};
-    house(b, .gifts, -14, 22, -half_pi);
+    house(b, .diner, -30, 19, pi);
+    put(b, .dsign, -19, 13.2, pi);
+    house(b, .gifts, -14, 24, -half_pi);
     house(b, .vending, -14, 32, -half_pi);
 
-    for ([_][2]f32{ .{ -30, 32 }, .{ -24, 32 }, .{ -36, 32 } }) |pp| put(b, .picnic, pp[0], pp[1], 0.2);
+    for ([_][2]f32{ .{ -34, 29 }, .{ -27, 29 } }) |pp| put(b, .picnic, pp[0], pp[1], 0.2);
 
     put(b, .phone, -16, 15, pi);
-    put(b, .soda, -20, 28, pi);
-    put(b, .ice, -27, 28.5, pi);
-    house(b, .ranch, -30, 60, pi);
-    house(b, .ranch, -60, 64, pi);
-    house(b, .ranch, -90, 60, pi);
-    house(b, .shops, -96, 24, pi);
-    lot(b, -86, 34, -70, 48, false, 0.6);
-
-    for ([_][2]f32{ .{ -40, 76 }, .{ -76, 80 }, .{ -100, 82 }, .{ -20, 84 } }) |t| put(b, .joshua, t[0], t[1], spin(b));
-
-    put(b, .tower, -86, 92, 0);
-    box(b, -89, 0, 89, -83, 20, 95);
-    claimRect(-90, 88, -82, 96);
-    loot(b, -30, 26);
-    loot(b, -50, 30);
-    loot(b, -60, 74);
-    spawnAt(b, -44, 54, pi);
-    spawnAt(b, -100, 46, half_pi);
-    anchor_list.append(b.gpa, vec(-50, 20, 40)) catch {};
+    put(b, .soda, -21, 27, pi);
+    house(b, .ranch, -28, 40, pi);
+    put(b, .tower, -45, 30, 0);
+    box(b, -48, 0, 27, -42, 20, 33);
+    claimRect(-49, 26, -41, 34);
+    put(b, .joshua, -46, 18, spin(b));
+    park_list.append(b.gpa, .{ .pos = vec(-44, tr.height(-44, 20), 20), .yaw = 0 }) catch {};
+    loot(b, -30, 27);
+    loot(b, -44, 40);
+    spawnAt(b, -22, 33, pi);
+    anchor_list.append(b.gpa, vec(-30, 20, 26)) catch {};
 }
 
 fn quarterNE(b: *Builder) void {
-    house(b, .canopy, 30, 26, 0);
+    house(b, .canopy, 26, 24, 0);
 
-    for ([_]f32{ 26, 34 }) |px| {
-        for ([_]f32{ 24, 28 }) |pz| put(b, .pump, px, pz, 0);
+    for ([_]f32{ 22, 30 }) |px| {
+        for ([_]f32{ 22, 26 }) |pz| put(b, .pump, px, pz, 0);
     }
 
     put(b, .pylon, 14, 16, 0);
-    house(b, .repair, 58, 28, pi);
-    house(b, .garage, 78, 26, pi);
-    house(b, .vending, 44, 22, pi);
-    put(b, .lift, 62, 16, half_pi);
-    put(b, .cans, 47, 16, 0);
-    put(b, .tyres, 50, 15, 0);
-    put(b, .tyres, 50.8, 15.6, 0.4);
-    put(b, .drum, 70, 18, 0);
-    put(b, .drum, 70.7, 18.4, 0);
-    lot(b, 90, 14, 118, 44, true, 0.6);
-    put(b, .tower, 90, 84, 0);
-    box(b, 87, 0, 81, 93, 20, 87);
-    claimRect(86, 80, 94, 88);
-    house(b, .ranch, 30, 66, pi);
-    house(b, .ranch, 60, 70, pi);
-    house(b, .corner, 96, 62, pi);
-    lot(b, 20, 80, 70, 96, true, 0.5);
-
-    for ([_][2]f32{ .{ 46, 86 }, .{ 110, 92 }, .{ 20, 56 } }) |t| put(b, .joshua, t[0], t[1], spin(b));
-
-    loot(b, 30, 30);
-    loot(b, 58, 18);
-    loot(b, 100, 30);
-    spawnAt(b, 44, 50, pi);
-    spawnAt(b, 104, 72, -half_pi);
-    anchor_list.append(b.gpa, vec(50, 20, 40)) catch {};
+    house(b, .repair, 44, 18, pi);
+    put(b, .lift, 44, 26, half_pi);
+    put(b, .cans, 36, 14, 0);
+    put(b, .tyres, 37.5, 14, 0);
+    put(b, .tyres, 38.3, 14.6, 0.4);
+    house(b, .ranch, 28, 40, pi);
+    put(b, .joshua, 16, 38, spin(b));
+    loot(b, 26, 30);
+    loot(b, 44, 30);
+    spawnAt(b, 40, 36, -half_pi);
+    anchor_list.append(b.gpa, vec(30, 20, 26)) catch {};
 }
 
 fn quarterSW(b: *Builder) void {
-    house(b, .rooms, -40, -24, 0);
-    house(b, .rooms, -40, -64, pi);
-    house(b, .motel, -18, -44, -half_pi);
-    lot(b, -56, -54, -22, -34, true, 0.65);
-    put(b, .pylon, -14, -30, 0);
-    put(b, .soda, -28, -30, 0);
-    put(b, .ice, -54, -30, 0);
-    park_list.append(b.gpa, .{ .pos = vec(-40, tr.height(-40, -44), -44), .yaw = half_pi }) catch {};
-    house(b, .shops, -92, -24, 0);
-    house(b, .corner, -96, -60, half_pi);
-    put(b, .billboard, -80, -84, 0.2);
-
-    for ([_][2]f32{ .{ -70, -80 }, .{ -112, -40 }, .{ -30, -88 } }) |t| put(b, .joshua, t[0], t[1], spin(b));
-
-    loot(b, -40, -44);
-    loot(b, -18, -30);
-    loot(b, -92, -40);
-    spawnAt(b, -70, -44, half_pi);
-    spawnAt(b, -30, -86, 0);
-    anchor_list.append(b.gpa, vec(-50, 20, -50)) catch {};
+    house(b, .rooms, -32, -17, 0);
+    house(b, .motel, -15, -21, -half_pi);
+    put(b, .pylon, -14, -12, 0);
+    put(b, .ice, -44, -14, 0);
+    put(b, .joshua, -46, -24, spin(b));
+    park_list.append(b.gpa, .{ .pos = vec(-30, tr.height(-30, -25), -25), .yaw = half_pi }) catch {};
+    loot(b, -32, -11);
+    loot(b, -45, -20);
+    spawnAt(b, -26, -25, 0);
+    anchor_list.append(b.gpa, vec(-30, 20, -20)) catch {};
 }
 
 fn quarterSE(b: *Builder) void {
-    var x: f32 = 22;
-
-    while (x < 106) : (x += 13) house(b, if (x > 70 and x < 76) .corner else .shops, x, -20, 0);
-
-    lot(b, 20, -48, 104, -32, true, 0.6);
-    house(b, .repair, 34, -66, 0);
-    house(b, .gifts, 60, -60, 0);
-    house(b, .vending, 70, -60, 0);
-    put(b, .billboard, 92, -68, 0);
-    park_list.append(b.gpa, .{ .pos = vec(92, tr.height(92, -80), -80), .yaw = half_pi }) catch {};
-
-    for ([_][2]f32{ .{ 110, -50 }, .{ 50, -84 }, .{ 20, -80 } }) |t| put(b, .joshua, t[0], t[1], spin(b));
-
-    loot(b, 60, -40);
-    loot(b, 34, -76);
-    loot(b, 92, -82);
-    spawnAt(b, 48, -54, 0);
-    spawnAt(b, 104, -84, -half_pi);
-    anchor_list.append(b.gpa, vec(50, 20, -50)) catch {};
+    house(b, .shops, 20, -16, 0);
+    house(b, .corner, 33, -16, 0);
+    house(b, .gifts, 44, -14, 0);
+    put(b, .billboard, 44, -24, 0);
+    put(b, .joshua, 14, -26, spin(b));
+    loot(b, 26, -24);
+    loot(b, 40, -22);
+    spawnAt(b, 20, -26, 0);
+    anchor_list.append(b.gpa, vec(30, 20, -20)) catch {};
 }
 
 const fronts = [_]K{ .shops, .corner, .garage, .ranch, .repair, .gifts, .shops, .vending, .corner, .ranch };
 
 fn frontage(b: *Builder) void {
     var i: usize = 0;
-    var t: f32 = -100;
+    var t: f32 = -hz + track_w + 6;
 
-    while (t < 104) : (t += 13) {
+    while (t < hz - track_w - 4) : (t += 13) {
         if (@abs(t) < 12) continue;
 
         for ([_]f32{ -1, 1 }) |sd| {
@@ -729,9 +662,9 @@ fn frontage(b: *Builder) void {
             const e2 = fronts[(i * 3) % fronts.len];
             const bl2 = bld(e2);
             const cz = sd * (street_w + 4.5 + bl2.d / 2);
-            const cx = t * 1.25;
+            const cx = t * 1.2;
 
-            if (!taken(cx, cz, 3)) house(b, e2, cx, cz, if (sd > 0) pi else 0);
+            if (@abs(cx) < hx - track_w - 10 and !taken(cx, cz, 3)) house(b, e2, cx, cz, if (sd > 0) pi else 0);
         }
     }
 }
@@ -750,18 +683,19 @@ fn infield(b: *Builder) void {
 
             const roll = rnd(b);
 
-            if (roll < 0.12) put(b, .creosote, px, pz, spin(b)) else if (roll < 0.16) put(b, .weed, px, pz, spin(b)) else if (roll < 0.2) car(b, px, pz, spin(b)) else if (roll < 0.23) put(b, .joshua, px, pz, spin(b)) else if (roll < 0.25) putS(b, .outcrop, px, pz, spin(b), 0.8);
+            if (roll < 0.12) put(b, .creosote, px, pz, spin(b)) else if (roll < 0.16) { _ = spin(b); } else if (roll < 0.19) put(b, .joshua, px, pz, spin(b)) else if (roll < 0.21) putS(b, .outcrop, px, pz, spin(b), 0.8);
         }
     }
 }
 
 fn desert(b: *Builder) void {
-    var z: f32 = -210;
+    const edge = api.arena_half - 2;
+    var z: f32 = -edge;
 
-    while (z < 210) : (z += 4) {
-        var x: f32 = -210;
+    while (z < edge) : (z += 4) {
+        var x: f32 = -edge;
 
-        while (x < 210) : (x += 4) {
+        while (x < edge) : (x += 4) {
             const px = x + b.rng.range(-1.8, 1.8);
             const pz = z + b.rng.range(-1.8, 1.8);
 
@@ -771,46 +705,45 @@ fn desert(b: *Builder) void {
 
             if (roll < 0.1) {
                 put(b, .creosote, px, pz, spin(b));
-            } else if (roll < 0.14) {
+            } else if (roll < 0.13) {
                 put(b, .saguaro, px, pz, spin(b));
-            } else if (roll < 0.17) {
+            } else if (roll < 0.15) {
                 put(b, .joshua, px, pz, spin(b));
+            } else if (roll < 0.17) {
+                putS(b, .outcrop, px, pz, spin(b), b.rng.range(0.6, 1.2));
             } else if (roll < 0.2) {
-                putS(b, .outcrop, px, pz, spin(b), b.rng.range(0.6, 1.4));
-            } else if (roll < 0.23) {
-                put(b, .weed, px, pz, spin(b));
-            } else if (roll < 0.25) {
-                b.put(.kd_cactus_0, px, pz, spin(b), 1);
-            } else if (roll < 0.27) {
-                b.put(.kd_rock_2, px, pz, spin(b), 1);
+                _ = spin(b);
             }
         }
     }
 
-    for ([_][3]f32{ .{ -150, 150, 0.4 }, .{ 0, 186, 0.0 }, .{ 160, 160, 2.2 }, .{ 196, 0, 1.6 }, .{ 170, -170, 0.9 }, .{ -10, -196, 3.0 }, .{ -170, -160, 2.6 }, .{ -196, 10, 1.2 }, .{ 90, 196, 0.3 }, .{ -90, -196, 2.9 }, .{ 196, 100, 1.4 }, .{ -196, -90, 1.9 } }) |m| {
-        putAt(b, .mesa, m[0], tr.height(m[0], m[1]) - 2, m[1], m[2]);
+    const ring = api.arena_half + 9;
+    var a: f32 = -ring + 6;
+    var i: u32 = 0;
+
+    while (a < ring) : (a += 26) {
+        for ([_][2]f32{ .{ a, -ring }, .{ a, ring }, .{ -ring, a }, .{ ring, a } }) |m| {
+            b.putAt(of(.mesa), vec(m[0], tr.height(m[0], m[1]) - 2, m[1]), @as(f32, @floatFromInt(i)) * 1.3, 0.45);
+            i += 1;
+        }
     }
 
-    for ([_][3]f32{ .{ 0, 150, pi }, .{ -160, 60, half_pi }, .{ 160, -40, -half_pi } }) |s| {
-        put(b, .billboard, s[0], s[1], s[2]);
-        put(b, .shield, s[0] + 8, s[1] + 2, s[2]);
-        put(b, .mileage, s[0] - 8, s[1] + 2, s[2]);
+    put(b, .billboard, -62, 60, pi * 0.75);
+    put(b, .shield, -54, 64, pi * 0.75);
+    put(b, .mileage, -64, 52, pi * 0.75);
+    put(b, .billboard, 62, 60, -pi * 0.75);
+}
+
+fn corners(b: *Builder) void {
+    const c = api.arena_half - 13;
+
+    for ([_][3]f32{ .{ -c, c, pi * 0.75 }, .{ c, c, -pi * 0.75 }, .{ -c, -c, pi * 0.25 }, .{ c, -c, -pi * 0.25 } }) |p| {
+        spawnAt(b, p[0], p[1], p[2]);
+        claimRect(p[0] - 4, p[1] - 4, p[0] + 4, p[1] + 4);
     }
 
-    house(b, .gifts, -40, 146, pi);
-    house(b, .vending, -30, 146, pi);
-    put(b, .picnic, 30, 146, 0.2);
-    put(b, .picnic, 36, 147, 0.5);
-    put(b, .pylon, 46, 140, 0);
-    park_list.append(b.gpa, .{ .pos = vec(0, tr.height(0, 142), 142), .yaw = half_pi }) catch {};
-    loot(b, -40, 152);
-    loot(b, 40, 150);
-    loot(b, -156, 0);
-    loot(b, 156, 0);
-    spawnAt(b, -20, 156, pi);
-    spawnAt(b, 20, 156, pi);
-    spawnAt(b, -158, 40, half_pi);
-    spawnAt(b, 158, -40, -half_pi);
+    loot(b, -c + 3, c - 3);
+    loot(b, c - 3, -c + 3);
 }
 
 fn rp(yaw: f32, x: f32, z: f32) [2]f32 {
@@ -973,9 +906,10 @@ fn fillInfield(b: *Builder) void {
 fn pitLane(b: *Builder) void {
     const wall_z: f32 = -hz + track_w + 1.4;
     const gz: f32 = -hz + track_w + 13;
-    var x: f32 = -118;
+    const reach = hx - corner;
+    var x: f32 = -reach;
 
-    while (x < 118) : (x += 4) {
+    while (x < reach) : (x += 4) {
         if (@abs(x) < 10) continue;
 
         putAt(b, .jersey, x, tr.height(x, wall_z), wall_z, 0);
@@ -984,12 +918,14 @@ fn pitLane(b: *Builder) void {
         if (@mod(@as(i32, @intFromFloat(x + 200)), 24) == 2) putAt(b, .redflag, x, tr.height(x, wall_z + 1), wall_z + 1, 0);
     }
 
-    addLot(-120, wall_z + 0.5, -10, gz - 4);
-    addLot(10, wall_z + 0.5, 120, gz - 4);
+    putAt(b, .tyrewall, -reach - 2, tr.height(-reach - 2, wall_z), wall_z, half_pi);
+    putAt(b, .tyrewall, reach + 2, tr.height(reach + 2, wall_z), wall_z, half_pi);
+    addLot(-reach, wall_z + 0.5, -10, gz - 4);
+    addLot(10, wall_z + 0.5, reach, gz - 4);
 
-    var gx: f32 = -114;
+    var gx: f32 = -reach + 4;
 
-    while (gx < 116) : (gx += 9) {
+    while (gx < reach - 3) : (gx += 9) {
         if (@abs(gx) < 14 or taken(gx, gz, 1)) continue;
 
         house(b, if (@mod(@as(i32, @intFromFloat(gx + 300)), 4) == 0) .repair else .garage, gx, gz, pi);
@@ -999,44 +935,20 @@ fn pitLane(b: *Builder) void {
 
         putAt(b, .tyres, gx - 3, fy, fz, 0);
         putAt(b, .tyres, gx - 3, fy + 0.96, fz, 0.4);
-        putAt(b, .tyres, gx - 2.1, fy, fz + 0.2, 0.2);
         putAt(b, if (@mod(@as(i32, @intFromFloat(gx + 300)), 18) < 9) .drum else .ibc, gx + 3, fy, fz, 0);
-        putAt(b, .cone, gx + 1.6, fy, fz - 1, 0);
 
         if (@mod(@as(i32, @intFromFloat(gx + 300)), 27) < 9) putAt(b, .cans, gx + 3.4, fy, fz + 1.2, pi);
-    }
-
-    var px: f32 = -112;
-
-    while (px < 114) : (px += 18) {
-        if (@abs(px) < 16) continue;
-
-        const z = gz + 9;
-
-        if (taken(px, z, 2)) continue;
-
-        put(b, .gazebo, px, z, 0);
-        put(b, if (@mod(@as(i32, @intFromFloat(px + 300)), 36) < 18) .box_red else .box_white, px + 6, z + 1, half_pi);
-        box(b, px + 4.7, tr.height(px, z) - 0.5, z - 2, px + 7.3, tr.height(px, z) + 2.6, z + 4);
-        put(b, .tyres, px - 3.5, z - 1, 0);
-        put(b, .tyres, px - 3.5, z, 0.4);
-        putAt(b, .tyres, px - 3.5, tr.height(px, z) + 0.96, z - 0.5, 0.2);
-        put(b, .ibc, px + 3, z + 3.5, 0);
-        claimRect(px - 5, z - 3, px + 8, z + 5);
     }
 
     put(b, .camtower, -9, wall_z + 3, 0);
     put(b, .camtower, 9, wall_z + 3, 0);
 
-    for ([_]f32{ -45, 45 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, tr.height(cx, wall_z + 4), wall_z + 4), .yaw = half_pi }) catch {};
+    for ([_]f32{ -24, 24 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, tr.height(cx, wall_z + 4), wall_z + 4), .yaw = half_pi }) catch {};
 
-    loot(b, -45, gz - 5);
-    loot(b, 45, gz - 5);
-    loot(b, -90, gz + 9);
-    loot(b, 90, gz + 9);
-    spawnAt(b, -64, gz + 6, 0);
-    spawnAt(b, 64, gz + 6, 0);
-    claimRect(-122, wall_z - 1, 122, gz + 5);
+    loot(b, -24, gz - 5);
+    loot(b, 24, gz - 5);
+    spawnAt(b, 0, gz + 2, 0);
+    claimRect(-reach - 2, wall_z - 1, reach + 2, gz + 5);
 }
 
 fn infieldEdge(b: *Builder) void {
@@ -1055,26 +967,19 @@ fn infieldEdge(b: *Builder) void {
 
         if (streetDist(ix, iz) < street_w + 3 or taken(ix, iz, 0)) continue;
 
-        if (n % 9 < 6) {
+        if (n % 6 < 3) {
             putAt(b, .fence, ix - @cos(p[2]), tr.height(ix, iz), iz - @sin(p[2]), -p[2]);
             putAt(b, .fence, ix + @cos(p[2]), tr.height(ix, iz), iz + @sin(p[2]), -p[2]);
-        } else if (n % 9 == 7) {
+        } else if (n % 6 == 4) {
             putAt(b, .tyrewall, ix, tr.height(ix, iz), iz, -p[2]);
             box(b, ix - 2, tr.height(ix, iz) - 0.5, iz - 2, ix + 2, tr.height(ix, iz) + 0.9, iz + 2);
-        }
-
-        if (n % 23 == 0) {
-            const bx = p[0] - nx * (track_w + 14);
-            const bz = p[1] - nz * (track_w + 14);
-
-            putAt(b, .billboard, bx, tr.height(bx, bz), bz, -p[2] + pi);
         }
 
         if (n % 31 == 11) {
             const ox = p[0] - nx * (track_w + 12);
             const oz = p[1] - nz * (track_w + 12);
 
-            if (!taken(ox, oz, 4)) {
+            if (api.inArena(ox, oz, 8) and !taken(ox, oz, 4)) {
                 putAt(b, .shade, ox, tr.height(ox, oz), oz, -p[2]);
                 putAt(b, .camtower, ox + 6 * @cos(p[2]), tr.height(ox, oz), oz + 6 * @sin(p[2]), -p[2]);
                 claimRect(ox - 6, oz - 6, ox + 6, oz + 6);
@@ -1145,52 +1050,6 @@ fn fillMini(b: *Builder) void {
     }
 }
 
-fn desertCamp(b: *Builder, cx: f32, cz: f32) void {
-    const yaw = spin(b);
-    const pick = rnd(b);
-
-    if (pick < 0.3) {
-        lp(b, .billboard, cx, cz, yaw, 0, 0, 0, 0);
-        putS(b, .outcrop, cx + 6, cz + 4, spin(b), 1.4);
-        lp(b, .saguaro, cx, cz, yaw, -5, 3, 0, 0);
-    } else if (pick < 0.55) {
-        lp(b, .shade, cx, cz, yaw, 0, 0, 0, 0);
-        lp(b, .picnic, cx, cz, yaw, 0, 0, 0, 0);
-        lp(b, .ice, cx, cz, yaw, 2, 1, 0, 0);
-        lp(b, .redflag, cx, cz, yaw, 4, -4, 0, 0);
-        lp(b, .tyres, cx, cz, yaw, -4, 3, 0, 0);
-    } else if (pick < 0.75) {
-        putS(b, .outcrop, cx, cz, spin(b), b.rng.range(1.6, 2.4));
-        putS(b, .outcrop, cx + 5, cz - 3, spin(b), b.rng.range(1.0, 1.6));
-        lp(b, .joshua, cx, cz, yaw, -5, 4, 0, 0);
-    } else {
-        lp(b, if (rnd(b) < 0.5) .box_red else .box_white, cx, cz, yaw, 0, 0, 0, 0);
-        lsolid(b, cx, cz, yaw, .{ -3.1, -1.3, 3.1, 1.3, -0.5, 2.6 });
-        lp(b, .drum, cx, cz, yaw, 4, 1, 0, 0);
-        lp(b, .tyres, cx, cz, yaw, -4, 1.5, 0, 0);
-        lp(b, .weed, cx, cz, yaw, 1, 3, 0, 0);
-    }
-}
-
-fn outerRing(b: *Builder) void {
-    var z: f32 = -170;
-
-    while (z < 172) : (z += 6) {
-        var x: f32 = -170;
-
-        while (x < 172) : (x += 6) {
-            const sd = trackSd(x, z);
-
-            if (sd < track_w + 16 or taken(x, z, 6)) continue;
-
-            if (rnd(b) < 0.55) continue;
-
-            desertCamp(b, x + b.rng.range(-2, 2), z + b.rng.range(-2, 2));
-            claimRect(x - 7, z - 7, x + 7, z + 7);
-        }
-    }
-}
-
 fn build(b: *Builder) void {
     @memset(&occ, 0);
     shadow_n = 0;
@@ -1202,6 +1061,7 @@ fn build(b: *Builder) void {
     loot_list = .empty;
 
     circuit(b);
+    corners(b);
     mainStreet(b);
     grandstand(b);
     pitLane(b);
@@ -1214,7 +1074,6 @@ fn build(b: *Builder) void {
     fillInfield(b);
     fillMini(b);
     infield(b);
-    outerRing(b);
     desert(b);
 }
 

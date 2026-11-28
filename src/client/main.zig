@@ -30,6 +30,8 @@ const settings = @import("settings.zig");
 const menu_mod = @import("menu.zig");
 const loadout_mod = @import("loadout.zig");
 const lobby = @import("lobby.zig");
+const backdrop = @import("backdrop.zig");
+const theme = @import("theme.zig");
 const pvs = @import("pvs.zig");
 const gputime = @import("gputime.zig");
 const net = @import("net.zig");
@@ -37,14 +39,13 @@ const net = @import("net.zig");
 const Game = game_mod.Game;
 const Controls = game_mod.Controls;
 
-const mouse_sensitivity: f32 = 0.0022;
+const mouse_sensitivity: f32 = 0.00158;
 const move_deadzone: f32 = 0.15;
 const trigger_threshold: f32 = 0.3;
 const yaw_rate: f32 = 3.4;
 const pitch_rate: f32 = 2.4;
 const hold_to_pick: f32 = 0.3;
 
-const font_data = @embedFile("assets/BarlowCondensed-SemiBold.ttf");
 const icon_png = @embedFile("assets/icon/icon-256.png");
 const extra_mappings = "03000000373500001201000011010000,GameSir G8+ MFi,a:b0,b:b1,back:b10,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,dpup:h0.1,guide:b12,leftshoulder:b6,leftstick:b13,lefttrigger:a5,leftx:a0,lefty:a1,misc1:b15,rightshoulder:b7,rightstick:b14,righttrigger:a4,rightx:a2,righty:a3,start:b11,x:b3,y:b4,platform:Linux,\n";
 const controller_db = @embedFile("assets/gamecontrollerdb.txt") ++ "\n" ++ extra_mappings;
@@ -56,29 +57,6 @@ fn parseVec(text: []const u8) shared.math.Vec3 {
     for (&out) |*o| o.* = std.fmt.parseFloat(f32, it.next() orelse "0") catch 0;
 
     return .{ .x = out[0], .y = out[1], .z = out[2] };
-}
-
-fn parse4(text: []const u8, fallback: [4]f32) [4]f32 {
-    var out = fallback;
-    var it = std.mem.splitScalar(u8, text, ',');
-    var i: usize = 0;
-
-    while (it.next()) |part| : (i += 1) {
-        if (i >= 4) break;
-
-        out[i] = std.fmt.parseFloat(f32, part) catch out[i];
-    }
-
-    return out;
-}
-
-fn loadFont(data: []const u8) rl.Font {
-    var font = rl.LoadFontFromMemory(".ttf", data.ptr, @intCast(data.len), 96, null, 0);
-
-    rl.GenTextureMipmaps(&font.texture);
-    rl.SetTextureFilter(font.texture, rl.TEXTURE_FILTER_TRILINEAR);
-
-    return font;
 }
 
 fn winSize(part: usize, fallback: c_int) c_int {
@@ -171,7 +149,7 @@ const Frame = struct {
     pad_button: bool = false,
 };
 
-fn readKeyboard(captured: bool, scoped: bool) Controls {
+fn readKeyboard(captured: bool, zooming: bool) Controls {
     if (!captured) return .{};
 
     const keys = [_]c_int{ rl.KEY_ONE, rl.KEY_TWO, rl.KEY_THREE, rl.KEY_FOUR, rl.KEY_FIVE };
@@ -194,9 +172,9 @@ fn readKeyboard(captured: bool, scoped: bool) Controls {
         .grenade = rl.IsKeyPressed(rl.KEY_G),
         .interact = rl.IsKeyPressed(rl.KEY_E),
         .select = select,
-        .cycle = if (scoped) 0 else if (wheel > 0) -1 else if (wheel < 0) 1 else 0,
+        .cycle = if (zooming) 0 else if (wheel > 0) -1 else if (wheel < 0) 1 else 0,
         .quick_swap = rl.IsKeyPressed(rl.KEY_Q),
-        .zoom_step = if (!scoped) 0 else if (wheel > 0) 1 else if (wheel < 0) -1 else 0,
+        .zoom_step = if (!zooming) 0 else if (wheel > 0) 1 else if (wheel < 0) -1 else 0,
         .steady = rl.IsKeyDown(rl.KEY_LEFT_SHIFT),
         .boost = rl.IsKeyDown(rl.KEY_LEFT_SHIFT) or rl.IsKeyDown(rl.KEY_RIGHT_SHIFT),
         .throw_gun = rl.IsKeyPressed(rl.KEY_T),
@@ -205,7 +183,7 @@ fn readKeyboard(captured: bool, scoped: bool) Controls {
     };
 }
 
-fn readPad(p: *Pad, dt: f32, knife_active: bool, scoped: bool) Frame {
+fn readPad(p: *Pad, dt: f32, knife_active: bool, zooming: bool) Frame {
     const id = p.id orelse return .{};
     const look_dead = if (p.hall and settings.deadzone == 0.12) 0.04 else settings.deadzone;
     const move = stick(id, rl.GAMEPAD_AXIS_LEFT_X, rl.GAMEPAD_AXIS_LEFT_Y, if (p.hall) 0.05 else move_deadzone);
@@ -263,10 +241,10 @@ fn readPad(p: *Pad, dt: f32, knife_active: bool, scoped: bool) Frame {
 
     var zoom_step: i32 = 0;
 
-    if (scoped and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_UP)) zoom_step = 1;
-    if (scoped and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN)) zoom_step = -1;
+    if (zooming and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_UP)) zoom_step = 1;
+    if (zooming and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN)) zoom_step = -1;
 
-    const knife_button = (!in_car and p.pressed(rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) or (!scoped and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_UP));
+    const knife_button = (!in_car and p.pressed(rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)) or (!zooming and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_UP));
     const jump = p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
     const buttons = jump or p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_LEFT) or p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_UP) or p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
 
@@ -289,7 +267,7 @@ fn readPad(p: *Pad, dt: f32, knife_active: bool, scoped: bool) Frame {
             .zoom_step = zoom_step,
             .steady = p.down(rl.GAMEPAD_BUTTON_LEFT_THUMB),
             .boost = in_car and (p.down(rl.GAMEPAD_BUTTON_LEFT_THUMB) or p.down(rl.GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)),
-            .throw_gun = !scoped and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN),
+            .throw_gun = !zooming and p.pressed(rl.GAMEPAD_BUTTON_LEFT_FACE_DOWN),
             .sprint = p.down(rl.GAMEPAD_BUTTON_LEFT_THUMB),
             .enter = enter,
             .reset = reset,
@@ -603,7 +581,7 @@ var fast_time: f32 = 0;
 extern fn __system_property_get(name: [*:0]const u8, value: *[92]u8) callconv(.c) c_int;
 extern fn glInvalidateFramebuffer(target: c_uint, count: c_int, attachments: [*]const c_uint) callconv(.c) void;
 
-fn dropDepth(screen: bool) void {
+pub fn dropDepth(screen: bool) void {
     if (!assets.mobile) return;
 
     rlgl.rlDrawRenderBatchActive();
@@ -623,7 +601,7 @@ var stat_sim: f32 = 0;
 var stat_scene: f32 = 0;
 var stat_worst: f32 = 0;
 
-fn frameStats(dt: f32, cpu: f32, swap: f32) void {
+pub fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     if (!assets.mobile) return;
 
     stat_t += dt;
@@ -647,6 +625,7 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
     const draws = std.fmt.bufPrintSentinel(&buf, "draws {d} tris {d}k worst {d:.1} ms", .{ gfx.draw_calls / @as(u64, @intFromFloat(stat_n)), gfx.draw_tris / @as(u64, @intFromFloat(stat_n)) / 1000, stat_worst * 1000 }, 0) catch return;
 
     rl.TraceLog(rl.LOG_INFO, "%s", draws.ptr);
+
     gfx.draw_calls = 0;
     gfx.draw_tris = 0;
     stat_worst = 0;
@@ -657,13 +636,9 @@ fn frameStats(dt: f32, cpu: f32, swap: f32) void {
         if (__system_property_get("debug.df.skip", &prop) > 0) render.skip = std.fmt.parseInt(u32, std.mem.sliceTo(&prop, 0), 10) catch 0 else render.skip = 0;
 
         var lodpx: [92]u8 = @splat(0);
-
         var scale: [92]u8 = @splat(0);
 
         scale_override = if (__system_property_get("debug.df.scale", &scale) > 0) std.fmt.parseFloat(f32, std.mem.sliceTo(&scale, 0)) catch 0 else 0;
-
-
-
 
         var tol: [92]u8 = @splat(0);
 
@@ -763,7 +738,7 @@ fn adaptScale(dt: f32) void {
 fn rideTest(game: *Game) void {
     if (!driving.driving()) {
         for (game.vehicles, 0..) |v, i| {
-            if (v.alive() and v.spec().class == .bike) {
+            if (v.alive()) {
                 driving.start(game, i);
                 break;
             }
@@ -841,7 +816,7 @@ fn viewer(path: [:0]const u8) void {
     }
 }
 
-var load_font: ?rl.Font = null;
+var show_loading = false;
 var world_done = std.atomic.Value(bool).init(false);
 
 fn buildWorldThread() void {
@@ -850,7 +825,7 @@ fn buildWorldThread() void {
 }
 
 fn buildWorldAnimated() void {
-    if (load_font == null) return shared.world.build(std.heap.page_allocator);
+    if (!show_loading) return shared.world.build(std.heap.page_allocator);
 
     const thread = std.Thread.spawn(.{}, buildWorldThread, .{}) catch return shared.world.build(std.heap.page_allocator);
     var p: f32 = 0.1;
@@ -872,15 +847,36 @@ fn loadTick() void {
 }
 
 fn loadStep(label: [:0]const u8, progress: f32) void {
-    const f = load_font orelse return;
+    if (!show_loading) return;
 
     net.pump();
     tick_label = label;
     tick_progress = @max(tick_progress, progress);
-    mapselect.loading(f, label, tick_progress);
+    mapselect.loading(label, tick_progress);
+}
+
+extern fn mallopt(param: c_int, value: c_int) callconv(.c) c_int;
+
+fn releaseHeap() void {
+    const purge_all = -104;
+    const purge = -101;
+
+    if (mallopt(purge_all, 0) == 0) _ = mallopt(purge, 0);
 }
 
 pub fn main() void {
+    theme.keepImmersive();
+
+    if (std.c.getenv("DF_PVSGEN")) |out| {
+        const map = std.c.getenv("DF_MAP") orelse return;
+        shared.terrain.current = std.meta.stringToEnum(shared.terrain.Map, std.mem.sliceTo(map, 0)) orelse return;
+        shared.terrain.configure();
+        shared.world.build(std.heap.page_allocator);
+        pvs.generate(std.mem.sliceTo(out, 0), @tagName(shared.terrain.current));
+
+        return;
+    }
+
     if (std.c.getenv("DF_VIEW")) |v| return viewer(std.mem.sliceTo(v, 0));
 
     if (!assets.mobile) settings.load();
@@ -897,8 +893,8 @@ pub fn main() void {
 
         rl.SetConfigFlags(@intCast(vsync | rl.FLAG_WINDOW_RESIZABLE | msaa));
         openSessionLog();
-    defer logLine("exit normal", .{});
-    rl.InitWindow(winSize(0, 1280), winSize(1, 720), "dronefire");
+        defer logLine("exit normal", .{});
+        rl.InitWindow(winSize(0, 1280), winSize(1, 720), "dronefire");
         vsync_on = settings.vsync;
 
         const icon = rl.LoadImageFromMemory(".png", icon_png, icon_png.len);
@@ -922,16 +918,22 @@ pub fn main() void {
     gfx.shadow_res = if (assets.mobile) @min(1024, settings.shadowRes()) else settings.shadowRes();
     applyLive();
 
+    theme.init();
+
+    var carried: ?gfx.Renderer = null;
+
     if (std.c.getenv("DF_MAP")) |name| {
         shared.terrain.current = std.meta.stringToEnum(shared.terrain.Map, std.mem.sliceTo(name, 0)) orelse .facility;
     } else {
-        const pick_font = loadFont(font_data);
-
         var ui_buf: [1024]u8 = undefined;
         const ui_dir = if (assets.mobile) assets.dir(&ui_buf, "ui") else std.fmt.bufPrint(&ui_buf, "{s}../share/dronefire/ui", .{std.mem.span(rl.GetApplicationDirectory())}) catch "share/dronefire/ui";
+        const chosen = lobby.run(ui_dir, &applyLive) orelse return;
 
-        shared.terrain.current = lobby.run(pick_font, ui_dir) orelse return;
-        load_font = pick_font;
+        carried = backdrop.finish();
+        theme.dropDisplay();
+        mapselect.release(chosen);
+        shared.terrain.current = chosen;
+        show_loading = true;
     }
 
     gunart.tick = &loadTick;
@@ -939,12 +941,6 @@ pub fn main() void {
     loadStep("Building map", 0.1);
     shared.terrain.configure();
     buildWorldAnimated();
-    if (std.c.getenv("DF_PVSGEN")) |out| {
-        pvs.generate(std.mem.sliceTo(out, 0), @tagName(shared.terrain.current));
-
-        return;
-    }
-
     pvs.load(@tagName(shared.terrain.current));
     loadStep("Loading models", 0.35);
 
@@ -962,10 +958,12 @@ pub fn main() void {
     const arts = gunart.loadAll(gun_dir);
     var sky_buf: [1024]u8 = undefined;
     const sky_path = assets.file(&sky_buf, "sky/sky.hdr");
-    var renderer = gfx.Renderer.init(sky_path, models.sky);
+    var renderer = carried orelse gfx.Renderer.init(sky_path, models.sky);
     var ground_buf: [1024]u8 = undefined;
 
-    renderer.loadGround(assets.dir(&ground_buf, "textures"));
+    renderer.sky_mesh = models.sky;
+
+    if (carried == null) renderer.loadGround(assets.dir(&ground_buf, "textures"));
 
     if (std.c.getenv("DF_NOGROUND") == null) {
         const g0 = rl.GetTime();
@@ -975,7 +973,6 @@ pub fn main() void {
     }
 
     renderer.setGroundMap(models_mod.ground_map, models_mod.ground_extent);
-
 
     if (shared.terrain.current == .facility) {
         const mag = (renderer.sun_color[0] + renderer.sun_color[1] + renderer.sun_color[2]) / 3;
@@ -1048,21 +1045,8 @@ pub fn main() void {
         renderer.zenith = .{ 0.08, 0.32, 0.74 };
     }
 
-    if (shared.maps.current()) |d| {
-        const mag = (renderer.sun_color[0] + renderer.sun_color[1] + renderer.sun_color[2]) / 3;
-        const p = d.palette;
+    if (shared.maps.current()) |d| renderer.applyPalette(d.palette);
 
-        renderer.sun_dir = (shared.math.Vec3{ .x = p.sun_dir[0], .y = p.sun_dir[1], .z = p.sun_dir[2] }).normalize();
-        renderer.sun_color = .{ mag * p.sun_tint[0], mag * p.sun_tint[1], mag * p.sun_tint[2] };
-        renderer.grade_tint = p.grade_tint;
-        renderer.grade_sat = p.grade_sat;
-        renderer.fog = p.fog;
-        renderer.fog_color = p.fog_color;
-        renderer.amb_sky = p.amb_sky;
-        renderer.amb_ground = p.amb_ground;
-        renderer.shade_tint = p.shade_tint;
-        renderer.zenith = p.zenith;
-    }
     var props_buf: [1024]u8 = undefined;
     const props_dir = assets.dir(&props_buf, "props");
     loadStep("Loading props", 0.65);
@@ -1078,7 +1062,7 @@ pub fn main() void {
     const cars_dir = assets.dir(&cars_buf, "cars");
     loadStep("Loading vehicles", 0.9);
     air.load();
-    const font = loadFont(font_data);
+    const font = theme.body;
     var game = Game.init(@intFromFloat(rl.GetTime() * 1000 + 7));
 
     mesh_mod.releaseScratch();
@@ -1086,6 +1070,8 @@ pub fn main() void {
     var touch: touch_mod.Touch = .{};
 
     game.parkVehicles();
+
+    if (std.c.getenv("DF_VEHTEST") != null) game.vehicleTest();
 
     var want_cars: [shared.vehicle.count]bool = @splat(true);
     const any_car = std.c.getenv("DF_GARAGE") != null or std.c.getenv("DF_CAR") != null or std.c.getenv("DF_DRIVE") != null or std.c.getenv("DF_SHOWCASE") != null;
@@ -1098,6 +1084,8 @@ pub fn main() void {
 
     const cars = vehicleart.Art.build(cars_dir, &want_cars);
 
+    mapselect.release(null);
+
     if (net.active) {
         game_mod.online = true;
         game_mod.net_hit = &net.hit;
@@ -1109,6 +1097,8 @@ pub fn main() void {
     defer net.leave();
 
     if (std.c.getenv("DF_SHOWCASE") != null) game.showcase(0);
+
+    if (std.c.getenv("DF_VEHCAM")) |pick| game.vehicleCamera(std.fmt.parseInt(u8, std.mem.sliceTo(pick, 0), 10) catch 0);
 
     if (std.c.getenv("DF_CAM")) |spec| placeCamera(&game, std.mem.sliceTo(spec, 0));
 
@@ -1129,8 +1119,6 @@ pub fn main() void {
     if (std.c.getenv("DF_LOFF")) |t| render.l_off = parseVec(std.mem.sliceTo(t, 0));
     if (std.c.getenv("DF_VMREACH")) |t| render.vm_reach = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
     if (std.c.getenv("DF_SHARP")) |t| gfx.sharpen_amount = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch gfx.sharpen_amount;
-    if (std.c.getenv("DF_ADSR")) |t| render.ads_r = parse4(std.mem.sliceTo(t, 0), render.ads_r);
-    if (std.c.getenv("DF_ADSL")) |t| render.ads_l = parse4(std.mem.sliceTo(t, 0), render.ads_l);
     if (std.c.getenv("DF_VMDOWN")) |t| render.vm_down = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
     if (std.c.getenv("DF_LROLL")) |t| render.l_roll = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
     if (std.c.getenv("DF_LROLLFAR")) |t| render.l_roll_far = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch 0;
@@ -1140,7 +1128,6 @@ pub fn main() void {
     if (std.c.getenv("DF_PDOWN")) |t| render.pistol_down = std.fmt.parseFloat(f32, std.mem.sliceTo(t, 0)) catch render.pistol_down;
 
     if (std.c.getenv("DF_CAR")) |pick| game.spotlight(std.fmt.parseInt(usize, std.mem.sliceTo(pick, 0), 10) catch 0);
-
 
     render.clean_shot = std.c.getenv("DF_NOHUD") != null;
 
@@ -1187,6 +1174,8 @@ pub fn main() void {
     var pad_check: f32 = 0;
 
     defer rumble.detach();
+
+    if (assets.mobile) releaseHeap();
 
     while (!rl.WindowShouldClose()) {
         const frame_dt = rl.GetFrameTime();
@@ -1248,6 +1237,8 @@ pub fn main() void {
 
         if (rl.IsKeyPressed(rl.KEY_F11)) settings.fullscreen = !rl.IsWindowFullscreen();
 
+        if (!playing or menu.open or loadout.open) theme.begin(frame_dt);
+
         const menu_was_open = menu.open;
         const loadout_was_open = loadout.open;
 
@@ -1287,7 +1278,6 @@ pub fn main() void {
             }
         }
 
-
         const start_pressed = rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT) or rl.IsMouseButtonReleased(rl.MOUSE_BUTTON_LEFT) or rl.IsKeyPressed(rl.KEY_ENTER) or rl.IsKeyPressed(rl.KEY_SPACE);
 
         if (!playing and !menu.open and !menu_was_open and !loadout_busy and !loadout.open and start_pressed) {
@@ -1297,9 +1287,8 @@ pub fn main() void {
             rl.DisableCursor();
         }
 
-
         const captured = playing and rl.IsCursorHidden();
-        const pad_frame: Frame = if (playing) readPad(&pad, frame_dt, game.arsenal.active == game_mod.knife_slot, game.scoped()) else .{};
+        const pad_frame: Frame = if (playing) readPad(&pad, frame_dt, game.arsenal.active == game_mod.knife_slot, game.zooming()) else .{};
         const mouse = rl.GetMouseDelta();
 
         if (if (assets.mobile) pad_frame.pad_button else pad_frame.pad_used) pad.active = true;
@@ -1308,7 +1297,7 @@ pub fn main() void {
 
         if (mouse.x != 0 or mouse.y != 0 or rl.GetKeyPressed() != 0) pad.active = false;
 
-        var controls = merge(readKeyboard(captured, game.scoped()), pad_frame.controls);
+        var controls = merge(readKeyboard(captured, game.zooming()), pad_frame.controls);
 
         if (ads_test) controls.aim = true;
 
@@ -1335,7 +1324,7 @@ pub fn main() void {
         if (playing and pad.id != null) {
             const look = pad_frame.look;
             const move_mag = @min(1, @sqrt(controls.forward * controls.forward + controls.right * controls.right));
-            const raw_slow = if (settings.aim_assist > 0.01) game.aimAssist(frame_dt, look.mag, move_mag, pad_frame.aim_started) else 1;
+            const raw_slow = if (settings.aim_assist > 0.01) game.aimAssist(frame_dt, look.mag, move_mag, pad_frame.aim_started, 0.45) else 1;
             const slow = 1 - (1 - raw_slow) * settings.aim_assist;
 
             if (look.mag > 0.97) pad.edge_time += frame_dt else pad.edge_time = 0;
@@ -1355,7 +1344,7 @@ pub fn main() void {
         if (touch_mod.active() and playing and !(pad.id != null and pad.active)) {
             const screen_w: f32 = @floatFromInt(rl.GetScreenWidth());
             const screen_h: f32 = @floatFromInt(rl.GetScreenHeight());
-            touch_mod.use_visible = nearUsable(&game);
+            touch_mod.context(&game, nearUsable(&game));
 
             const tap = touch.read(screen_w, screen_h);
 
@@ -1365,7 +1354,20 @@ pub fn main() void {
             }
 
             controls = merge(controls, tap.controls);
-            game.look(tap.look_x, tap.look_y * flip, mouse_sensitivity * 1.4 * 720 / screen_h * settings.touch_look * aim_sens);
+
+            var slow: f32 = 1;
+            const swipe = @sqrt(tap.look_x * tap.look_x + tap.look_y * tap.look_y);
+            const walking = @sqrt(controls.forward * controls.forward + controls.right * controls.right);
+
+            if (settings.touch_assist > 0.01 and !driving.driving() and !air.flying()) {
+                const raw = game.aimAssist(frame_dt, if (swipe > 0 or controls.fire_down) 1 else 0, walking, false, 0.22 * settings.touch_assist);
+
+                slow = 1 - (1 - raw) * 0.6 * settings.touch_assist;
+            }
+
+            const ads_k = 1 + (settings.touch_ads - 1) * game.ads;
+
+            game.look(tap.look_x, tap.look_y * flip, touch_mod.lookScale() * settings.touch_look * ads_k * slow);
         }
 
         if (std.c.getenv("DF_RIDE") != null) rideTest(&game);
@@ -1384,7 +1386,7 @@ pub fn main() void {
         if (std.c.getenv("DF_HOLDCAM") != null) {
             if (std.c.getenv("DF_CAM")) |spec| placeCamera(&game, std.mem.sliceTo(spec, 0));
 
-    render.clean_shot = std.c.getenv("DF_NOHUD") != null;
+            render.clean_shot = std.c.getenv("DF_NOHUD") != null;
         }
 
         audio.update(&game, frame_dt, controls.fire_pressed);
@@ -1460,6 +1462,8 @@ pub fn main() void {
             render.scene(&renderer, &models, &arts, &scenery, &rig, kit, &cars, game, now, frame_dt);
             renderer.end();
         }
+        touch_mod.shown = touch_mod.active() and !(pad.id != null and pad.active);
+
         if (!render.clean_shot) {
             render.overlay(game, now, cam, font);
             if (render.skip & 128 == 0) hud.draw(game, font, &icons, playing, pad.active and pad.id != null);
@@ -1470,14 +1474,14 @@ pub fn main() void {
 
         if (render.skip & 128 == 0 and touch_mod.active() and playing and !(pad.id != null and pad.active)) touch.draw(font, @floatFromInt(rl.GetScreenWidth()), @floatFromInt(rl.GetScreenHeight()));
 
-        if (!playing) menu.drawGear(font, pad.active and pad.id != null);
+        if (!playing) menu.drawGear(pad.active and pad.id != null);
 
-        if (!playing and !menu.open and !loadout.open) menu_mod.drawQuit(font, pad.active and pad.id != null, menu.t);
+        if (!playing and !menu.open and !loadout.open) menu_mod.drawQuit(pad.active and pad.id != null, menu.t);
 
-        if (!playing) loadout.drawButton(font, pad.active and pad.id != null, menu.t);
+        if (!playing) loadout.drawButton(pad.active and pad.id != null, menu.t);
 
-        menu.draw(font, pad.active and pad.id != null);
-        loadout.draw(font, &icons, &game, pad.active and pad.id != null);
+        menu.draw(pad.active and pad.id != null);
+        loadout.draw(&icons, &game, pad.active and pad.id != null);
 
         if (pad_toast > 0) {
             pad_toast -= frame_dt;

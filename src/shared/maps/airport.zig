@@ -11,24 +11,23 @@ const Builder = api.Builder;
 const pi = std.math.pi;
 const hp = api.half_pi;
 
-const rw = [4]f32{ 0, -158, 180, 14 };
-const twy_z: f32 = -122;
-const apron = [4]f32{ -188, -113, 188, -14 };
-const term = [4]f32{ -96, -14, 32, 18 };
+const rw = [4]f32{ 0, -60, api.arena_half - 13, 9 };
+const twy_z: f32 = -41;
+const twy_w: f32 = 6;
+const apron = [4]f32{ -api.arena_half + 5, -35, api.arena_half - 5, 0 };
+const term = [4]f32{ -56, 0, 8, 32 };
 const roof: f32 = 9.5;
-const hangar = [3]f32{ 140, -10, pi };
-const park = [4]f32{ -98, 44, -18, 100 };
+const hangar = [3]f32{ 46, -8, pi };
+const park = [4]f32{ -66, 57, -16, 72 };
+const road = [4]f32{ term[0] - 2, term[3] + 4, 20, term[3] + 16 };
 
 pub const def: api.Def = .{
     .name = "Airport",
     .note = "Runways, terminal and hangars",
     .tint = .{ 150, 170, 196 },
     .ready = true,
-    .half = 215,
-    .play = 190,
     .facet = 2.5,
     .runway = rw,
-    .helipads = .{ .{ 108, 52 }, .{ 132, 52 }, .{ 156, 52 } },
     .height = height,
     .ground = ground,
     .build = build,
@@ -48,9 +47,7 @@ pub const def: api.Def = .{
     },
     .backdrop = .{ 150, 166, 150 },
     .aircraft = true,
-    .tanks = true,
     .grip = 0.86,
-    .tufts = 0.6,
 };
 
 fn inRect(x: f32, z: f32, r: [4]f32) bool {
@@ -63,44 +60,30 @@ fn hash(x: f32, z: f32) f32 {
 
 fn height(x: f32, z: f32) f32 {
     const edge = @max(@abs(x), @abs(z));
-    const rim = t.smooth(t.play + 6, t.half, edge);
+    const rim = t.smooth(t.play + 1, t.half - 4, edge);
     const roll = 5 + t.fbm(x * 0.03, z * 0.03) * 9;
 
     return rim * roll;
 }
 
 const roads = [_][4]f32{
-    .{ -132, 22, 70, 34 },
-    .{ 40, 22, 52, 192 },
-    .{ -192, 110, 192, 122 },
-    .{ -132, 34, -120, 110 },
-    .{ 52, 64, 100, 74 },
-    .{ 100, 64, 112, 110 },
+    road,
+    .{ park[2] - 6, road[3], park[2], park[1] },
 };
 
 const lots = [_][4]f32{
     park,
-    .{ 58, 128, 104, 176 },
-    .{ -192, 126, -96, 188 },
-    .{ 58, 78, 98, 100 },
-    .{ -188, 28, -176, 106 },
 };
 
 const apron_lanes = [_][4]f32{
-    .{ apron[0], -25.5, apron[2], -17.5 },
-    .{ apron[0], apron[1], apron[2], -105 },
-    .{ -93, -105, -87, -25.5 },
-    .{ -33, -105, -27, -25.5 },
-    .{ 37, -105, 43, -25.5 },
-    .{ 101, -105, 107, -25.5 },
+    .{ apron[0], apron[1], apron[2], apron[1] + 3 },
+    .{ apron[0], apron[1] + 3, apron[0] + 6, apron[3] },
+    .{ -28, apron[1] + 3, -22, apron[3] },
+    .{ 10, apron[1] + 3, 16, apron[3] },
 };
 
 const yards = [_][4]f32{
-    .{ -188, -14, -128, 22 },
-    .{ 128, 64, 188, 106 },
-    .{ 108, 128, 188, 192 },
-    .{ 60, 30, 100, 62 },
-    .{ -24, 54, 24, 100 },
+    .{ -8, park[1] - 2, 14, park[3] + 2 },
 };
 
 fn mown(x: f32, z: f32) [3]f32 {
@@ -133,7 +116,7 @@ fn ground(x: f32, z: f32) api.Rgb {
 
     if (@abs(z - rw[1]) < rw[3] + 3 and @abs(x) < rw[2] + 4) return api.shade(stain(x, z, .{ 76, 78, 82 }), l);
 
-    if (@abs(z - twy_z) < 9 and @abs(x) < 186) return api.shade(stain(x, z, slab(x, z, .{ 88, 90, 94 }, 7.5, 0.03)), l);
+    if (@abs(z - twy_z) < twy_w and @abs(x) < rw[2] + 6) return api.shade(stain(x, z, slab(x, z, .{ 88, 90, 94 }, 7.5, 0.03)), l);
 
     if (inRect(x, z, term)) {
         const c = @mod(@floor(x / 2.5) + @floor(z / 2.5), 2) == 0;
@@ -143,15 +126,13 @@ fn ground(x: f32, z: f32) api.Rgb {
 
     if (inRect(x, z, .{ hangar[0] - 27, hangar[1] - 23, hangar[0] + 27, hangar[1] + 23 })) return api.shade(slab(x, z, .{ 150, 152, 152 }, 5, 0.03), l);
 
-    if (inRect(x, z, .{ hangar2[0] - 27, hangar2[1] - 23, hangar2[0] + 27, hangar2[1] + 23 })) return api.shade(slab(x, z, .{ 150, 152, 152 }, 5, 0.03), l);
-
     for (apron_lanes) |r| {
         if (inRect(x, z, r)) return api.shade(stain(x, z, slab(x, z, .{ 112, 114, 118 }, 7.5, 0.03)), l);
     }
 
     if (inRect(x, z, apron)) return api.shade(stain(x, z, slab(x, z, .{ 172, 172, 166 }, 7.5, 0.05)), l);
 
-    if (inRect(x, z, .{ -132, 18, 70, 22 }) or inRect(x, z, .{ -132, 34, 70, 40 })) return api.shade(slab(x, z, .{ 186, 182, 172 }, 2.5, 0.05), l);
+    if (inRect(x, z, .{ road[0], term[3], road[2], road[1] }) or inRect(x, z, .{ road[0], road[3], road[2], road[3] + 6 })) return api.shade(slab(x, z, .{ 186, 182, 172 }, 2.5, 0.05), l);
 
     for (roads) |r| {
         if (inRect(x, z, r)) return api.shade(stain(x, z, slab(x, z, .{ 82, 84, 88 }, 10, 0.02)), l);
@@ -219,19 +200,14 @@ fn build(b: *Builder) void {
     terminal(b);
     roofAccess(b);
     gates(b);
-    cargo(b);
     maintenance(b);
-    apronYard(b);
     fillApron(b);
     landside(b);
-    north(b);
     perimeter(b);
 }
 
 fn airfield(b: *Builder) void {
     wd.runway(b);
-
-    for (t.helipads) |p| wd.helipad(b, p[0], p[1]);
 
     var x: f32 = -rw[2] + 4;
 
@@ -240,52 +216,56 @@ fn airfield(b: *Builder) void {
         put(b, .edge, x, rw[1] + rw[3] + 1.2, 0);
     }
 
-    x = -182;
+    const tw = rw[2] + 4;
 
-    while (x < 182) : (x += 10) {
+    x = -tw;
+
+    while (x < tw) : (x += 10) {
         paint(b, x, twy_z - 0.18, x + 6, twy_z + 0.18, .paint_line);
-        put(b, .edge, x + 3, twy_z - 9.6, 0);
+        put(b, .edge, x + 3, twy_z - twy_w - 0.6, 0);
     }
 
-    paint(b, -186, twy_z - 8.9, 186, twy_z - 8.6, .paint_line);
-    paint(b, -186, twy_z + 8.6, 186, twy_z + 8.9, .paint_line);
+    paint(b, -tw, twy_z - twy_w + 0.1, tw, twy_z - twy_w + 0.4, .paint_line);
+    paint(b, -tw, twy_z + twy_w - 0.4, tw, twy_z + twy_w - 0.1, .paint_line);
 
-    for ([_]f32{ -150, -90, -30, 30, 90, 150 }) |sx| {
-        put(b, .twysign, sx, rw[1] + rw[3] + 7, 0);
-        put(b, .twysign, sx + 6, twy_z - 11, 0);
-        paint(b, sx - 0.18, twy_z - 8.6, sx + 0.18, rw[1] + rw[3], .paint_line);
+    for ([_]f32{ -1, 1 }) |side| {
+        for (0..3) |i| put(b, .crashbar, side * (tw + 1), twy_z - 4 + @as(f32, @floatFromInt(i)) * 4, hp);
+    }
+
+    for ([_]f32{ -36, 0, 36 }) |sx| {
+        put(b, .twysign, sx, rw[1] + rw[3] + 4, 0);
+        paint(b, sx - 0.18, twy_z - twy_w, sx + 0.18, rw[1] + rw[3], .paint_line);
     }
 
     for ([_]f32{ -1, 1 }) |side| {
         var z: f32 = rw[1] - 10;
 
-        while (z <= rw[1] + 10) : (z += 4) place(b, .deflector, side * (rw[2] + 5), z, side * hp);
+        while (z <= rw[1] + 10) : (z += 4) place(b, .deflector, side * (rw[2] + 4), z, side * hp);
+
+        place(b, .localizer, side * (rw[2] + 9), rw[1], hp);
     }
 
-    place(b, .localizer, 120, -180, 0);
-    place(b, .localizer, -120, -180, 0);
-    put(b, .windsock, 60, -180, 0);
-    put(b, .windsock, -40, -138, 0);
+    put(b, .windsock, 40, rw[1] - rw[3] - 5, 0);
+    put(b, .windsock, -30, twy_z + twy_w + 2, 0);
 
-    var fx: f32 = -170;
+    var fx: f32 = -60;
 
-    while (fx <= 170) : (fx += 34) place(b, .flood, fx, -110, 0);
+    while (fx <= 0) : (fx += 30) place(b, .flood, fx, apron[1] + 2, 0);
 
-    var jx: f32 = -186;
+    var jx: f32 = apron[0] + 2;
 
-    while (jx < 186) : (jx += 7.5) paint(b, jx, apron[1], jx + 0.1, apron[3], .scuff_soft);
+    while (jx < apron[2]) : (jx += 7.5) paint(b, jx, apron[1], jx + 0.1, apron[3], .scuff_soft);
 
     var jz: f32 = apron[1] + 7.5;
 
     while (jz < apron[3]) : (jz += 7.5) paint(b, apron[0], jz, apron[2], jz + 0.1, .scuff_soft);
 
     paint(b, apron[0], apron[1] + 0.2, apron[2], apron[1] + 0.5, .paint_line);
-    paint(b, apron[0], -24.4, apron[2], -24.1, .marking);
-    paint(b, apron[0], -19.4, apron[2], -19.1, .marking);
+    paint(b, apron[0], apron[1] + 3, apron[2], apron[1] + 3.3, .marking);
 
     var dx: f32 = apron[0];
 
-    while (dx < apron[2]) : (dx += 6) paint(b, dx, -21.9, dx + 3, -21.6, .marking);
+    while (dx < apron[2]) : (dx += 6) paint(b, dx, apron[3] - 2.4, dx + 3, apron[3] - 2.1, .marking);
 }
 
 fn terminal(b: *Builder) void {
@@ -293,11 +273,12 @@ fn terminal(b: *Builder) void {
     const x1 = term[2];
     const z0 = term[1];
     const z1 = term[3];
-    const doors_n = [_]usize{ 2, 7, 12 };
-    const doors_s = [_]usize{ 4, 10 };
+    const doors_n = [_]usize{ 1, 4, 6 };
+    const doors_s = [_]usize{ 2, 5 };
+    const n: usize = @intFromFloat((x1 - x0) / 8);
     var i: usize = 0;
 
-    while (i < 16) : (i += 1) {
+    while (i < n) : (i += 1) {
         const cx = x0 + 4 + @as(f32, @floatFromInt(i)) * 8;
         const open_n = std.mem.indexOfScalar(usize, &doors_n, i) != null;
         const open_s = std.mem.indexOfScalar(usize, &doors_s, i) != null;
@@ -333,97 +314,97 @@ fn terminal(b: *Builder) void {
 
     b.mass(vec(x0, roof + 0.7, z0), vec(x1, roof + 1.6, z0 + 0.4), .f_grey_dark);
     b.mass(vec(x0, roof + 0.7, z1 - 0.4), vec(x1, roof + 1.6, z1), .f_grey_dark);
-    b.mass(vec(x0, roof + 0.7, z0), vec(x0 + 0.4, roof + 1.6, -6), .f_grey_dark);
+    b.mass(vec(x0, roof + 0.7, z0), vec(x0 + 0.4, roof + 1.6, z0 + 8), .f_grey_dark);
     b.mass(vec(x1 - 0.4, roof + 0.7, z0), vec(x1, roof + 1.6, z1), .f_grey_dark);
 
-    for ([_][4]f32{ .{ -84, -8, 9, 6 }, .{ -60, 4, 7, 7 }, .{ -34, -10, 12, 5 }, .{ -6, 2, 8, 9 }, .{ 14, -8, 8, 6 } }) |u| {
+    for ([_][4]f32{ .{ 12, 6, 9, 6 }, .{ 32, 18, 7, 7 }, .{ 50, 5, 8, 6 } }) |r| {
+        const u = [4]f32{ x0 + r[0], z0 + r[1], r[2], r[3] };
+
         b.mass(vec(u[0], roof + 0.7, u[1]), vec(u[0] + u[2], roof + 2.5, u[1] + u[3]), .f_metal);
         b.mass(vec(u[0] + 0.5, roof + 2.5, u[1] + 0.5), vec(u[0] + u[2] - 0.5, roof + 2.9, u[1] + u[3] - 0.5), .f_grey_dark);
         b.deco(vec(u[0] - 0.4, roof + 0.7, u[1] - 0.4), vec(u[0] + u[2] + 0.4, roof + 0.78, u[1] + u[3] + 0.4), .blob_soft);
     }
 
-    for ([_][2]f32{ .{ -70, -4 }, .{ -20, 8 }, .{ 4, -10 } }) |p| {
-        b.mass(vec(p[0], roof + 0.7, p[1]), vec(p[0] + 2.2, roof + 1.6, p[1] + 2.2), .f_grey_dark);
+    for ([_][2]f32{ .{ 26, 10 }, .{ 44, 22 } }) |p| {
+        b.mass(vec(x0 + p[0], roof + 0.7, z0 + p[1]), vec(x0 + p[0] + 2.2, roof + 1.6, z0 + p[1] + 2.2), .f_grey_dark);
     }
 
     var px: f32 = x0 + 16;
 
     while (px < x1 - 8) : (px += 16) {
-        for ([_]f32{ -6, 10 }) |pz| b.mass(vec(px - 0.45, 0, pz - 0.45), vec(px + 0.45, roof, pz + 0.45), .concrete);
+        for ([_]f32{ z0 + 8, z0 + 24 }) |pz| b.mass(vec(px - 0.45, 0, pz - 0.45), vec(px + 0.45, roof, pz + 0.45), .concrete);
     }
 
     var wx: f32 = x0 + 4;
 
     while (wx < x1 - 12) : (wx += 16) {
-        b.mass(vec(wx, 0, 1.6), vec(wx + 8, 2.4, 2.2), .f_grey);
-        b.deco(vec(wx, 2.4, 1.5), vec(wx + 8, 2.6, 2.3), .f_grey_dark);
-        put(b, .arch, wx + 10, 1.9, 0);
-        put(b, .arch, wx + 12.5, 1.9, 0);
-        put(b, .depboard, wx + 4, 3.4, 0);
+        b.mass(vec(wx, 0, z0 + 15.6), vec(wx + 8, 2.4, z0 + 16.2), .f_grey);
+        b.deco(vec(wx, 2.4, z0 + 15.5), vec(wx + 8, 2.6, z0 + 16.3), .f_grey_dark);
+        put(b, .arch, wx + 10, z0 + 15.9, 0);
+        put(b, .arch, wx + 12.5, z0 + 15.9, 0);
+        put(b, .depboard, wx + 4, z0 + 17.4, 0);
     }
 
-    for ([_]f32{ -82, -50, -18, 12 }) |cx| {
+    for ([_]f32{ x0 + 14, x0 + 46 }) |cx| {
         var dz: f32 = 0;
 
         while (dz < 3) : (dz += 1) {
-            put(b, .checkin, cx, 7 + dz * 2.5, hp);
-            put(b, .checkin, cx + 3, 7 + dz * 2.5, -hp);
+            put(b, .checkin, cx, z0 + 21 + dz * 2.5, hp);
+            put(b, .checkin, cx + 3, z0 + 21 + dz * 2.5, -hp);
         }
 
-        b.mass(vec(cx - 0.6, 0, 5.2), vec(cx + 3.6, 2.6, 5.8), .f_grey);
-        put(b, .trolley, cx + 8, 9, b.rng.range(0, 6));
-        put(b, .trolley, cx + 8.7, 9.6, b.rng.range(0, 6));
-        put(b, .trolley, cx - 5, 12, b.rng.range(0, 6));
+        b.mass(vec(cx - 0.6, 0, z0 + 19.2), vec(cx + 3.6, 2.6, z0 + 19.8), .f_grey);
+        put(b, .trolley, cx + 8, z0 + 23, b.rng.range(0, 6));
+        put(b, .trolley, cx + 8.7, z0 + 23.6, b.rng.range(0, 6));
+        put(b, .trolley, cx - 5, z0 + 26, b.rng.range(0, 6));
     }
 
     var sx: f32 = x0 + 6;
 
     while (sx < x1 - 8) : (sx += 10) {
-        put(b, .seats, sx, -9, 0);
-        put(b, .seats, sx + 2.6, -9, 0);
-        put(b, .seats, sx, -6, pi);
-        put(b, .seats, sx + 2.6, -6, pi);
+        put(b, .seats, sx, z0 + 5, 0);
+        put(b, .seats, sx + 2.6, z0 + 5, 0);
+        put(b, .seats, sx, z0 + 8, pi);
+        put(b, .seats, sx + 2.6, z0 + 8, pi);
 
-        if (@mod(sx, 20) < 10) put(b, .depboard, sx + 7, -11.5, pi) else put(b, .trolley, sx + 7, -3, b.rng.range(0, 6));
+        if (@mod(sx, 20) < 10) put(b, .depboard, sx + 7, z0 + 2.5, pi) else put(b, .trolley, sx + 7, z0 + 11, b.rng.range(0, 6));
     }
 
     var cx: f32 = x0 + 4;
 
     while (cx < x1) : (cx += 8) place(b, .canopy, cx, z1 + 6, 0);
 
-    kerb(b, -132, 34, 70, 34.3);
-    kerb(b, -132, 21.7, 70, 22);
-    kerb(b, -132, 39.7, 70, 40);
+    kerb(b, road[0], road[3], road[2], road[3] + 0.3);
+    kerb(b, road[0], road[1] - 0.3, road[2], road[1]);
+    kerb(b, road[0], road[3] + 5.7, road[2], road[3] + 6);
 
-    var bx: f32 = -92;
+    var bx: f32 = x0 + 4;
 
-    while (bx < 30) : (bx += 12) put(b, .bollards, bx, 38, 0);
+    while (bx < x1) : (bx += 12) put(b, .bollards, bx, road[3] + 4, 0);
 
-    var mx: f32 = -128;
+    var mx: f32 = road[0] + 4;
 
-    while (mx < 66) : (mx += 9) paint(b, mx, 27.9, mx + 4.5, 28.1, .marking);
+    while (mx < road[2] - 4) : (mx += 9) paint(b, mx, (road[1] + road[3]) / 2 - 0.1, mx + 4.5, (road[1] + road[3]) / 2 + 0.1, .marking);
 
-    put(b, .uld, 56, 30, hp);
-    put(b, .barrier, -70, 31, hp);
-    put(b, .barrier, -48, 25.5, -hp);
-    put(b, .barrier, -30, 31, hp);
-    put(b, .barrier, 4, 25.5, -hp);
-    put(b, .barrier, -112, 31, hp);
-    put(b, .barrier, 22, 25.5, -hp);
+    for ([_]f32{ road[0], road[2] }) |ex| {
+        var bz: f32 = road[1] + 1.5;
 
-    var lx: f32 = -128;
+        while (bz < road[3]) : (bz += 3) put(b, .barrier, ex, bz, hp);
+    }
 
-    while (lx < 70) : (lx += 18) put(b, .lamp, lx, 38.8, pi);
+    var lx: f32 = road[0] + 4;
 
-    for ([_]f32{ -114, -104, 40, 48 }) |hx| put(b, .shrub, hx, 20, 0);
+    while (lx < road[2]) : (lx += 18) put(b, .lamp, lx, road[3] + 4.8, pi);
+
+    for ([_]f32{ x0 - 12, x1 + 4 }) |hx| put(b, .shrub, hx, z1 + 2, 0);
 }
 
 fn roofAccess(b: *Builder) void {
-    const x0: f32 = -104;
-    const x1: f32 = -99;
+    const x0: f32 = term[0] - 8;
+    const x1: f32 = term[0] - 3;
     const top = roof + 0.7;
-    const z_hi: f32 = 4;
-    const z_lo: f32 = 40;
+    const z_hi: f32 = term[1] + 18;
+    const z_lo: f32 = term[1] + 54;
     const n: usize = 30;
     var i: usize = 0;
 
@@ -469,12 +450,9 @@ fn roofAccess(b: *Builder) void {
 const Stand = struct { x: f32, nose: f32, len: f32, span: f32 };
 
 const stands = [_]Stand{
-    .{ .x = -60, .nose = -36, .len = 38, .span = 36 },
-    .{ .x = 6, .nose = -36, .len = 52, .span = 44 },
-    .{ .x = 72, .nose = -40, .len = 38, .span = 36 },
+    .{ .x = -46, .nose = -18, .len = 12, .span = 24 },
+    .{ .x = -6, .nose = -18, .len = 12, .span = 24 },
 };
-
-const hangar2 = [3]f32{ -152, -52, pi };
 const box_h: f32 = 2.808;
 const pallet_h: f32 = 0.144;
 
@@ -662,16 +640,14 @@ fn standKit(b: *Builder, s: Stand) void {
     lput(b, f, .genset, 4, 2.2, 0);
     lput(b, f, .cable, 6, 2.4, 0.3);
     lput(b, f, .lighttower, w + 4, 1, 0.3);
-    stairAt(b, f, -6, -10, hp);
-    stairAt(b, f, 6.5, -s.len + 9, -hp);
+    stairAt(b, f, -6, -6, hp);
     cones(b, f, -w + 1, -s.len * 0.45, -w + 1, -s.len * 0.45 - 4, 2);
     cones(b, f, w - 1, -s.len * 0.45, w - 1, -s.len * 0.45 - 4, 2);
     lput(b, f, .cone, 0, -s.len - 2.5, 0);
-    uldBlock(b, f.sub(5, -14, 0));
-    palletStack(b, f, -5, -18, 5);
-    lput(b, f, .wrapped, -6.4, -18, 0.1);
-    lput(b, f, .wrapped, -6.4, -19.3, -0.1);
-    lput(b, f, .ibc, -5, -20.2, 0.1);
+    uldBlock(b, f.sub(-12, -s.len + 2, 0));
+    palletStack(b, f, w - 4, -s.len + 1, 5);
+    lput(b, f, .wrapped, w - 5.4, -s.len + 1, 0.1);
+    lput(b, f, .ibc, w - 4, -s.len - 0.8, 0.1);
 }
 
 fn hangarFill(b: *Builder, hx: f32, hz: f32, yaw: f32) void {
@@ -712,90 +688,8 @@ fn hangarFill(b: *Builder, hx: f32, hz: f32, yaw: f32) void {
 fn gates(b: *Builder) void {
     for (stands) |s| {
         standKit(b, s);
-        place(b, .lounge, s.x - 26, -22, 0);
-        place(b, .bridge, s.x - 18, s.nose - 6, 0);
-        put(b, .seats, s.x - 32, -18, hp);
-    }
-}
-
-fn boxRow(b: *Builder, x: f32, z0: f32, z1: f32, gap: usize) void {
-    var z = z0;
-    var i: usize = 0;
-
-    while (z + 5.4 <= z1) : (z += 5.6) {
-        defer i += 1;
-
-        if (i == gap) continue;
-
-        const g = (i * 7 + @as(usize, @intFromFloat(@abs(x)))) % 3 == 0;
-        const f = fr(x, z + 2.7, 0);
-
-        boxAt(b, f, 0, 0, 0, g);
-
-        if ((i + @as(usize, @intFromFloat(@abs(x)))) % 3 != 1) boxAt(b, f, 0, 0, 1, !g);
-    }
-}
-
-fn apronYard(b: *Builder) void {
-    boxRow(b, -122, -100, -32, 6);
-    boxRow(b, -119.5, -100, -60, 1);
-    boxRow(b, -108, -98, -34, 3);
-    boxRow(b, -105.5, -70, -40, 9);
-    cargoStack(b, fr(-104, -104, hp));
-    palletStack(b, fr(-114, -50, 0), 0, 0, 5);
-    palletStack(b, fr(-114, -50, 0), 1.4, 0.2, 3);
-    lput(b, fr(-114, -50, 0), .ibc, 0, 2, 0.1);
-    lput(b, fr(-114, -50, 0), .ibc, 0.2, 3.3, -0.1);
-    lput(b, fr(-113, -80, 0), .wrapped, 0, 0, 0.1);
-    lput(b, fr(-113, -80, 0), .wrapped, 1.2, 0.3, -0.1);
-    lput(b, fr(-113, -80, 0), .drum, 0.3, 2, 0);
-    lput(b, fr(-113, -80, 0), .drum, 1, 2.4, 0);
-    lput(b, fr(-99, -60, 0), .lighttower, 0, 0, 0.3);
-    lput(b, fr(-99, -88, 0), .genset, 0, 0, hp);
-    lput(b, fr(-99, -45, 0), .cable, 0, 0, 0);
-
-    maintBay(b, fr(-66, -58, 0));
-    cargoStack(b, fr(-80, -96, 0));
-    boxRow(b, -46, -100, -84, 9);
-    uldBlock(b, fr(-58, -100, 0));
-
-    uldBlock(b, fr(-24, -44, 0));
-    cargoStack(b, fr(-22, -64, 0));
-    boxRow(b, -20, -100, -78, 9);
-    maintBay(b, fr(4, -66, 0));
-    cargoStack(b, fr(-2, -98, 0));
-    boxRow(b, 22, -100, -84, 9);
-    uldBlock(b, fr(26, -64, hp));
-
-    cargoStack(b, fr(46, -96, 0));
-    maintBay(b, fr(70, -62, 0));
-    boxRow(b, 60, -100, -84, 9);
-    uldBlock(b, fr(76, -98, 0));
-    cargoStack(b, fr(94, -44, hp));
-    boxRow(b, 96, -98, -70, 2);
-    lput(b, fr(92, -80, 0), .lighttower, 0, 0, 0.5);
-
-    maintBay(b, fr(122, -52, 0));
-    maintBay(b, fr(160, -54, hp));
-    boxRow(b, 112, -102, -70, 3);
-    boxRow(b, 114.5, -102, -84, 9);
-    cargoStack(b, fr(140, -98, 0));
-    uldBlock(b, fr(160, -80, 0));
-    boxRow(b, 176, -102, -66, 4);
-
-    maintBay(b, fr(-168, -92, 0));
-    cargoStack(b, fr(-150, -102, 0));
-    uldBlock(b, fr(-140, -88, 0));
-    boxRow(b, -185, -100, -36, 7);
-
-    for (0..8) |i| {
-        const f: f32 = @floatFromInt(i);
-
-        put(b, .uld, 53 + f * 2.3, -15.2, 0);
-    }
-
-    for ([_]f32{ -150, -60, 6, 72, 140 }) |x| {
-        for (0..3) |i| put(b, .crashbar, x - 4 + @as(f32, @floatFromInt(i)) * 4, -108.5, 0);
+        place(b, .lounge, s.x - 9, term[1] - 8.5, 0);
+        put(b, .seats, s.x - 14, term[1] - 6, hp);
     }
 }
 
@@ -884,6 +778,8 @@ fn fillApron(b: *Builder) void {
         var x: f32 = apron[0] + 6 + @as(f32, @floatFromInt(line % 2)) * 5.5;
 
         while (x < apron[2] - 6) : (x += 11) {
+            if (b.rng.next() < 0.35) continue;
+
             const f = fr(x + jitter(b, 2), z + jitter(b, 2), if (b.rng.next() < 0.5) 0 else pi);
             const start: usize = @intFromFloat(b.rng.range(0, 3.99));
 
@@ -907,219 +803,57 @@ fn fillApron(b: *Builder) void {
     }
 }
 
-fn cargo(b: *Builder) void {
-    place(b, .cargo, -160, 4, pi);
-
-    for (0..9) |i| {
-        const f: f32 = @floatFromInt(i);
-
-        put(b, .uld, -148 + f * 2.2, -20, 0);
-        put(b, .uld, -148 + f * 2.2, -22.2, 0);
-    }
-
-    put(b, .uld, -136, -18, 0.6);
-    put(b, .uld, -176, -10, -0.4);
-    put(b, .uld, -150, -12, 2.6);
-    cargoStack(b, fr(-184, -20, hp));
-
-    for ([_]f32{ -180, -172, -164, -156, -148, -140 }) |fx| {
-        put(b, .uld, fx, 18, 0);
-        put(b, .uld, fx + 2.1, 18, 0);
-    }
-
-    put(b, .uld, -134, 14, hp);
-    place(b, .radar, -176, 40, 0);
-}
-
 fn maintenance(b: *Builder) void {
     place(b, .hangar, hangar[0], hangar[1], hangar[2]);
     hangarFill(b, hangar[0], hangar[1], hangar[2]);
-    paint(b, hangar[0] - 0.18, apron[1], hangar[0] + 0.18, hangar[1] - 22, .paint_line);
-    place(b, .hangar, hangar2[0], hangar2[1], hangar2[2]);
-    hangarFill(b, hangar2[0], hangar2[1], hangar2[2]);
-    paint(b, hangar2[0] - 0.18, apron[1], hangar2[0] + 0.18, hangar2[1] - 22, .paint_line);
-
-    for (0..4) |i| put(b, .crashbar, 184, -40 - @as(f32, @floatFromInt(i)) * 4.2, hp);
-
-    put(b, .uld, 178, -30, 0.2);
-    put(b, .uld, 180, -30, 0);
+    paint(b, hangar[0] - 0.18, apron[1], hangar[0] + 0.18, hangar[1] - 24, .paint_line);
 }
 
 fn landside(b: *Builder) void {
-    var lx: f32 = park[0] + 3;
-
-    while (lx < park[2] - 2) : (lx += 2.9) {
-        for ([_]f32{ 49, 59, 71, 81, 93 }, 0..) |lz, ri| {
-            const roll = b.rng.next();
-
-            if (roll < 0.86) continue;
-
-            const e: K = .barrier;
-            const face: f32 = if (ri % 2 == 0) 0 else pi;
-
-            put(b, e, lx + jitter(b, 0.15), lz + jitter(b, 0.25), face + jitter(b, 0.06));
-        }
-    }
-
     var bay: f32 = park[0] + 1.5;
 
     while (bay < park[2]) : (bay += 2.9) {
-        for ([_]f32{ 46.5, 56.5, 68.5, 78.5, 90.5 }) |lz| paint(b, bay, lz, bay + 0.12, lz + 5, .marking);
+        for ([_]f32{ park[1] + 0.5, park[3] - 5.5 }) |lz| paint(b, bay, lz, bay + 0.12, lz + 5, .marking);
     }
 
-    for ([_]f32{ 65, 87 }) |hz| row(b, .hedge, park[0] + 4, hz, park[2] - 4, hz, 5, 0);
+    var lx: f32 = park[0] + 3;
 
-    for ([_][2]f32{ .{ -96, 65 }, .{ -96, 87 }, .{ -20, 65 }, .{ -20, 87 }, .{ -58, 65 }, .{ -58, 87 } }) |p| {
-        put(b, .lamp, p[0], p[1], 0);
-        put(b, .tree, p[0] + 6, p[1] + 0.5, b.rng.range(0, 6));
+    while (lx < park[2] - 2) : (lx += 2.9) {
+        for ([_]f32{ park[1] + 3, park[3] - 3 }, 0..) |lz, ri| {
+            if (b.rng.next() < 0.8) continue;
+
+            put(b, .barrier, lx + jitter(b, 0.15), lz + jitter(b, 0.25), (if (ri == 0) @as(f32, 0) else pi) + jitter(b, 0.06));
+        }
     }
 
+    row(b, .hedge, park[0] + 4, (park[1] + park[3]) / 2, park[0] + 18, (park[1] + park[3]) / 2, 5, 0);
+    row(b, .hedge, park[2] - 18, (park[1] + park[3]) / 2, park[2] - 4, (park[1] + park[3]) / 2, 5, 0);
     kerb(b, park[0], park[1], park[2], park[1] + 0.3);
     kerb(b, park[0], park[3] - 0.3, park[2], park[3]);
-    kerb(b, park[2] - 0.3, park[1], park[2], park[3]);
 
-    place(b, .carpark, -150, 72, hp);
-    put(b, .barrier, -126, 44, hp);
-    put(b, .barrier, -126, 104, hp);
-
-    for ([_]f32{ -176, -172, -168, -164 }) |cxv| {
-        put(b, .barrier, cxv, 102, 0);
-        put(b, .barrier, cxv + 1, 42, pi);
+    for ([_]f32{ park[0] + 2, (park[0] + park[2]) / 2, park[2] - 2 }) |px| {
+        put(b, .lamp, px, (park[1] + park[3]) / 2, 0);
+        put(b, .tree, px, park[1] - 1.5, b.rng.range(0, 6));
     }
 
-    place(b, .tower, 80, 46, 0);
-    b.deco(vec(73, 0.008, 39), vec(87, 0.03, 53), .blob_soft);
+    place(b, .tower, 3, 64, 0);
+    b.deco(vec(-4, 0.008, 57), vec(10, 0.03, 71), .blob_soft);
 
-    for ([_][2]f32{ .{ 64, 34 }, .{ 96, 34 }, .{ 64, 58 }, .{ 96, 58 } }) |p| put(b, .tree, p[0], p[1], b.rng.range(0, 6));
+    for ([_][2]f32{ .{ -6, 56 }, .{ 12, 56 }, .{ 12, 72 } }) |p| put(b, .tree, p[0], p[1], b.rng.range(0, 6));
 
-    put(b, .barrier, 70, 40, 0.3);
-    put(b, .barrier, 90, 38, -0.2);
-    put(b, .barrier, 94, 40, -0.2);
+    put(b, .barrier, -2, 55, 0.3);
+    put(b, .barrier, 8, 55, -0.2);
+    put(b, .windsock, 66, 32, 0);
 
-    place(b, .fire, 158, 90, pi);
-
-    for ([_]f32{ 142, 152, 164, 174 }) |tx| put(b, .uld, tx, 72, pi);
-
-    put(b, .barrier, 184, 70, 0.4);
-    put(b, .windsock, 184, 52, 0);
-    put(b, .crashbar, 120, 66, 0);
-    put(b, .crashbar, 124, 66, 0);
-
-    place(b, .cargo, 0, 82, 0);
-    put(b, .uld, -10, 64, 0.4);
-    put(b, .uld, 8, 62, 2.4);
-    put(b, .uld, 18, 60, hp);
-    put(b, .uld, -24, 70, 0);
-
-    for (0..6) |i| {
-        const f: f32 = @floatFromInt(i);
-
-        put(b, .uld, -12 + f * 2.2, 58, 0);
-
-        if (i % 2 == 1) b.putAt(kit.of(.uld), vec(-12 + f * 2.2, 1.64, 58), 0.1, 1);
-    }
-
-    for ([_]f32{ -28, 28 }) |sx| {
-        put(b, .tree, sx, 98, b.rng.range(0, 6));
-        put(b, .shrub, sx, 92, 0);
-        put(b, .shrub, sx, 66, 0);
-    }
-
-    var ex: f32 = 62;
-
-    while (ex < 96) : (ex += 2.9) {
-        for ([_]f32{ 82, 96 }, 0..) |ez, ri| {
-            if (b.rng.next() < 0.86) continue;
-
-            put(b, .barrier, ex, ez, if (ri == 0) 0 else pi);
-        }
-    }
-
-    row(b, .hedge, 60, 89, 96, 89, 5, 0);
-
-    var wz: f32 = 30;
-
-    while (wz < 104) : (wz += 2.9) {
-        if (b.rng.next() < 0.84) continue;
-
-        put(b, .barrier, -182, wz, hp);
-    }
-
-    for ([_]f32{ 36, 60, 84 }) |tz| put(b, .tree, -174, tz, b.rng.range(0, 6));
-}
-
-fn north(b: *Builder) void {
-    place(b, .hotel, -60, 152, pi);
-    b.deco(vec(-73, 0.008, 143), vec(-47, 0.03, 161), .blob_soft);
-
-    for ([_]f32{ -84, -36 }) |tx| {
-        put(b, .tree, tx, 140, b.rng.range(0, 6));
-        put(b, .tree, tx, 166, b.rng.range(0, 6));
-    }
-
-    put(b, .barrier, -70, 130, hp);
-    put(b, .barrier, -58, 130, hp);
-    put(b, .uld, -40, 128, hp);
-    put(b, .canopy, -50, 134, 0);
-    row(b, .hedge, -88, 136, -32, 136, 5, 0);
-
-    var gx: f32 = -188;
-
-    while (gx < -100) : (gx += 2.9) {
-        for ([_]f32{ 132, 144, 158, 170, 182 }, 0..) |gz, ri| {
-            if (b.rng.next() < 0.86) continue;
-
-            const e: K = .barrier;
-
-            put(b, e, gx, gz, if (ri % 2 == 0) 0 else pi);
-        }
-    }
-
-    var bx: f32 = 62;
-
-    while (bx < 102) : (bx += 4.6) {
-        put(b, .uld, bx, 140, 0);
-
-        if (b.rng.next() < 0.7) put(b, .uld, bx, 162, pi);
-    }
-
-    for ([_][2]f32{ .{ 126, 146 }, .{ 154, 146 }, .{ 126, 174 }, .{ 154, 174 } }) |p| place(b, .tank, p[0], p[1], 0);
-
-    b.deco(vec(112, 0.2, 132), vec(170, 0.5, 132.3), .concrete);
-    put(b, .uld, 140, 134, hp);
-    put(b, .uld, 172, 160, 0);
-    put(b, .uld, 176, 176, 0);
-    row(b, .fence, 110, 128, 186, 128, 5, 0);
-    row(b, .fence, 110, 128, 110, 188, 5, hp);
-
-    place(b, .gatehouse, 46, 176, 0);
-    put(b, .barrier, 43, 170, 0);
-    put(b, .barrier, 49, 182, pi);
-
-    var ax: f32 = -186;
-
-    while (ax < 190) : (ax += 20) put(b, .lamp, ax, 124, 0);
-
-    var az: f32 = 40;
-
-    while (az < 190) : (az += 20) put(b, .lamp, 54, az, hp);
-
-    var mx: f32 = -190;
-
-    while (mx < 190) : (mx += 9) paint(b, mx, 115.9, mx + 4.5, 116.1, .marking);
-
-    var mz: f32 = 24;
-
-    while (mz < 190) : (mz += 9) paint(b, 45.9, mz, 46.1, mz + 4.5, .marking);
-
-    kerb(b, -192, 109.7, 192, 110);
-    kerb(b, -192, 122, 192, 122.3);
-
-    for ([_][2]f32{ .{ -30, 176 }, .{ -14, 160 }, .{ 2, 180 }, .{ 18, 150 }, .{ -10, 136 }, .{ 24, 172 }, .{ 120, 104 }, .{ 30, 104 }, .{ -34, 104 } }) |p| {
+    for ([_][2]f32{ .{ 24, 60 }, .{ 66, 60 } }) |p| {
         put(b, .tree, p[0], p[1], b.rng.range(0, 6));
         put(b, .shrub, p[0] + 3, p[1] - 2, 0);
     }
 
+    for ([_]f32{ 26, 38, 50, 62 }) |ux| put(b, .uld, ux, 33, hp);
+
+    put(b, .crashbar, 22, 30, 0);
+    put(b, .crashbar, 26, 30, 0);
 }
 
 fn perimeter(b: *Builder) void {
@@ -1130,20 +864,15 @@ fn perimeter(b: *Builder) void {
     row(b, .fence, -e, -e, -e, e, 5, hp);
     row(b, .fence, e, -e, e, e, 5, hp);
 
-    var a: f32 = -t.half + 2;
+    const reach = t.play + 8;
+    var a: f32 = -reach;
 
-    while (a < t.half - 2) : (a += 8) {
+    while (a < reach) : (a += 8) {
         for ([_]f32{ -1, 1 }) |s| {
-            const off = t.play + 6 + b.rng.range(0, 14);
+            const off = t.play + 5 + b.rng.range(0, 6);
 
             put(b, if (b.rng.next() < 0.65) .pine else .tree, a + jitter(b, 3), s * off, b.rng.range(0, 6));
             put(b, if (b.rng.next() < 0.65) .pine else .tree, s * off, a + jitter(b, 3), b.rng.range(0, 6));
         }
     }
-
-    for ([_][3]f32{ .{ -160, 212, 1.0 }, .{ -110, 210, 0.85 }, .{ 70, 214, 1.1 }, .{ 130, 211, 0.9 } }) |p| scaled(b, .hotel, p[0], p[1], pi, p[2]);
-
-    for ([_][2]f32{ .{ -20, 214 }, .{ 190, 210 } }) |p| scaled(b, .carpark, p[0], p[1], 0, 1);
-
-    place(b, .vor, -100, -196, 0);
 }

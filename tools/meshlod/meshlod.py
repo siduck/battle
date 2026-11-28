@@ -330,6 +330,10 @@ def process(path):
     report = [f"{os.path.basename(stem)} {base_tris}"]
     errors = []
 
+    if os.environ.get("REBASE"):
+        bp, bn, bc, bi = build_render(wpos, nrm, wcol, welded, flat, src_of)
+        write_glb(path, bp, bn, bc, bi, material)
+
     for level, budget in enumerate(ERRORS, 1):
         simplified, error = simplify(wpos, wcol, welded, 3, budget, lock)
 
@@ -346,6 +350,11 @@ def process(path):
     for level in range(len(errors) + 1, len(ERRORS) + 1):
         if os.path.exists(f"{stem}.lod{level}.glb"):
             os.remove(f"{stem}.lod{level}.glb")
+
+    if os.environ.get("LOD0"):
+        rp, rn, rc, ri = build_render(wpos, nrm, wcol, welded, flat, src_of)
+        write_glb(path, rp, rn, rc, ri, material)
+        report.append(f"L0 {len(ri) // 3}")
 
     with open(f"{stem}.lods", "w") as f:
         f.write(" ".join(f"{e:.5f}" for e in errors) + "\n")

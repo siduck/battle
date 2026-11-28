@@ -22,7 +22,6 @@ pub const Clip = enum {
     dmr,
     sniper,
     shotgun,
-    cannon,
     nitro,
     launcher,
     rocket,
@@ -480,7 +479,6 @@ fn projectiles(g: *const Game) void {
         if (p.active and !mem.proj[i]) {
             switch (p.kind) {
                 .fireball => at(.fireball, p.pos, 0.8, 12, 0.1),
-                .rocket => if (driving.inTank(g)) at(.cannon, p.pos, 1, 40, 0.05),
                 else => {},
             }
         }
@@ -543,13 +541,7 @@ fn vehicles(g: *const Game, dt: f32) void {
         const k = air.engineLevel();
         const vol = settings.volume(.sfx);
 
-        if (air.isHeli()) {
-            const chop = 0.75 + 0.25 * @abs(@sin(g.time * 22));
-
-            loop(&tank_engine, &engine, 1.05 + k * 0.4, 0.55 * vol * chop);
-        } else {
-            loop(&tank_engine, &engine, 1.3 + k * 1.1, 0.6 * vol);
-        }
+        loop(&tank_engine, &engine, 1.3 + k * 1.1, 0.6 * vol);
 
         return;
     }
@@ -559,14 +551,7 @@ fn vehicles(g: *const Game, dt: f32) void {
     if (seat != mem.seat) {
         const idx = seat orelse mem.seat;
 
-        if (idx) |i| {
-            const v = g.vehicles[i];
-
-            switch (v.spec().class) {
-                .car, .tank => near(if (seat != null) .door_open else .door_close, 0.7, 0.05),
-                else => near(.swap, 0.4, 0.1),
-            }
-        }
+        if (idx != null) near(if (seat != null) .door_open else .door_close, 0.7, 0.05);
 
         mem.speed = 0;
     }
@@ -584,9 +569,9 @@ fn vehicles(g: *const Game, dt: f32) void {
     const speed = @abs(v.speed);
     const frac = std.math.clamp(speed / @max(s.top_speed, 1), 0, 1);
 
-    if (mem.speed - speed > 7) near(if (s.class == .car or s.class == .tank) .crash_metal else .crash, std.math.clamp((mem.speed - speed) / 18, 0.4, 1), 0.1);
+    if (mem.speed - speed > 7) near(.crash_metal, std.math.clamp((mem.speed - speed) / 18, 0.4, 1), 0.1);
 
-    if (@abs(v.side) > 3 and speed > 8 and mem.skid_cd <= 0 and s.class != .tank) {
+    if (@abs(v.side) > 3 and speed > 8 and mem.skid_cd <= 0) {
         near(.skid, 0.6, 0.1);
         mem.skid_cd = 0.35;
     }
@@ -599,13 +584,7 @@ fn vehicles(g: *const Game, dt: f32) void {
 
     const vol = settings.volume(.sfx);
 
-    switch (s.class) {
-        .cycle => stopLoops(),
-        .tank => loop(&tank_engine, &engine, 0.75 + frac * 0.5, 0.55 * vol),
-        .car => loop(&engine, &tank_engine, 0.7 + frac * 1.0, 0.5 * vol),
-        .bike => loop(&engine, &tank_engine, 1.15 + frac * 1.25, 0.45 * vol),
-        .scooter => loop(&engine, &tank_engine, 1.5 + frac * 0.9, 0.3 * vol),
-    }
+    loop(&engine, &tank_engine, 0.7 + frac * 1.0, 0.5 * vol);
 }
 
 fn loop(active: *?rl.Music, other: *?rl.Music, pitch: f32, volume: f32) void {

@@ -20,9 +20,6 @@ const HeroArt = struct {
     body: rl.Model,
     wheel: ?rl.Model = null,
     rear: ?rl.Model = null,
-    caliper: ?rl.Model = null,
-    turret: ?rl.Model = null,
-    barrel: ?rl.Model = null,
 };
 
 pub const Art = struct {
@@ -39,17 +36,9 @@ pub const Art = struct {
             const body = load(cars_dir, h.dir, "body") orelse continue;
             var art: HeroArt = .{ .body = body };
 
-            if (h.split and h.two) {
-                art.wheel = load(cars_dir, h.dir, "wheelF");
-                art.rear = load(cars_dir, h.dir, "wheelR");
-            } else if (h.split) {
+            if (h.split) {
                 art.wheel = load(cars_dir, h.dir, "wheel");
-                art.caliper = load(cars_dir, h.dir, "caliper");
-            }
-
-            if (h.turret != null) {
-                art.turret = load(cars_dir, h.dir, "turret");
-                art.barrel = load(cars_dir, h.dir, "barrel");
+                art.rear = load(cars_dir, h.dir, "wheelR");
             }
 
             a.models[h.kind] = art;
@@ -69,75 +58,11 @@ fn load(dir: []const u8, name: []const u8, part: []const u8) ?rl.Model {
 
     if (model.meshCount == 0) return null;
 
-    applyShared(dir, name, part, model);
-
     const merged = mesh.mergeFlat(model);
 
     mesh.dropCpu(merged);
 
     return merged;
-}
-
-const SharedTexture = struct {
-    name: [24]u8 = undefined,
-    len: usize = 0,
-    texture: rl.Texture2D = undefined,
-};
-
-var shared_textures: [192]SharedTexture = @splat(.{});
-var shared_count: usize = 0;
-
-fn sharedTexture(dir: []const u8, file: []const u8) ?rl.Texture2D {
-    for (shared_textures[0..shared_count]) |*s| {
-        if (std.mem.eql(u8, s.name[0..s.len], file)) return s.texture;
-    }
-
-    if (shared_count == shared_textures.len or file.len > 24) return null;
-
-    var buf: [512]u8 = undefined;
-    const path = std.fmt.bufPrintSentinel(&buf, "{s}/tex/{s}", .{ dir, file }, 0) catch return null;
-    var texture = rl.LoadTexture(path.ptr);
-
-    if (texture.id == 0) return null;
-
-    rl.GenTextureMipmaps(&texture);
-    rl.SetTextureFilter(texture, rl.TEXTURE_FILTER_TRILINEAR);
-
-    const slot = &shared_textures[shared_count];
-
-    @memcpy(slot.name[0..file.len], file);
-    slot.len = file.len;
-    slot.texture = texture;
-    shared_count += 1;
-
-    return texture;
-}
-
-fn applyShared(dir: []const u8, name: []const u8, part: []const u8, model: rl.Model) void {
-    var buf: [512]u8 = undefined;
-    const path = std.fmt.bufPrintSentinel(&buf, "{s}/{s}/{s}.tex", .{ dir, name, part }, 0) catch return;
-
-    if (!assets.exists(path)) return;
-
-    const text = rl.LoadFileText(path.ptr);
-
-    if (text == null) return;
-
-    defer rl.UnloadFileText(text);
-
-    var lines = std.mem.tokenizeAny(u8, std.mem.span(text), "\r\n");
-
-    while (lines.next()) |line| {
-        var parts = std.mem.tokenizeScalar(u8, line, ' ');
-        const index = std.fmt.parseInt(usize, parts.next() orelse continue, 10) catch continue;
-        const file = parts.next() orelse continue;
-
-        if (index >= @as(usize, @intCast(model.materialCount))) continue;
-
-        const texture = sharedTexture(dir, file) orelse continue;
-
-        model.materials[index].maps[rl.MATERIAL_MAP_ALBEDO].texture = texture;
-    }
 }
 
 fn rotate(v: Vec3, axis: Vec3, angle: f32) Vec3 {
@@ -155,7 +80,7 @@ pub fn bodyBasis(v: vehicle.Vehicle) Basis {
     var b = Basis.yawed(v.yaw);
 
     b = rotateBasis(b, b.x, -v.pitch);
-    b = rotateBasis(b, b.z, v.roll + v.lean);
+    b = rotateBasis(b, b.z, v.roll);
 
     return b;
 }
@@ -227,11 +152,7 @@ fn tyre() rl.Mesh {
 
 fn tyreAt(r: *gfx.Renderer, spot: Vec3, basis: Basis, s: vehicle.Spec) void {
     const radius = s.wheel * 1.03;
-    const half: f32 = switch (s.class) {
-        .car => s.wheel * 0.46,
-        .cycle => s.wheel * 0.09,
-        else => s.wheel * 0.3,
-    };
+    const half: f32 = s.wheel * 0.46;
     const m: rl.Matrix = .{
         .m0 = basis.x.x * half,
         .m1 = basis.x.y * half,
@@ -277,31 +198,9 @@ pub fn draw(r: *gfx.Renderer, art: *const Art, v: vehicle.Vehicle, alpha: f32) v
 
     r.drawModelLit(ha.body, mesh.transform(pos, basis, h.scale));
 
-    if (far2 > 90 * 90 and h.turret == null) return;
+    if (far2 > 90 * 90) return;
 
-    if (h.turret) |pivot| {
-        const turret_basis = rotateBasis(basis, basis.y, v.turret);
-        const turret_at = at(pos, basis, pivot.scale(h.scale));
-
-        if (ha.turret) |t| r.drawModelLit(t, mesh.transform(turret_at, turret_basis, h.scale));
-
-        const gun_basis = rotateBasis(turret_basis, turret_basis.x, -v.gun);
-        const gun_at = at(turret_at, turret_basis, h.barrel.sub(pivot).scale(h.scale));
-
-        if (ha.barrel) |b| r.drawModelLit(b, mesh.transform(gun_at, gun_basis, h.scale));
-    }
-
-    if (h.two) {
-        const steered = rotateBasis(basis, basis.y, -v.steer);
-
-        if (ha.wheel) |w| {
-            r.drawModelLit(w, mesh.transform(at(pos, basis, h.front), rotateBasis(steered, steered.x, v.spin), h.scale));
-        }
-
-        if (ha.rear) |w| {
-            r.drawModelLit(w, mesh.transform(at(pos, basis, h.rear), rotateBasis(basis, basis.x, v.spin), h.scale));
-        }
-    } else if (ha.wheel) |w| {
+    if (ha.wheel) |w| {
         for ([_]Vec3{ h.front, h.rear }, 0..) |base, axle| {
             for ([_]f32{ 1, -1 }) |side| {
                 var fixed = basis;
@@ -311,12 +210,10 @@ pub fn draw(r: *gfx.Renderer, art: *const Art, v: vehicle.Vehicle, alpha: f32) v
                 if (axle == 0) fixed = rotateBasis(fixed, basis.y, -v.steer);
 
                 const spot = at(pos, basis, vec(base.x * side, base.y, base.z));
+                const model = if (axle == 1) ha.rear orelse w else w;
+                const spin = if (axle == 1) v.spin * h.rear_spin else v.spin;
 
-                r.drawModelLit(w, mesh.transform(spot, rotateBasis(fixed, basis.x, v.spin), h.scale));
-
-                if (far2 < 25 * 25) {
-                    if (ha.caliper) |c| r.drawModelLit(c, mesh.transform(spot, fixed, h.scale));
-                }
+                r.drawModelLit(model, mesh.transform(spot, rotateBasis(fixed, basis.x, spin), h.scale));
             }
         }
     }
@@ -343,21 +240,7 @@ fn charred(r: *gfx.Renderer, model: rl.Model, transform: rl.Matrix) void {
 pub fn seatPoint(v: vehicle.Vehicle, alpha: f32) Vec3 {
     const s = v.spec();
     const basis = bodyBasis(v);
-    const car = s.class == .car;
-    const local = vec(if (car) 0.36 else 0, s.seat, if (car) -s.length * 0.06 else -s.length * 0.1);
+    const local = vec(0.36, s.seat, -s.length * 0.06);
 
     return at(v.prev.lerp(v.pos, alpha), basis, local);
-}
-
-pub fn muzzle(v: vehicle.Vehicle) ?struct { pos: Vec3, dir: Vec3 } {
-    const h = heroes[v.kind];
-    const pivot = h.turret orelse return null;
-    const basis = bodyBasis(v);
-    const pos = v.pos.add(basis.y.scale(-h.ground));
-    const turret_basis = rotateBasis(basis, basis.y, v.turret);
-    const turret_at = at(pos, basis, pivot.scale(h.scale));
-    const gun_basis = rotateBasis(turret_basis, turret_basis.x, -v.gun);
-    const gun_at = at(turret_at, turret_basis, h.barrel.sub(pivot).scale(h.scale));
-
-    return .{ .pos = gun_at.add(gun_basis.z.scale(h.tip * h.scale)), .dir = gun_basis.z };
 }

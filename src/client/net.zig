@@ -6,6 +6,7 @@ const game_mod = @import("game.zig");
 const ui = @import("ui.zig");
 const assets = @import("assets.zig");
 const settings = @import("settings.zig");
+const touch = @import("touch.zig");
 const driving = @import("driving.zig");
 const air = @import("air.zig");
 
@@ -640,7 +641,6 @@ fn blendRide(a: ?net.Ride, z: ?net.Ride, k: f32) ?net.Ride {
     out.roll = lerpAngle(from.roll, to.roll, k);
     out.speed = from.speed + (to.speed - from.speed) * k;
     out.steer = from.steer + (to.steer - from.steer) * k;
-    out.turret = lerpAngle(from.turret, to.turret, k);
     out.gun = from.gun + (to.gun - from.gun) * k;
 
     return out;
@@ -672,13 +672,10 @@ fn applyRide(g: *Game, d: net.Ride, dt: f32) void {
             v.yaw = d.yaw;
             v.pitch = d.pitch;
             v.roll = d.roll;
-            v.lean = 0;
             v.speed = d.speed;
             v.side = 0;
             v.vy = 0;
             v.steer = d.steer;
-            v.turret = d.turret;
-            v.gun = d.gun;
             v.occupied = d.flags & net.RideFlag.occupied != 0;
             v.boosting = d.flags & net.RideFlag.boosting != 0;
             v.grounded = d.flags & net.RideFlag.grounded != 0;
@@ -822,7 +819,7 @@ fn groundRide(g: *Game, i: usize) net.Ride {
     if (i >= g.vehicles.len or i >= net.max_ground) return .{};
 
     const v = g.vehicles[i];
-    var d: net.Ride = .{ .kind = net.RideKind.ground, .index = @intCast(i), .pos = v.pos, .yaw = v.yaw, .pitch = v.pitch, .roll = v.roll + v.lean, .speed = v.speed, .steer = v.steer, .turret = v.turret, .gun = v.gun };
+    var d: net.Ride = .{ .kind = net.RideKind.ground, .index = @intCast(i), .pos = v.pos, .yaw = v.yaw, .pitch = v.pitch, .roll = v.roll, .speed = v.speed, .steer = v.steer };
 
     if (v.grounded) d.flags |= net.RideFlag.grounded;
     if (v.boosting) d.flags |= net.RideFlag.boosting;
@@ -1373,33 +1370,16 @@ pub fn draw(g: Game, font: rl.Font, pad: ?c_int, touch_ui: bool) void {
     rl.DrawRectangleRec(.{ .x = x - gap / 2, .y = y + 10 * u, .width = 1, .height = 14 * u }, ui.fade(ui.white, 0.25));
     ui.caps(font, score, x, y + 9 * u, size, ui.fade(ui.white, 0.75));
 
-    if (touch_ui) boardButton(w / 2 + total / 2 + 30 * u, y + 17 * u, u);
+    if (touch_ui) board_rect = touch.boardButton(w / 2 + total / 2, y + 17 * u, board_open);
 
-    drawKills(font, u);
+    drawKills(font, u, if (touch_ui) touch.feedLeft(w, h) else 36 * u);
 
     if (scoreboardHeld(pad) or board_open) drawBoard(font, u, w, h);
 
     if (lost) drawLost(font, u, w, h);
 }
 
-fn boardButton(cx: f32, cy: f32, u: f32) void {
-    const r = 24 * u;
-    const op = settings.touch_opacity;
-    const k = r * 0.46;
-    const t = @max(2, k * 0.2);
-    const ink = ui.fade(ui.white, 0.92 * @max(op, 0.5));
-
-    board_rect = .{ .x = cx - r * 1.5, .y = cy - r * 1.5, .width = r * 3, .height = r * 3 };
-    rl.DrawCircleV(.{ .x = cx, .y = cy }, r, ui.fade(if (board_open) ui.white else ui.ink, (if (board_open) @as(f32, 0.45) else 0.32) * op));
-    rl.DrawCircleLinesV(.{ .x = cx, .y = cy }, r, ui.fade(ui.white, 0.55 * op));
-
-    for ([_]f32{ -0.55, 0, 0.55 }) |dy| {
-        rl.DrawCircleV(.{ .x = cx - k * 0.75, .y = cy + dy * k }, t * 0.75, ink);
-        rl.DrawRectangleRounded(.{ .x = cx - k * 0.4, .y = cy + dy * k - t / 2, .width = k * 1.2, .height = t }, 1, 4, ink);
-    }
-}
-
-fn drawKills(font: rl.Font, u: f32) void {
+fn drawKills(font: rl.Font, u: f32, x: f32) void {
     var row: f32 = 0;
     var buf: [64]u8 = undefined;
 
@@ -1411,7 +1391,6 @@ fn drawKills(font: rl.Font, u: f32) void {
             print(&buf, "{s}  >  {s}", .{ net.nameSlice(&k.killer), net.nameSlice(&k.victim) });
         const tw = ui.width(font, line, size);
         const alpha = @min(1, k.life * 2);
-        const x = 36 * u;
         const yy = 76 * u + row * 34 * u;
         const color = if (k.mine) ui.accent else ui.red;
 

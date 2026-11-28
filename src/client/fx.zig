@@ -136,9 +136,8 @@ fn nitro(fx: Fx, v: View, g: game_mod.Game, car: shared.vehicle.Vehicle) void {
     const alpha = g.accumulator / shared.movement.dt;
     const pos = car.prev.lerp(car.pos, alpha);
     const back = basis.z.neg();
-    const four = s.class == .car;
-    const pipes: []const f32 = if (four) &.{ -0.22, 0.22 } else &.{0};
-    const y = if (four) s.height * 0.3 else s.height * 0.35;
+    const pipes = [_]f32{ -0.22, 0.22 };
+    const y = s.height * 0.3;
     const speed = @abs(car.speed);
     const stretch = 0.8 + @min(1.6, speed / 25);
     const t = g.time;
@@ -153,14 +152,14 @@ fn nitro(fx: Fx, v: View, g: game_mod.Game, car: shared.vehicle.Vehicle) void {
                 const u = fk / 9;
                 const flick = 0.82 + 0.18 * @sin(t * 57 + fk * 1.9 + fp * 3);
                 const at = tip.add(back.scale(u * 1.1 * stretch)).add(basis.y.scale(@sin(t * 31 + fk) * 0.02));
-                const size = (0.42 - u * 0.3) * flick * (if (four) @as(f32, 1) else 0.75);
+                const size = (0.42 - u * 0.3) * flick;
                 const core = 1 - u;
 
                 sprite(fx, v, at, size * 1.7, mix3(.{ 70, 140, 255 }, .{ 30, 60, 200 }, u), 0.55 * core);
                 sprite(fx, v, at, size, mix3(.{ 235, 245, 255 }, .{ 120, 190, 255 }, @min(1, u * 1.6)), 0.95 * core);
             }
 
-            sprite(fx, v, tip.add(back.scale(0.2)), (if (four) @as(f32, 1.6) else 1.1), .{ 80, 150, 255 }, 0.28);
+            sprite(fx, v, tip.add(back.scale(0.2)), 1.6, .{ 80, 150, 255 }, 0.28);
         }
 
         if (car.boost_start > 0) {

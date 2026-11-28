@@ -33,8 +33,6 @@ pub const Spot = struct {
 
 pub var vehicle_spots: []Spot = &.{};
 
-pub var tank_spot: ?Spot = null;
-
 pub const Tone = enum { mud, house, roof, ruin, adobe, floor, stair, beam, wood, cloth_red, cloth_blue, cloth_yellow, f_floor, f_floor_dark, f_line, f_mint, f_mint_dark, f_grey, f_grey_dark, f_hazard, f_black, f_rail, f_light, f_screen, f_metal, f_ceiling, f_crate, f_crate_teal, f_container_red, f_container_blue, f_vault, f_red_light, f_pipe, f_pipe_red, f_barrel, f_barrel_red, f_rubber, f_sign, f_stain, f_wood_pallet, f_panel, olive, sandbag, concrete, tarmac, marking, cap_ring, flag_cloth, pole, rust, char, tent, sign, trim, plinth, shutter, frame, tank, rug, leaf, pot, scuff, scuff_soft, paint_line, blob, blob_soft };
 
 pub const Structure = struct {
@@ -233,7 +231,6 @@ fn town(b: *Builder) void {
 
             b.put(.light_square, line + terrain.road_half + 0.6, t, half_pi, 1);
             b.put(.light_square, t, line - terrain.road_half - 0.6, 0, 1);
-
         }
     }
 
@@ -525,13 +522,13 @@ fn roofClutter(b: *Builder, f: Frame, w: f32, d: f32, y: f32) void {
 pub const kit_houses = [_]struct { w: f32, d: f32, kind: Kind, blocks: []const [5]f32 }{
     .{ .w = 9.57, .d = 11.44, .kind = .kd_house_0, .blocks = &.{ .{ -4.78, -2.78, 3.72, -1.78, 5.87 }, .{ -4.78, -4.28, 3.22, -2.78, 5.87 }, .{ -4.28, -0.78, 4.22, 0.22, 5.87 }, .{ -4.28, -1.78, 3.72, -0.78, 5.87 }, .{ -3.78, 1.22, 4.72, 2.72, 5.87 }, .{ -3.78, 0.22, 4.22, 1.22, 5.87 }, .{ -3.78, -4.78, 3.22, -4.28, 5.94 }, .{ -3.28, 2.72, 4.22, 4.72, 7.50 }, .{ -2.78, 4.72, -0.28, 5.72, 7.50 }, .{ -1.78, -5.28, 2.72, -4.78, 5.94 }, .{ -0.28, 4.72, 1.72, 5.22, 3.20 }, .{ 0.72, -5.78, 2.72, -5.28, 3.20 }, .{ 4.22, 3.72, 5.22, 4.22, 3.20 }, .{ 4.22, 2.72, 4.72, 3.72, 3.20 } } },
     .{ .w = 8.88, .d = 10.99, .kind = .kd_house_1, .blocks = &.{ .{ -4.44, -2.00, 4.06, -1.00, 5.53 }, .{ -4.44, -4.50, 3.56, -2.00, 6.31 }, .{ -3.94, 1.50, 4.56, 2.50, 7.50 }, .{ -3.94, -1.00, 4.06, 1.50, 5.53 }, .{ -3.44, 2.50, 0.56, 5.50, 7.50 }, .{ -2.94, -5.00, 3.56, -4.50, 5.61 }, .{ 0.56, 2.50, 4.06, 5.00, 4.12 }, .{ 0.56, -5.50, 3.06, -5.00, 4.95 }, .{ 4.06, 2.50, 4.56, 4.50, 3.20 } } },
-    .{ .w = 7.65, .d = 12.59, .kind = .kd_house_2, .blocks = &.{ .{ -3.83, -6.21, 4.17, 6.29, 9.12 } } },
+    .{ .w = 7.65, .d = 12.59, .kind = .kd_house_2, .blocks = &.{.{ -3.83, -6.21, 4.17, 6.29, 9.12 }} },
     .{ .w = 9.01, .d = 11.07, .kind = .kd_house_3, .blocks = &.{ .{ -4.50, -1.96, 4.00, -0.96, 2.40 }, .{ -4.50, -4.46, 3.50, -1.96, 7.38 }, .{ -4.00, 1.04, 4.50, 2.04, 7.50 }, .{ -4.00, -0.96, 4.00, 1.04, 6.91 }, .{ -3.50, 2.04, 3.50, 5.04, 7.50 }, .{ -3.50, -4.96, 3.50, -4.46, 6.88 }, .{ -3.00, 5.04, -0.00, 5.54, 5.00 }, .{ -0.00, -5.46, 3.00, -4.96, 6.35 }, .{ 3.50, 4.04, 5.00, 4.54, 3.20 }, .{ 3.50, 2.04, 4.50, 4.04, 6.75 } } },
     .{ .w = 7.78, .d = 10.20, .kind = .kd_house_4, .blocks = &.{ .{ -3.89, -4.90, 4.11, 5.10, 5.62 }, .{ -3.39, -5.40, 3.61, -4.90, 4.67 } } },
     .{ .w = 12.22, .d = 12.47, .kind = .kd_house_5, .blocks = &.{ .{ -6.11, -1.26, 4.39, -0.77, 6.18 }, .{ -6.11, -1.76, 3.89, -1.26, 6.16 }, .{ -5.61, -0.27, 5.39, 0.23, 6.88 }, .{ -5.61, -0.77, 4.89, -0.27, 6.18 }, .{ -5.61, -2.27, 3.89, -1.76, 5.16 }, .{ -5.11, 0.23, 5.89, 0.73, 6.88 }, .{ -5.11, -2.77, 3.39, -2.27, 6.16 }, .{ -4.61, 0.73, 6.39, 1.24, 6.16 }, .{ -4.61, -3.27, 2.89, -2.77, 6.16 }, .{ -4.11, 1.24, 6.39, 1.74, 6.24 }, .{ -3.61, 1.74, 5.89, 2.23, 6.24 }, .{ -3.61, -3.77, 2.39, -3.27, 6.69 }, .{ -3.11, 2.23, 5.39, 2.73, 5.78 }, .{ -3.11, -4.26, 1.89, -3.77, 6.69 }, .{ -2.61, 2.73, 3.89, 3.73, 6.88 }, .{ -2.61, -4.76, 1.39, -4.26, 5.58 }, .{ -2.11, 3.73, 3.39, 4.24, 6.88 }, .{ -2.11, -5.26, 0.89, -4.76, 5.16 }, .{ -1.61, 4.24, 2.89, 4.74, 6.18 }, .{ -1.61, -5.76, 0.39, -5.26, 3.20 }, .{ -1.11, 4.74, 2.39, 5.24, 4.31 }, .{ -1.11, -6.26, 0.39, -5.76, 3.20 }, .{ -0.61, 5.24, 1.89, 5.74, 4.31 }, .{ -0.11, 5.74, 1.39, 6.24, 3.20 }, .{ 3.89, 2.73, 4.89, 3.23, 3.20 } } },
     .{ .w = 7.80, .d = 11.05, .kind = .kd_house_6, .blocks = &.{ .{ -3.90, 2.52, 1.60, 4.52, 6.25 }, .{ -3.40, 0.52, 2.10, 2.52, 7.08 }, .{ -2.90, -0.98, 2.60, 0.52, 5.81 }, .{ -2.40, 4.52, 1.60, 5.02, 5.65 }, .{ -2.40, -2.48, 3.10, -0.98, 3.63 }, .{ -1.90, -3.98, 3.60, -2.48, 3.38 }, .{ -1.40, -4.48, 4.10, -3.98, 3.13 }, .{ -1.40, -4.98, 2.60, -4.48, 3.17 }, .{ -1.40, -5.48, 1.10, -4.98, 3.12 }, .{ -0.90, 5.02, 1.10, 5.52, 3.20 }, .{ -0.90, -5.98, -0.40, -5.48, 3.06 }, .{ 1.60, 2.52, 2.10, 3.52, 3.20 }, .{ 2.10, 0.52, 2.60, 2.02, 3.20 }, .{ 2.60, -0.98, 3.10, 0.02, 3.20 }, .{ 3.10, -2.48, 3.60, -1.48, 3.20 }, .{ 3.60, -3.98, 4.10, -2.98, 3.13 } } },
     .{ .w = 7.78, .d = 8.80, .kind = .kd_house_7, .blocks = &.{ .{ -3.89, -1.60, 2.61, -1.10, 4.12 }, .{ -3.89, -2.60, 2.11, -1.60, 4.99 }, .{ -3.39, -0.60, 3.11, -0.10, 4.12 }, .{ -3.39, -1.10, 2.61, -0.60, 4.12 }, .{ -2.89, 0.40, 3.61, 0.90, 4.12 }, .{ -2.89, -0.10, 3.11, 0.40, 4.12 }, .{ -2.89, -3.10, 1.61, -2.60, 8.09 }, .{ -2.39, 1.40, 4.11, 1.90, 6.25 }, .{ -2.39, 0.90, 3.61, 1.40, 6.25 }, .{ -2.39, -3.60, 1.61, -3.10, 8.09 }, .{ -1.89, 1.90, 3.61, 2.90, 6.25 }, .{ -1.39, 2.90, 1.61, 3.90, 6.25 }, .{ -0.89, 3.90, 0.61, 4.40, 2.40 }, .{ -0.89, -4.10, 1.11, -3.60, 3.20 }, .{ 0.11, -4.60, 1.11, -4.10, 3.20 }, .{ 1.61, 2.90, 2.61, 3.40, 2.40 }, .{ 3.61, 1.90, 4.11, 2.40, 2.40 } } },
-    .{ .w = 7.50, .d = 7.50, .kind = .kd_house_8, .blocks = &.{ .{ -3.75, -3.75, 4.25, 3.75, 7.75 } } },
+    .{ .w = 7.50, .d = 7.50, .kind = .kd_house_8, .blocks = &.{.{ -3.75, -3.75, 4.25, 3.75, 7.75 }} },
     .{ .w = 15.48, .d = 16.00, .kind = .kd_house_9, .blocks = &.{ .{ -7.74, -1.50, -2.74, -1.00, 6.80 }, .{ -7.74, -2.00, -3.24, -1.50, 6.80 }, .{ -7.24, -1.00, -2.74, -0.50, 6.80 }, .{ -7.24, -2.50, -3.74, -2.00, 6.80 }, .{ -6.74, -0.50, -2.24, -0.00, 6.80 }, .{ -6.74, -3.00, -4.24, -2.50, 6.80 }, .{ -6.24, 0.50, -1.24, 1.00, 6.80 }, .{ -6.24, -0.00, -1.74, 0.50, 6.80 }, .{ -5.74, 1.00, -0.74, 1.50, 6.80 }, .{ -5.74, -3.50, -4.24, -3.00, 3.20 }, .{ -5.24, 1.50, -0.24, 2.00, 6.80 }, .{ -5.24, -4.00, -3.74, -3.50, 3.20 }, .{ -4.74, 2.50, 0.26, 3.00, 6.80 }, .{ -4.74, 2.00, -0.24, 2.50, 6.80 }, .{ -4.74, -4.50, -3.24, -4.00, 3.20 }, .{ -4.24, 3.00, -0.24, 3.50, 6.80 }, .{ -3.74, 3.50, -1.74, 4.50, 5.01 }, .{ -3.74, -5.00, -2.24, -4.50, 3.20 }, .{ -3.24, 4.50, -2.24, 5.00, 3.20 }, .{ -3.24, -5.50, -1.74, -5.00, 3.20 }, .{ -2.74, 5.00, -1.74, 5.50, 3.20 }, .{ -2.74, -6.00, -1.24, -5.50, 3.20 }, .{ -2.24, 6.00, 1.76, 6.50, 5.89 }, .{ -2.24, 5.50, -1.24, 6.00, 3.20 }, .{ -1.74, 6.50, 1.76, 7.00, 5.21 }, .{ -1.74, 3.50, -0.74, 4.00, 2.40 }, .{ -1.74, -6.50, -0.24, -6.00, 3.20 }, .{ -1.24, 7.00, 1.26, 7.50, 5.01 }, .{ -1.24, -7.00, 0.26, -6.50, 3.20 }, .{ -0.74, 7.50, 0.76, 8.00, 2.40 }, .{ -0.74, 5.50, 1.26, 6.00, 3.20 }, .{ -0.74, -7.50, 1.26, -7.00, 3.20 }, .{ 0.26, 5.00, 1.26, 5.50, 3.20 }, .{ 0.26, 4.50, 0.76, 5.00, 3.20 }, .{ 0.26, -8.00, 0.76, -7.50, 3.20 }, .{ 0.76, 2.50, 2.26, 4.00, 8.42 }, .{ 0.76, -6.50, 2.26, -6.00, 3.20 }, .{ 0.76, -7.00, 1.76, -6.50, 3.20 }, .{ 1.26, -6.00, 2.26, -5.50, 3.20 }, .{ 1.76, 2.00, 3.76, 2.50, 3.20 }, .{ 1.76, -5.50, 2.76, -5.00, 3.20 }, .{ 2.26, 2.50, 3.26, 3.50, 3.20 }, .{ 2.26, 1.50, 3.26, 2.00, 2.40 }, .{ 2.26, -5.00, 3.26, -4.00, 3.20 }, .{ 2.76, -4.00, 3.76, -3.50, 3.20 }, .{ 3.26, 2.50, 3.76, 3.00, 2.40 }, .{ 3.26, -3.50, 4.26, -3.00, 3.20 }, .{ 3.76, -3.00, 4.76, -2.00, 3.20 }, .{ 4.26, 1.50, 7.76, 2.50, 6.80 }, .{ 4.26, -2.00, 5.26, -1.50, 3.20 }, .{ 4.76, 2.50, 7.26, 3.00, 6.80 }, .{ 4.76, -1.00, 6.26, -0.50, 3.20 }, .{ 4.76, -1.50, 5.76, -1.00, 3.20 }, .{ 5.26, 3.00, 5.76, 4.00, 2.40 }, .{ 5.26, -0.50, 6.26, -0.00, 3.20 }, .{ 5.76, 3.00, 6.76, 3.50, 2.40 }, .{ 5.76, 1.00, 7.26, 1.50, 3.20 }, .{ 5.76, -0.00, 6.76, 0.50, 3.20 }, .{ 6.26, 0.50, 7.26, 1.00, 3.20 } } },
     .{ .w = 8.35, .d = 10.62, .kind = .kd_house_10, .blocks = &.{ .{ -4.18, -4.69, 3.82, 0.81, 7.50 }, .{ -3.68, 0.81, 2.32, 5.31, 10.14 }, .{ -1.18, -5.19, 3.82, -4.69, 7.62 }, .{ 2.32, 0.81, 4.32, 4.81, 5.62 } } },
     .{ .w = 5.94, .d = 5.88, .kind = .kd_house_11, .blocks = &.{ .{ -2.97, -0.06, 3.03, 0.44, 4.48 }, .{ -2.97, -2.06, 2.53, -0.06, 5.72 }, .{ -2.47, 0.44, 0.53, 2.44, 4.48 }, .{ -1.47, -2.56, 2.53, -2.06, 4.06 }, .{ 0.53, 0.44, 3.03, 1.94, 3.65 }, .{ 0.53, -3.06, 2.03, -2.56, 3.20 }, .{ 1.03, 1.94, 2.53, 2.44, 3.13 } } },
@@ -840,10 +837,6 @@ pub fn openYaw(p: Vec3) struct { yaw: f32, reach: f32 } {
     return .{ .yaw = best_yaw, .reach = best };
 }
 
-fn world_tank(p: Vec3) void {
-    tank_spot = .{ .pos = p, .yaw = 0 };
-}
-
 pub fn parkClear(gpa: std.mem.Allocator) void {
     var kept: std.ArrayList(Spot) = .empty;
 
@@ -925,7 +918,6 @@ pub fn autoSpots(gpa: std.mem.Allocator, opt: AutoSpots) void {
 }
 
 pub fn safeSpawns(gpa: std.mem.Allocator) void {
-
     var list: std.ArrayList(Vec3) = .empty;
     var yaws: std.ArrayList(f32) = .empty;
     var r: Rng = .{ .state = 4242 };
@@ -962,6 +954,29 @@ pub fn safeSpawns(gpa: std.mem.Allocator) void {
     spawn_yaws = yaws.toOwnedSlice(gpa) catch spawn_yaws;
 }
 
+pub fn reset(gpa: std.mem.Allocator) void {
+    gpa.free(placements);
+    gpa.free(pieces);
+    gpa.free(structures);
+    placements = &.{};
+    pieces = &.{};
+    structures = &.{};
+    spawns = &.{};
+    spawn_yaws = &.{};
+    drone_anchors = &.{};
+    weapon_spots = &.{};
+    vehicle_spots = &.{};
+    capture_points = &.{};
+    town_loot = .empty;
+    kit_loot = .empty;
+    pocket_spawns = .empty;
+    conquest_points = .empty;
+    hangar_count = 0;
+    pane_n = 0;
+    panes = &.{};
+    @import("grid.zig").reset();
+}
+
 pub fn build(gpa: std.mem.Allocator) void {
     var b: Builder = .{ .gpa = gpa };
 
@@ -988,6 +1003,7 @@ pub fn build(gpa: std.mem.Allocator) void {
     placements = b.placed.toOwnedSlice(gpa) catch &.{};
     pieces = b.solids.toOwnedSlice(gpa) catch &.{};
     structures = b.masses.toOwnedSlice(gpa) catch &.{};
+    terrain.bakeHeights(gpa);
 
     if (def) |d| {
         d.spots(gpa);
@@ -1472,7 +1488,6 @@ fn hangar(b: *Builder) void {
 
     fdeco(b, -hall_x + 0.32, 6.5, -6, -hall_x + 0.45, 14, 6, .f_vault);
     fdeco(b, -hall_x + 0.45, 9.6, -1.2, -hall_x + 0.55, 10.9, 1.2, .f_black);
-
 }
 
 fn sideRooms(b: *Builder) void {
@@ -1684,7 +1699,7 @@ fn pointCover(b: *Builder, cx: f32, cz: f32) void {
         const z = cz + @sin(a) * r;
         const roll = b.rng.next();
 
-        if (terrain.roadDistance(x, z) < terrain.road_half + 2 or terrain.runwayMask(x, z) > 0.1 or terrain.padMask(x, z) > 0.1) continue;
+        if (terrain.roadDistance(x, z) < terrain.road_half + 2 or terrain.runwayMask(x, z) > 0.1) continue;
 
         for (0..5) |_| b.put(.mil_grass, x + b.rng.range(-4, 4), z + b.rng.range(-4, 4), b.rng.range(0, 6.28), b.rng.range(1.0, 1.6));
 
@@ -1710,7 +1725,7 @@ fn savanna(b: *Builder) void {
         const px = b.rng.range(-terrain.play + 25, terrain.play - 25);
         const pz = b.rng.range(-terrain.play + 25, terrain.play - 25);
 
-        if (terrain.districtMask(px, pz) > 0.02 or terrain.townMask(px, pz) > 0.02 or terrain.runwayMask(px, pz) > 0.05 or terrain.padMask(px, pz) > 0.05) continue;
+        if (terrain.districtMask(px, pz) > 0.02 or terrain.townMask(px, pz) > 0.02 or terrain.runwayMask(px, pz) > 0.05) continue;
 
         if (terrain.roadDistance(px, pz) < terrain.road_half + 7) continue;
 
@@ -1781,7 +1796,7 @@ fn districtTufts(b: *Builder) void {
 
             if (terrain.townMask(px, pz) > 0.1) continue;
 
-            if (terrain.roadDistance(px, pz) < terrain.road_half + 1 or terrain.runwayMask(px, pz) > 0.2 or terrain.padMask(px, pz) > 0.2) continue;
+            if (terrain.roadDistance(px, pz) < terrain.road_half + 1 or terrain.runwayMask(px, pz) > 0.2) continue;
 
             if (roll < 0.42) {
                 b.put(.mil_grass, px, pz, b.rng.range(0, 6.28), b.rng.range(0.8, 1.5));
@@ -1932,7 +1947,7 @@ fn groundBreaks(b: *Builder, used: []const Rect) void {
 
             if (@abs(px) < fx_out + 2 and @abs(pz) < fz_out + 2) continue;
 
-            if (rd < terrain.road_half + 1 or blocked(used, px, pz, 1.5) or terrain.padMask(px, pz) > 0.2) continue;
+            if (rd < terrain.road_half + 1 or blocked(used, px, pz, 1.5)) continue;
 
             const along = b.rng.next() < 0.5;
 
@@ -2005,9 +2020,9 @@ fn blobs(b: *Builder) void {
 }
 
 const facility_lots = [_][3]f32{
-    .{ 60, -70, 0 },      .{ 72, -70, 0 },      .{ -60, 70, std.math.pi }, .{ -72, 70, std.math.pi },
-    .{ 104, 4, half_pi }, .{ 120, 4, half_pi }, .{ -104, -4, -half_pi },   .{ -120, -4, -half_pi },
-    .{ 4, 100, 0 },       .{ -4, 112, std.math.pi }, .{ 4, -110, 0 },      .{ -4, -165, std.math.pi },
+    .{ 60, -70, 0 },        .{ 72, -70, 0 },           .{ -60, 70, std.math.pi }, .{ -72, 70, std.math.pi },
+    .{ 104, 4, half_pi },   .{ 120, 4, half_pi },      .{ -104, -4, -half_pi },   .{ -120, -4, -half_pi },
+    .{ 4, 100, 0 },         .{ -4, 112, std.math.pi }, .{ 4, -110, 0 },           .{ -4, -165, std.math.pi },
     .{ 60, -190, half_pi }, .{ -60, -190, -half_pi },
 };
 
@@ -2041,11 +2056,6 @@ fn complex(b: *Builder) void {
     runway(b);
 
     for (terrain.facility_roads, 0..) |r, i| roadStrip(b, r[0], r[1], r[2], r[3], 0.04 + @as(f32, @floatFromInt(i)) * 0.006);
-
-    for (terrain.helipads) |p| {
-        helipad(b, p[0], p[1]);
-        used.append(b.gpa, .{ p[0] - 13, p[1] - 13, p[0] + 13, p[1] + 13 }) catch {};
-    }
 
     fenceLine(b, -cw[0], -cw[1], cw[0], -cw[1]);
     fenceLine(b, -cw[0], cw[1], cw[0], cw[1]);
@@ -2159,7 +2169,6 @@ fn complex(b: *Builder) void {
         while (k < 9) : (k += 2) decal(b, d[0] + k, d[1] - 0.4, d[0] + k + 1, d[1] + 0.4, 0.112, .paint_line);
     }
 
-
     var rx: f32 = -fx_out + 4;
 
     while (rx < fx_out) : (rx += 8) {
@@ -2196,7 +2205,7 @@ fn scrub(b: *Builder) void {
 
             if (@abs(px) < cw[0] + 6 and @abs(pz) < cw[1] + 6) continue;
 
-            if (terrain.roadDistance(px, pz) < terrain.road_half + 3 or terrain.runwayMask(px, pz) > 0.1 or terrain.padMask(px, pz) > 0.1) continue;
+            if (terrain.roadDistance(px, pz) < terrain.road_half + 3 or terrain.runwayMask(px, pz) > 0.1) continue;
 
             if (1 - terrain.normal(px, pz).y > 0.4) continue;
 
@@ -2407,7 +2416,6 @@ fn facilityClutter(b: *Builder) void {
         vent(b, sx * (hall_x - 0.05), 9.5, -14, false, -sx);
     }
 
-
     fdeco(b, -14, 0.005, 14, -10, 0.012, 16, .f_stain);
     fdeco(b, 14, 0.005, -16, 17, 0.012, -13.5, .f_stain);
 
@@ -2416,18 +2424,18 @@ fn facilityClutter(b: *Builder) void {
 
 fn facilitySpots(gpa: std.mem.Allocator) void {
     const spawn_list = [_]Vec3{
-        vec(-22, 0, 12),   vec(22, 0, -12),   vec(0, 0, -21),   vec(-2, 0, 21),  vec(-43, 0, 2),  vec(43, 0, -2), vec(-30, 0, 39), vec(30, 0, -39),
-        vec(-86, 0, -14), vec(86, 0, 14),   vec(-64, 0, 86), vec(64, 0, -86), vec(110, 0, 70), vec(-110, 0, -70),
+        vec(-22, 0, 12),  vec(22, 0, -12), vec(0, 0, -21),  vec(-2, 0, 21),  vec(-43, 0, 2),  vec(43, 0, -2),    vec(-30, 0, 39), vec(30, 0, -39),
+        vec(-86, 0, -14), vec(86, 0, 14),  vec(-64, 0, 86), vec(64, 0, -86), vec(110, 0, 70), vec(-110, 0, -70),
     };
     const inside = [_]Vec3{
-        vec(0, 0, 0),      vec(-12, 0, 0),    vec(12, 0, 0),     vec(0, 0, 12),    vec(0, 0, -12),
-        vec(-43, 0, -16),  vec(43, 0, 16),    vec(-30, 0, -39),  vec(30, 0, 39),   vec(-10, 0, 39),
-        vec(10, 0, -39),   vec(-50, 0, 30),   vec(50, 0, -30),   vec(-27, deck, 0), vec(27, deck, 0),
-        vec(0, deck, -24), vec(0, deck, 24),  vec(-20, deck, 24), vec(20, deck, -24),
+        vec(0, 0, 0),      vec(-12, 0, 0),   vec(12, 0, 0),      vec(0, 0, 12),      vec(0, 0, -12),
+        vec(-43, 0, -16),  vec(43, 0, 16),   vec(-30, 0, -39),   vec(30, 0, 39),     vec(-10, 0, 39),
+        vec(10, 0, -39),   vec(-50, 0, 30),  vec(50, 0, -30),    vec(-27, deck, 0),  vec(27, deck, 0),
+        vec(0, deck, -24), vec(0, deck, 24), vec(-20, deck, 24), vec(20, deck, -24),
     };
     const outside = [_][2]f32{
-        .{ -86, 4 },   .{ -84, 64 },  .{ 96, -76 },  .{ 92, 70 },    .{ 112, 4 },   .{ -100, 114 },
-        .{ -30, 112 }, .{ 30, 112 },  .{ -50, -86 }, .{ 50, -86 },   .{ -78, -112 }, .{ 0, -140 },
+        .{ -86, 4 },   .{ -84, 64 },    .{ 96, -76 },  .{ 92, 70 },  .{ 112, 4 },    .{ -100, 114 },
+        .{ -30, 112 }, .{ 30, 112 },    .{ -50, -86 }, .{ 50, -86 }, .{ -78, -112 }, .{ 0, -140 },
         .{ 84, -140 }, .{ -150, -150 }, .{ 150, 150 }, .{ 62, 44 },  .{ -62, -46 },  .{ 30, -196 },
     };
     var spots: std.ArrayList(Vec3) = .empty;
@@ -2447,8 +2455,6 @@ fn facilitySpots(gpa: std.mem.Allocator) void {
     var all = spawn_list;
 
     for (&all) |*p| p.y = ground(p.x, p.z);
-
-    world_tank(vec(-106, ground(-106, -40), -40));
 
     spawns = gpa.dupe(Vec3, &all) catch &.{};
     var yaws: [all.len]f32 = undefined;
@@ -2579,24 +2585,6 @@ pub fn cHangar(b: *Builder, cx: f32, cz: f32) void {
     b.putAt(.mil_drums, vec(cx + 9, y, cz + 6), half_pi, 1);
 }
 
-pub fn helipad(b: *Builder, cx: f32, cz: f32) void {
-    const y = ground(cx, cz) + 0.03;
-
-    trim(b, cx - 9, y, cz - 9, cx + 9, y + 0.06, cz + 9, .tarmac);
-    trim(b, cx - 3, y + 0.06, cz - 3.5, cx - 2, y + 0.08, cz + 3.5, .marking);
-    trim(b, cx + 2, y + 0.06, cz - 3.5, cx + 3, y + 0.08, cz + 3.5, .marking);
-    trim(b, cx - 2, y + 0.06, cz - 0.5, cx + 2, y + 0.08, cz + 0.5, .marking);
-
-    var a: f32 = 0;
-
-    while (a < 6.28) : (a += 0.2618) {
-        const x = cx + @cos(a) * 7.5;
-        const z = cz + @sin(a) * 7.5;
-
-        trim(b, x - 0.45, y + 0.06, z - 0.45, x + 0.45, y + 0.08, z + 0.45, .marking);
-    }
-}
-
 pub fn tent(b: *Builder, cx: f32, cz: f32) void {
     b.putAt(.mil_tent, vec(cx, lowest(cx, cz, 3) + 0.4, cz), 0, 1);
 }
@@ -2684,7 +2672,6 @@ fn baseDistrict(b: *Builder, d: terrain.District) void {
     for ([_][2]f32{ .{ -1, -1 }, .{ 1, -1 }, .{ -1, 1 }, .{ 1, 1 } }) |k| tower(b, d.x + k[0] * (r - 12), d.z + k[1] * (r - 12));
 
     cHangar(b, d.x - 30, d.z - 40);
-    for (terrain.helipads) |p| helipad(b, p[0], p[1]);
     bunker(b, d.x - 40, d.z + 20, 0);
     bunker(b, d.x + 30, d.z + 40, 1);
     bunker(b, d.x - 10, d.z + 55, 0);
@@ -3175,12 +3162,6 @@ fn conquestSpots(gpa: std.mem.Allocator, b: *Builder) void {
         }
     }
 
-
-    const base = terrain.districts[2];
-    const tank_at = vec(base.x + 20, ground(base.x + 20, base.z + 50), base.z + 50);
-
-    world_tank(tank_at);
-
     spawns = spawn_list.toOwnedSlice(gpa) catch &.{};
     spawn_yaws = yaw_list.toOwnedSlice(gpa) catch &.{};
     weapon_spots = spots.toOwnedSlice(gpa) catch &.{};
@@ -3322,8 +3303,6 @@ fn bridgeRun(b: *Builder, ax: f32, az: f32, ay: f32, bx: f32, bz: f32, by: f32, 
 fn valleyBase(b: *Builder) void {
     runway(b);
 
-    for (terrain.helipads) |p| helipad(b, p[0], p[1]);
-
     airstripPocket(b);
     ruinsPocket(b);
     oasisPocket(b);
@@ -3334,8 +3313,6 @@ fn valleyBase(b: *Builder) void {
     fuelTank(b, 80, -228);
     kitTower(b, -40, -188, 0);
     kitTower(b, 82, -186, 0);
-
-    for (terrain.helipads) |p| sandbags(b, p[0], p[1] + 11, 0, 8);
 
     const pass = terrain.roadLine(228);
 
@@ -4020,7 +3997,6 @@ fn valleySpots(gpa: std.mem.Allocator) void {
         const park = onRoad(z + 4, side * (terrain.road_half - 2.5));
 
         if (i % 2 == 0 and levelGround(park.x, park.z)) parked.append(gpa, .{ .pos = park, .yaw = if (side > 0) yaw else yaw + std.math.pi }) catch {};
-
     }
 
     for (kit_loot.items) |p| spots.append(gpa, p) catch {};
@@ -4276,14 +4252,14 @@ fn prismArches(b: *Builder) void {
 
 fn prismQuadrants(b: *Builder) void {
     const wall_list = [_][3]f32{
-        .{ 40, 22, 0 },   .{ 22, 44, half_pi }, .{ 30, 52, 0 },     .{ 52, 30, half_pi },
-        .{ 96, 40, half_pi }, .{ 40, 100, 0 },   .{ 78, 104, 0 },    .{ 104, 78, half_pi },
+        .{ 40, 22, 0 },       .{ 22, 44, half_pi }, .{ 30, 52, 0 },  .{ 52, 30, half_pi },
+        .{ 96, 40, half_pi }, .{ 40, 100, 0 },      .{ 78, 104, 0 }, .{ 104, 78, half_pi },
     };
     const cover_list = [_][3]f32{
-        .{ 28, 18, 0.3 },  .{ 18, 26, 1.2 },  .{ 46, 38, 0 },     .{ 38, 46, half_pi },
-        .{ 58, 22, 0.8 },  .{ 22, 58, 0.8 },  .{ 74, 40, half_pi }, .{ 40, 74, 0 },
-        .{ 90, 20, 0 },    .{ 20, 90, half_pi }, .{ 100, 58, 0.4 }, .{ 58, 100, 1.1 },
-        .{ 84, 84, 0.78 }, .{ 70, 30, 0 },    .{ 30, 70, half_pi }, .{ 110, 104, 0 },
+        .{ 28, 18, 0.3 },  .{ 18, 26, 1.2 },     .{ 46, 38, 0 },       .{ 38, 46, half_pi },
+        .{ 58, 22, 0.8 },  .{ 22, 58, 0.8 },     .{ 74, 40, half_pi }, .{ 40, 74, 0 },
+        .{ 90, 20, 0 },    .{ 20, 90, half_pi }, .{ 100, 58, 0.4 },    .{ 58, 100, 1.1 },
+        .{ 84, 84, 0.78 }, .{ 70, 30, 0 },       .{ 30, 70, half_pi }, .{ 110, 104, 0 },
     };
     const pane_list = [_][3]f32{
         .{ 34, 12, half_pi }, .{ 12, 34, 0 }, .{ 48, 58, 0 }, .{ 58, 48, half_pi }, .{ 88, 30, half_pi }, .{ 30, 88, 0 },
@@ -4422,9 +4398,9 @@ fn prismSpots(gpa: std.mem.Allocator) void {
 }
 
 fn courtyardMap(b: *Builder) void {
-    const first = @intFromEnum(Kind.cy_t0);
+    const first = @backingInt(Kind.cy_t0);
 
-    for (courtyard.tiles, 0..) |t, i| b.putAt(@enumFromInt(first + i), vec(t[0], 0, t[1]), 0, 1);
+    for (courtyard.tiles, 0..) |t, i| b.putAt(@fromBackingInt(@intCast(first + i)), vec(t[0], 0, t[1]), 0, 1);
 
     for (courtyard.boxes) |q| b.solid(.{ .box = .{ .min = vec(q[0], q[1], q[2]), .max = vec(q[3], q[4], q[5]) } });
 

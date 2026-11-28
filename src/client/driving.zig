@@ -56,9 +56,6 @@ pub fn tick(g: *Game, c: Controls) void {
         if (!v.alive()) continue;
 
         if (seat == i) {
-            const s = v.spec();
-            const pedal: f32 = if (s.class == .cycle) 0.85 + 0.15 * @sin(g.time * 6) else 1;
-
             const auto: f32 = if (autodrive) 0.7 else 0;
 
             var cc = c;
@@ -80,10 +77,10 @@ pub fn tick(g: *Game, c: Controls) void {
 
             steer_smooth = math.approach(steer_smooth, curved, dt * (if (centering) @as(f32, 9) else 4.5));
 
-            vehicle.step(v, .{ .throttle = (push + auto) * pedal, .steer = steer_smooth + auto * 0.4, .brake = cc.jump, .boost = cc.boost or autoboost }, world.pieces, dt);
+            vehicle.step(v, .{ .throttle = push + auto, .steer = steer_smooth + auto * 0.4, .brake = cc.jump, .boost = cc.boost or autoboost }, world.pieces, dt);
 
             boost_view = v.boosting;
-            speed_fov = math.clamp01(@abs(v.speed) / @max(s.top_speed, 1)) * 8;
+            speed_fov = math.clamp01(@abs(v.speed) / @max(v.spec().top_speed, 1)) * 8;
             cam_shake = @max(cam_shake * @exp(-dt * 7), @max(v.impact * 0.6, if (v.boosting) 0.05 + v.boost_start * 0.35 else 0));
         } else if (!v.remote and (@abs(v.speed) > 0.4 or @abs(v.side) > 0.4 or v.vy < -0.8 or v.vy > 0.8 or v.righting > 0)) {
             vehicle.step(v, .{}, world.pieces, dt);
@@ -145,7 +142,7 @@ fn trace(v: vehicle.Vehicle, dt: f32) void {
     const rate = std.math.atan2(@sin(v.yaw - vlast_yaw), @cos(v.yaw - vlast_yaw)) / vprint;
     const ground = terrain.height(v.pos.x, v.pos.z);
 
-    std.debug.print("VT t={d:.2} spd={d:.2} side={d:.2} yawr={d:.2} pitch={d:.3} roll={d:.3} lean={d:.2} y-terr={d:.2} vy={d:.2} gnd={} pos={d:.1},{d:.1}\n", .{ vclock, v.speed, v.side, rate, v.pitch, v.roll, v.lean, v.pos.y - ground, v.vy, v.grounded, v.pos.x, v.pos.z });
+    std.debug.print("VT t={d:.2} spd={d:.2} side={d:.2} yawr={d:.2} pitch={d:.3} roll={d:.3} y-terr={d:.2} vy={d:.2} gnd={} pos={d:.1},{d:.1}\n", .{ vclock, v.speed, v.side, rate, v.pitch, v.roll, v.pos.y - ground, v.vy, v.grounded, v.pos.x, v.pos.z });
     vlast_yaw = v.yaw;
     vprint = 0;
 }
@@ -341,8 +338,6 @@ pub fn update(g: *Game, dt: f32, c: Controls) void {
 
     if (c.reset or (c.reload and lean < 0.3)) vehicle.reset(&g.vehicles[i]);
 
-    if (g.vehicles[i].spec().class == .tank) aimTurret(g, &g.vehicles[i], dt);
-
     const shooting = lean_test or g.ads > 0.3 or g.arsenal.flash > 0 or c.fire_down;
 
     lean_hold = if (shooting) 1 else @max(0, lean_hold - dt);
@@ -427,11 +422,7 @@ pub fn view(g: Game) ?View {
     const dir = math.lookDir(g.yaw + g.recoil_yaw, pitch);
     const target = pos.add(.{ .y = s.height * 0.6 + 0.35 });
     const pace = math.clamp01(@abs(v.speed) / @max(s.top_speed, 1));
-    const dist: f32 = switch (s.class) {
-        .car => 5.6 + s.length * 0.25 + pace * 1.4,
-        .tank => 9.5,
-        else => 3.6 + s.length * 0.3 + pace * 0.9,
-    };
+    const dist: f32 = 5.6 + s.length * 0.25 + pace * 1.4;
     const orbit = math.lookDir(g.yaw, pitch - 0.1);
     var reach = dist;
 
@@ -689,7 +680,7 @@ pub fn damage(g: *Game, i: usize, amount: f32, at: Vec3) void {
     }
 
     v.speed = 0;
-    g.explode(blast, if (v.spec().class == .car) 6 else 4, if (v.spec().class == .car) 90 else 50, 12);
+    g.explode(blast, 6, 90, 12);
     _ = at;
 }
 
@@ -703,7 +694,7 @@ pub fn wreckRemote(g: *Game, i: usize) void {
     v.speed = 0;
     v.occupied = false;
     v.remote = false;
-    g.explosions.spawn(.{ .pos = v.center(), .radius = if (v.spec().class == .car) 6 else 4, .life = 1.8, .total = 1.8 });
+    g.explosions.spawn(.{ .pos = v.center(), .radius = 6, .life = 1.8, .total = 1.8 });
 }
 
 pub fn splash(g: *Game, at: Vec3, radius: f32, amount: f32) void {
@@ -724,37 +715,7 @@ pub fn absorb(g: *Game, amount: f32, from: Vec3) bool {
 
     damage(g, i, amount, from);
 
-    return g.vehicles[i].spec().class == .car and seat != null;
-}
-
-pub fn inTank(g: *const Game) bool {
-    const i = seat orelse return false;
-
-    return g.vehicles[i].spec().class == .tank;
-}
-
-fn aimTurret(g: *Game, v: *vehicle.Vehicle, dt: f32) void {
-    const want = std.math.atan2(@sin(g.yaw - v.yaw), @cos(g.yaw - v.yaw));
-    const diff = std.math.atan2(@sin(want - v.turret), @cos(want - v.turret));
-    const pitch = std.math.clamp(g.pitch + 0.08, -0.12, 0.32);
-
-    v.turret += std.math.clamp(diff, -1.3 * dt, 1.3 * dt);
-    v.gun = math.approach(v.gun, pitch, 0.7 * dt);
-    v.reload = @max(0, v.reload - dt);
-}
-
-pub fn tankFire(g: *Game, c: Controls) void {
-    const i = seat orelse return;
-    const v = &g.vehicles[i];
-
-    if (!c.fire_down or v.reload > 0) return;
-
-    const m = vehicleart.muzzle(v.*) orelse return;
-
-    v.reload = 3;
-    g.launch(.{ .kind = .rocket, .pos = m.pos, .vel = m.dir.scale(95), .life = 3, .damage = 240, .splash = 7, .knockback = 16, .gravity = 4, .heading = m.dir });
-    g.explosions.spawn(.{ .pos = m.pos, .radius = 1.4, .life = 0.25, .total = 0.25, .fire = true });
-    v.speed -= 1.5;
+    return seat != null;
 }
 
 pub fn start(g: *Game, index: usize) void {
@@ -790,153 +751,124 @@ pub fn start(g: *Game, index: usize) void {
     if (g.vehicles[index].alive()) board(g, index);
 }
 
-const plain_names = [_][]const u8{ "Ranger Jeep", "Conquer Pickup", "Utility Truck", "Box Truck", "Armored Car", "Ace Hatchback", "Kiri Sedan", "Traveller Van", "Enforcer SUV", "Taxi", "Lifted Truck", "Fire Wagon", "El Alamo", "Urus" };
-
-fn plain(name: []const u8) bool {
-    for (plain_names) |p| {
-        if (std.mem.eql(u8, p, name)) return true;
-    }
-
-    return false;
-}
-
 pub fn park(g: *Game) void {
     const spots = world.vehicle_spots;
-    const tank_map = if (shared.maps.current()) |d| d.tanks else terrain.current == .valley or terrain.current == .conquest or terrain.current == .facility;
-    var used: [256]bool = @splat(false);
-    var order: [vehicle.count]usize = undefined;
-    var n: usize = 0;
-    var placed: [4]f32 = @splat(0);
-    var totals: [4]f32 = @splat(0);
-    var taken: [vehicle.count]bool = @splat(false);
 
     for (&g.vehicles, 0..) |*v, i| {
         v.* = vehicle.spawn(@intCast(i), .{ .y = -100 }, 0);
         v.wreck = 1e9;
-
-        if (plain(vehicle.specs[i].name)) {
-            taken[i] = true;
-
-            continue;
-        }
-
-        const c = classSlot(vehicle.specs[i].class);
-
-        if (c < 3) totals[c] += 1;
     }
 
-    var by_speed: [vehicle.count]usize = undefined;
+    for (0..g.vehicles.len) |i| {
+        var tried: [256]bool = @splat(false);
 
-    for (&by_speed, 0..) |*o, i| o.* = i;
+        while (farthestSpot(g, spots, &tried)) |s| {
+            tried[s] = true;
 
-    std.mem.sort(usize, &by_speed, {}, struct {
-        fn lt(_: void, a: usize, b: usize) bool {
-            return vehicle.specs[a].top_speed > vehicle.specs[b].top_speed;
-        }
-    }.lt);
-
-    var mixed: [vehicle.count]usize = undefined;
-    var lo: usize = 0;
-    var hi: usize = vehicle.count;
-
-    for (&mixed, 0..) |*m, k| {
-        if (k % 2 == 0) {
-            m.* = by_speed[lo];
-            lo += 1;
-        } else {
-            hi -= 1;
-            m.* = by_speed[hi];
-        }
-    }
-
-    while (n < vehicle.count) {
-        var best: ?usize = null;
-        var best_ratio: f32 = 9;
-
-        for (0..3) |c| {
-            if (placed[c] >= totals[c]) continue;
-
-            const r = placed[c] / totals[c];
-
-            if (r < best_ratio) {
-                best_ratio = r;
-                best = c;
-            }
+            if (tryPark(g, i, spots[s].pos, spots[s].yaw, 1)) break;
         }
 
-        const c = best orelse break;
-
-        for (mixed) |i| {
-            if (taken[i] or classSlot(vehicle.specs[i].class) != c) continue;
-
-            taken[i] = true;
-            order[n] = i;
-            n += 1;
-            placed[c] += 1;
-
-            break;
-        }
-    }
-
-    var s: usize = 0;
-    const reserve: usize = if (tank_map and world.tank_spot == null and spots.len > 0) 1 else 0;
-    const limit = @min(spots.len - reserve, used.len);
-
-    for (order[0..n]) |i| {
-        while (s < limit) : (s += 1) {
-            const v = &g.vehicles[i];
-
-            v.* = vehicle.spawn(@intCast(i), spots[s].pos, spots[s].yaw);
-            vehicle.settle(v, world.pieces);
-
-            if (clearOfProps(v.*) and free(v.*)) {
-                used[s] = true;
-                v.home = v.pos;
-                s += 1;
-
-                break;
-            }
-
-            v.* = vehicle.spawn(@intCast(i), .{ .y = -100 }, 0);
-            v.wreck = 1e9;
-        }
-    }
-
-    for (&g.vehicles, 0..) |*v, i| {
-        if (vehicle.specs[i].class != .tank or !tank_map) continue;
-
-        const spot = world.tank_spot orelse if (spots.len > 0) spots[spots.len - 1] else null;
-
-        if (spot) |sp| {
-            v.* = vehicle.spawn(@intCast(i), sp.pos, sp.yaw);
-            vehicle.settle(v, world.pieces);
-            v.home = v.pos;
-        }
+        if (g.vehicles[i].wreck > 1e8) parkNearSpot(g, i, spots);
     }
 
     if (std.c.getenv("DF_PARKLOG") != null) {
-        var cnt: [4]usize = @splat(0);
-
-        for (g.vehicles, 0..) |v, i| {
-            if (v.wreck < 1e8) cnt[classSlot(vehicle.specs[i].class)] += 1;
+        for (g.vehicles) |v| {
+            if (v.wreck < 1e8) std.debug.print("park {s} at {d:.1} {d:.1} {d:.1} yaw {d:.2}\n", .{ v.spec().name, v.pos.x, v.pos.y, v.pos.z, v.yaw });
         }
 
-        std.debug.print("park spots={d} cars={d} bikes={d} cycles={d} tank={d}\n", .{ spots.len, cnt[0], cnt[1], cnt[2], cnt[3] });
+        std.debug.print("park spots={d}\n", .{spots.len});
     }
 
     seat = null;
 }
 
-fn classSlot(c: vehicle.Class) usize {
-    return switch (c) {
-        .car => 0,
-        .bike, .scooter => 1,
-        .cycle => 2,
-        else => 3,
-    };
+fn onRunway(p: Vec3) bool {
+    const r = terrain.runway;
+    const flies = if (shared.maps.current()) |d| d.aircraft else false;
+
+    return flies and @abs(p.x - r[0]) < r[2] + 4 and @abs(p.z - r[1]) < r[3] + 4;
 }
 
-fn clearOfProps(v: vehicle.Vehicle) bool {
+fn tryPark(g: *Game, i: usize, pos: Vec3, yaw: f32, steepest: f32) bool {
+    if (onRunway(pos)) return false;
+
+    const v = &g.vehicles[i];
+
+    v.* = vehicle.spawn(@intCast(i), pos, yaw);
+    vehicle.settle(v, world.pieces);
+
+    if (@abs(v.pos.y - pos.y) < 1.2 and @abs(v.pitch) < steepest and @abs(v.roll) < steepest and clearOfProps(v.*) and free(v.*) and apart(g, i)) {
+        v.home = v.pos;
+
+        return true;
+    }
+
+    v.* = vehicle.spawn(@intCast(i), .{ .y = -100 }, 0);
+    v.wreck = 1e9;
+
+    return false;
+}
+
+fn parkNearSpot(g: *Game, i: usize, spots: []const world.Spot) void {
+    for ([_]f32{ 8, 12, 17, 23, 30 }) |reach| {
+        var tried: [256]bool = @splat(false);
+
+        while (farthestSpot(g, spots, &tried)) |s| {
+            tried[s] = true;
+
+            const spot = spots[s];
+
+            for (0..8) |k| {
+                const angle = spot.yaw + @as(f32, @floatFromInt(k)) * std.math.pi * 0.25;
+                var pos = spot.pos.add(math.flatDir(angle).scale(reach));
+
+                if (@max(@abs(pos.x), @abs(pos.z)) > terrain.play - 6) continue;
+
+                pos.y = @max(terrain.height(pos.x, pos.z), spot.pos.y);
+
+                for ([_]f32{ spot.yaw, angle, angle + std.math.pi * 0.5 }) |yaw| {
+                    if (tryPark(g, i, pos, yaw, 0.2)) return;
+                }
+            }
+        }
+    }
+}
+
+fn farthestSpot(g: *const Game, spots: []const world.Spot, tried: *const [256]bool) ?usize {
+    var best: ?usize = null;
+    var best_gap: f32 = -1;
+
+    for (spots[0..@min(spots.len, tried.len)], 0..) |spot, s| {
+        if (tried[s]) continue;
+
+        var gap: f32 = 1e9;
+
+        for (g.vehicles) |v| {
+            if (v.wreck < 1e8) gap = @min(gap, v.pos.sub(spot.pos).flatLength());
+        }
+
+        if (gap > best_gap) {
+            best_gap = gap;
+            best = s;
+        }
+    }
+
+    return best;
+}
+
+fn apart(g: *const Game, i: usize) bool {
+    const parked = g.vehicles[i];
+
+    for (g.vehicles, 0..) |other, k| {
+        if (k == i or other.wreck > 1e8) continue;
+
+        if (other.pos.sub(parked.pos).flatLength() < (parked.spec().length + other.spec().length) * 0.5 + 1.5) return false;
+    }
+
+    return true;
+}
+
+pub fn clearOfProps(v: vehicle.Vehicle) bool {
     const s = v.spec();
     const reach = s.length * 0.5 + 0.4;
 

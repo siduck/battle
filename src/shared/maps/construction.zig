@@ -16,8 +16,6 @@ pub const def: api.Def = .{
     .note = "Tower crane, half-built towers and a dig",
     .tint = .{ 214, 170, 72 },
     .ready = true,
-    .half = 178,
-    .play = 150,
     .facet = 2.0,
     .height = height,
     .ground = ground,
@@ -39,70 +37,45 @@ pub const def: api.Def = .{
     .backdrop = .{ 132, 120, 102 },
     .floor_y = -7.6,
     .grip = 0.8,
-    .tufts = 0.06,
 };
 
-const edge: f32 = 147;
+const edge: f32 = api.arena_half - 3;
+const gate_x: f32 = -44;
 const tower_at = [2]f32{ 0, 8 };
-const tower2_at = [2]f32{ -70, 62 };
-const frame_at = [2]f32{ 58, 50 };
-const pit = [4]f32{ 58, -108, 118, -48 };
+const tower2_at = [2]f32{ -56, 56 };
+const frame_at = [2]f32{ 42, 50 };
+const pit = [4]f32{ 12, -64, 62, -18 };
+const pit_c = [2]f32{ 37, -41 };
+const pit_k: f32 = 0.75;
 const pit_floor: f32 = -7.0;
-const ramp_z = [2]f32{ -86, -74 };
-const ramp_x = [2]f32{ 22, 62 };
+const ramp_z = [2]f32{ -44, -32 };
+const ramp_x = [2]f32{ -26, 16 };
 
 const Rect = struct { x0: f32, z0: f32, x1: f32, z1: f32 };
 
 const Stack = struct { x: f32, z: f32, yaw: f32, n: u8, kind: K };
 
 const stacks = [_]Stack{
-    .{ .x = -136, .z = -40, .yaw = 0, .n = 2, .kind = .box_red },
-    .{ .x = -136, .z = -37.4, .yaw = 0, .n = 1, .kind = .box_blue },
-    .{ .x = -136, .z = -30, .yaw = 0, .n = 3, .kind = .box_green },
-    .{ .x = -136, .z = -27.4, .yaw = 0, .n = 2, .kind = .box_blue },
-    .{ .x = -136, .z = -16, .yaw = 0, .n = 2, .kind = .box_blue },
-    .{ .x = -136, .z = -6, .yaw = 0, .n = 1, .kind = .box_red },
-    .{ .x = -136, .z = -3.4, .yaw = 0, .n = 2, .kind = .box_green },
-    .{ .x = -136, .z = 8, .yaw = 0, .n = 3, .kind = .box_red },
-    .{ .x = -136, .z = 18, .yaw = 0, .n = 2, .kind = .box_green },
-    .{ .x = -136, .z = 20.6, .yaw = 0, .n = 1, .kind = .box_blue },
-    .{ .x = -118, .z = -36, .yaw = half_pi, .n = 2, .kind = .box_blue },
-    .{ .x = -115.4, .z = -36, .yaw = half_pi, .n = 1, .kind = .box_red },
-    .{ .x = -118, .z = -14, .yaw = half_pi, .n = 1, .kind = .box_green },
-    .{ .x = -118, .z = 6, .yaw = half_pi, .n = 2, .kind = .box_red },
-    .{ .x = -115.4, .z = 6, .yaw = half_pi, .n = 3, .kind = .box_blue },
-    .{ .x = -104, .z = -26, .yaw = 0, .n = 1, .kind = .box_blue },
-    .{ .x = -104, .z = 16, .yaw = 0, .n = 2, .kind = .box_green },
-    .{ .x = -100, .z = -8, .yaw = half_pi, .n = 1, .kind = .box_red },
-    .{ .x = -126, .z = 136, .yaw = 0, .n = 2, .kind = .box_office },
-    .{ .x = -119.6, .z = 136, .yaw = 0, .n = 2, .kind = .box_office },
-    .{ .x = -113.2, .z = 136, .yaw = 0, .n = 1, .kind = .box_office },
-    .{ .x = 130, .z = 2, .yaw = half_pi, .n = 2, .kind = .box_blue },
-    .{ .x = 132.6, .z = 2, .yaw = half_pi, .n = 1, .kind = .box_green },
-    .{ .x = 40, .z = 130, .yaw = 0, .n = 2, .kind = .box_red },
-    .{ .x = -24, .z = -122, .yaw = half_pi, .n = 1, .kind = .box_office },
-    .{ .x = -127, .z = -44, .yaw = 0, .n = 2, .kind = .box_green },
-    .{ .x = -127, .z = -41.4, .yaw = 0, .n = 1, .kind = .box_red },
-    .{ .x = -127, .z = -22, .yaw = 0, .n = 3, .kind = .box_blue },
-    .{ .x = -127, .z = -19.4, .yaw = 0, .n = 2, .kind = .box_red },
-    .{ .x = -127, .z = 0, .yaw = 0, .n = 2, .kind = .box_green },
-    .{ .x = -127, .z = 2.6, .yaw = 0, .n = 2, .kind = .box_blue },
-    .{ .x = -127, .z = 26, .yaw = 0, .n = 1, .kind = .box_red },
-    .{ .x = -108, .z = -46, .yaw = half_pi, .n = 2, .kind = .box_red },
-    .{ .x = -105.4, .z = -46, .yaw = half_pi, .n = 2, .kind = .box_green },
-    .{ .x = -109, .z = -24, .yaw = half_pi, .n = 3, .kind = .box_green },
-    .{ .x = -109, .z = 18, .yaw = half_pi, .n = 2, .kind = .box_blue },
-    .{ .x = -106.4, .z = 18, .yaw = half_pi, .n = 1, .kind = .box_red },
+    .{ .x = -64, .z = -30, .yaw = 0, .n = 3, .kind = .box_green },
+    .{ .x = -64, .z = -27.4, .yaw = 0, .n = 2, .kind = .box_blue },
+    .{ .x = -64, .z = -16, .yaw = 0, .n = 2, .kind = .box_blue },
+    .{ .x = -64, .z = -6, .yaw = 0, .n = 1, .kind = .box_red },
+    .{ .x = -64, .z = -3.4, .yaw = 0, .n = 2, .kind = .box_green },
+    .{ .x = -64, .z = 8, .yaw = 0, .n = 3, .kind = .box_red },
+    .{ .x = -64, .z = 18, .yaw = 0, .n = 2, .kind = .box_green },
+    .{ .x = -64, .z = 20.6, .yaw = 0, .n = 1, .kind = .box_blue },
+    .{ .x = -55, .z = -22, .yaw = 0, .n = 3, .kind = .box_blue },
+    .{ .x = -55, .z = -19.4, .yaw = 0, .n = 2, .kind = .box_red },
+    .{ .x = -55, .z = 0, .yaw = 0, .n = 2, .kind = .box_green },
+    .{ .x = -55, .z = 2.6, .yaw = 0, .n = 2, .kind = .box_blue },
+    .{ .x = -55, .z = 26, .yaw = 0, .n = 1, .kind = .box_red },
 };
 
 const shade_rects = [_]Rect{
     .{ .x0 = -15, .z0 = -3, .x1 = 13, .z1 = 18 },
-    .{ .x0 = -81, .z0 = 54, .x1 = -61, .z1 = 69 },
-    .{ .x0 = 55.5, .z0 = 47.5, .x1 = 76.5, .z1 = 60.5 },
-    .{ .x0 = -135, .z0 = 116, .x1 = -112, .z1 = 124 },
-    .{ .x0 = -100, .z0 = 116, .x1 = -77, .z1 = 124 },
-    .{ .x0 = 113, .z0 = 51, .x1 = 127, .z1 = 73 },
-    .{ .x0 = 0, .z0 = -138, .x1 = 20, .z1 = -126 },
+    .{ .x0 = -67, .z0 = 48, .x1 = -47, .z1 = 63 },
+    .{ .x0 = 39.5, .z0 = 47.5, .x1 = 60.5, .z1 = 60.5 },
+    .{ .x0 = -67.3, .z0 = -66, .x1 = -47.7, .z1 = -58 },
 };
 
 const Pad = struct { r: Rect, tone: u8 };
@@ -129,16 +102,16 @@ fn hash2(i: i32, j: i32) f32 {
 
 fn gravel(x: f32, z: f32, fine: f32) [3]f32 {
     const speck = t.fbm(x * 1.7 + 5, z * 1.7 - 3);
-    const base = mixc(.{ 138, 136, 130 }, .{ 118, 116, 112 }, fine);
+    const base = mixc(.{ 142, 130, 112 }, .{ 124, 112, 96 }, fine);
 
-    return mixc(mixc(base, .{ 170, 166, 158 }, t.smooth(0.62, 0.72, speck)), .{ 92, 90, 88 }, t.smooth(0.3, 0.2, speck) * 0.8);
+    return mixc(mixc(base, .{ 172, 158, 136 }, t.smooth(0.62, 0.72, speck)), .{ 98, 86, 72 }, t.smooth(0.3, 0.2, speck) * 0.8);
 }
 
 fn hardcore(x: f32, z: f32, fine: f32) [3]f32 {
     const speck = t.fbm(x * 2.3 - 8, z * 2.3 + 1);
-    const base = mixc(.{ 96, 94, 92 }, .{ 84, 82, 82 }, fine);
+    const base = mixc(.{ 110, 96, 80 }, .{ 98, 85, 71 }, fine);
 
-    return mixc(base, .{ 150, 146, 138 }, t.smooth(0.64, 0.74, speck) * 0.9);
+    return mixc(base, .{ 156, 140, 118 }, t.smooth(0.64, 0.74, speck) * 0.9);
 }
 
 fn padTone(tone: u8, x: f32, z: f32, fine: f32) [3]f32 {
@@ -197,16 +170,9 @@ fn rampDepth(x: f32, z: f32) f32 {
 const Mound = struct { x: f32, z: f32, r: f32, h: f32, tone: u8 };
 
 const mounds = [_]Mound{
-    .{ .x = -60, .z = -50, .r = 9, .h = 3.2, .tone = 0 },
-    .{ .x = 70, .z = -10, .r = 10, .h = 3.8, .tone = 1 },
-    .{ .x = -100, .z = 60, .r = 8, .h = 3.0, .tone = 2 },
-    .{ .x = 30, .z = 80, .r = 9, .h = 3.4, .tone = 0 },
-    .{ .x = -40, .z = 120, .r = 8, .h = 2.8, .tone = 1 },
-    .{ .x = 140, .z = -78, .r = 7, .h = 3.2, .tone = 0 },
-    .{ .x = 64, .z = 140, .r = 8, .h = 3.0, .tone = 2 },
-    .{ .x = 18, .z = -120, .r = 7, .h = 2.6, .tone = 1 },
-    .{ .x = -76, .z = -42, .r = 6, .h = 2.2, .tone = 2 },
-    .{ .x = 128, .z = 60, .r = 8, .h = 3.0, .tone = 1 },
+    .{ .x = 60, .z = 2, .r = 9, .h = 3.6, .tone = 1 },
+    .{ .x = -8, .z = 62, .r = 7, .h = 2.6, .tone = 2 },
+    .{ .x = -22, .z = -58, .r = 7, .h = 2.8, .tone = 0 },
 };
 
 fn moundAt(x: f32, z: f32) struct { h: f32, tone: u8 } {
@@ -230,7 +196,7 @@ fn moundAt(x: f32, z: f32) struct { h: f32, tone: u8 } {
 
 fn height(x: f32, z: f32) f32 {
     const box = @max(@abs(x), @abs(z));
-    const bund = t.smooth(edge + 3, t.half, box) * (6 + t.fbm(x * 0.05, z * 0.05) * 5);
+    const bund = t.smooth(t.play, t.half, box) * (6 + t.fbm(x * 0.05, z * 0.05) * 5);
     const dig = @min(pitDepth(x, z), rampDepth(x, z));
 
     if (dig < -0.01) return dig;
@@ -252,9 +218,9 @@ fn pad(x: f32, z: f32, fine: f32) [3]f32 {
     const joint = @min(@min(jx, 6 - jx), @min(jz, 6 - jz)) < 0.45;
     const stain = t.smooth(0.5, 0.7, t.fbm(x * 0.07 + 3, z * 0.07));
 
-    if (joint) return .{ 146, 144, 138 };
+    if (joint) return .{ 143, 134, 121 };
 
-    return mixc(mixc(.{ 180, 178, 170 }, .{ 168, 165, 156 }, fine), .{ 150, 146, 136 }, stain * 0.7);
+    return mixc(mixc(.{ 173, 163, 147 }, .{ 162, 152, 137 }, fine), .{ 145, 133, 117 }, stain * 0.7);
 }
 
 const occ_n: usize = 180;
@@ -273,7 +239,7 @@ fn buildOcc() void {
 
         if (info.group == .ground) continue;
 
-        if (@abs(p.pos.x) > 160 or @abs(p.pos.z) > 160) continue;
+        if (@abs(p.pos.x) > t.half or @abs(p.pos.z) > t.half) continue;
 
         if (p.pos.y - t.height(p.pos.x, p.pos.z) > 1.0) continue;
 
@@ -356,10 +322,10 @@ fn ground(x: f32, z: f32) api.Rgb {
     const patch = t.fbm(x * 0.07 - 40, z * 0.07 + 9);
     var c: [3]f32 = zoneColor(x, z, fine);
 
-    c = mixc(c, .{ 140, 132, 118 }, t.smooth(0.45, 0.7, patch) * 0.35);
+    c = mixc(c, .{ 144, 128, 106 }, t.smooth(0.45, 0.7, patch) * 0.35);
     c = mixc(c, .{ 92, 76, 60 }, t.smooth(0.52, 0.7, blot) * 0.5);
     c = mixc(c, .{ 84, 74, 64 }, t.smooth(0.55, 0.72, grit) * 0.4);
-    c = mixc(c, .{ 160, 152, 138 }, t.smooth(0.6, 0.75, t.fbm(x * 0.6 - 9, z * 0.6 + 4)) * 0.3);
+    c = mixc(c, .{ 166, 148, 122 }, t.smooth(0.6, 0.75, t.fbm(x * 0.6 - 9, z * 0.6 + 4)) * 0.3);
 
     const puddle = t.smooth(0.68, 0.72, t.fbm(x * 0.06 + 70, z * 0.06 - 30));
 
@@ -370,26 +336,24 @@ fn ground(x: f32, z: f32) api.Rgb {
     if (road < 6.5) {
         const lane = @abs(road - 2.4);
 
-        c = mixc(c, .{ 104, 100, 94 }, 1 - t.smooth(4.5, 6.5, road));
-        c = mixc(c, .{ 84, 80, 76 }, (1 - t.smooth(0.3, 0.8, lane)) * 0.7);
+        c = mixc(c, .{ 112, 98, 80 }, 1 - t.smooth(4.5, 6.5, road));
+        c = mixc(c, .{ 92, 79, 65 }, (1 - t.smooth(0.3, 0.8, lane)) * 0.7);
     }
 
-    if (inRect(x, z, -32, -16, 30, 34) or inRect(x, z, -86, 48, -56, 76) or inRect(x, z, 50, 42, 86, 66)) c = pad(x, z, fine);
+    if (inRect(x, z, -32, -16, 30, 34) or inRect(x, z, -72, 42, -42, 70) or inRect(x, z, 34, 42, 68, 66)) c = pad(x, z, fine);
 
-    if (inRect(x, z, -146, 92, -78, 146) or inRect(x, z, -146, -52, -96, 34)) c = mixc(.{ 160, 156, 146 }, .{ 144, 140, 130 }, fine);
+    if (inRect(x, z, -70, -34, -50, 32)) c = mixc(.{ 152, 142, 127 }, .{ 138, 129, 115 }, fine);
 
     for (pads[0..pad_n]) |pd| {
         if (inRect(x, z, pd.r.x0, pd.r.z0, pd.r.x1, pd.r.z1)) c = padTone(pd.tone, x, z, fine);
     }
-
-    if (inRect(x, z, -146, -146, -62, -66) and @mod(z + 146, 14) < 0.5) c = .{ 210, 200, 156 };
 
     if (h < -0.3) {
         const wet = t.smooth(0.55, 0.7, t.fbm(x * 0.09, z * 0.09));
 
         c = mixc(.{ 120, 96, 72 }, .{ 96, 78, 60 }, wet);
 
-        if (h < pit_floor + 0.2 and inRect(x, z, 74, -94, 104, -66)) c = pad(x, z, fine);
+        if (h < pit_floor + 0.2 and inRect(x, z, pit_c[0] - 11, pit_c[1] - 10.5, pit_c[0] + 11, pit_c[1] + 10.5)) c = pad(x, z, fine);
     }
 
     if (slope > 0.12) c = mixc(c, .{ 124, 98, 74 }, t.smooth(0.12, 0.35, slope));
@@ -397,7 +361,7 @@ fn ground(x: f32, z: f32) api.Rgb {
     const md = moundAt(x, z);
 
     if (md.h > 0.15) {
-        const tones = [3][3]f32{ .{ 112, 86, 62 }, .{ 176, 156, 116 }, .{ 132, 130, 126 } };
+        const tones = [3][3]f32{ .{ 112, 86, 62 }, .{ 176, 156, 116 }, .{ 140, 128, 112 } };
         const grain = 0.92 + fine * 0.16;
 
         c = mixc(c, api.mix3(tones[md.tone], .{ tones[md.tone][0] * grain, tones[md.tone][1] * grain, tones[md.tone][2] * grain }, 1), t.smooth(0.15, 0.8, md.h));
@@ -432,20 +396,10 @@ fn segDist(x: f32, z: f32, ax: f32, az: f32, bx: f32, bz: f32) f32 {
 }
 
 const roads = [_][4]f32{
-    .{ -20, -152, -20, -44 },
-    .{ -44, -44, 44, -44 },
-    .{ -44, -44, -44, 40 },
-    .{ 44, -44, 44, 40 },
-    .{ -44, 40, 44, 40 },
-    .{ 0, 40, 0, 140 },
-    .{ -44, 0, -96, 0 },
-    .{ 44, -44, 44, -80 },
-    .{ 22, -80, 62, -80 },
-    .{ 44, 0, 140, 0 },
-    .{ -44, 40, -96, 86 },
-    .{ -96, 86, -96, 140 },
-    .{ 44, 40, 110, 90 },
-    .{ -20, -100, -100, -100 },
+    .{ gate_x, -edge, gate_x, 40 },
+    .{ gate_x, 40, 44, 40 },
+    .{ 44, 40, 44, -8 },
+    .{ gate_x, (ramp_z[0] + ramp_z[1]) * 0.5, ramp_x[0], (ramp_z[0] + ramp_z[1]) * 0.5 },
 };
 
 fn roadDist(x: f32, z: f32) f32 {
@@ -541,50 +495,47 @@ fn stackAt(b: *Builder, st: Stack) void {
     }
 }
 
+fn run(b: *Builder, kind: K, x0: f32, z0: f32, x1: f32, z1: f32) void {
+    const dx = x1 - x0;
+    const dz = z1 - z0;
+    const len = @sqrt(dx * dx + dz * dz);
+    const n: u32 = @intFromFloat(@max(1, @round(len / 4)));
+    const yaw = -std.math.atan2(dz, dx);
+    var i: u32 = 0;
+
+    while (i < n) : (i += 1) {
+        if (i % 4 == 3) continue;
+
+        const q = (@as(f32, @floatFromInt(i)) + 0.5) / @as(f32, @floatFromInt(n));
+
+        put(b, kind, x0 + dx * q, z0 + dz * q, yaw);
+    }
+}
+
 fn perimeter(b: *Builder) void {
     const e = edge;
     var x: f32 = -e + 2;
 
     while (x < e - 1) : (x += 4) {
-        if (!(x > -30 and x < -10)) put(b, if (@mod(x + 200, 56) < 20) .fence else .hoarding, x, -e, 0);
+        if (!(x > gate_x - 10 and x < gate_x + 10)) put(b, if (@mod(x + 200, 56) < 20) .fence else .hoarding, x, -e, 0);
 
         put(b, if (@mod(x + 200, 64) < 16) .fence else .hoarding, x, e, pi);
         put(b, if (@mod(x + 212, 40) < 16) .fence else .hoarding, -e, x, half_pi);
         put(b, .hoarding, e, x, -half_pi);
     }
 
-    put(b, .lights, -30, -e + 3, 0);
-    put(b, .lights, -10, -e + 3, pi);
-    put(b, .sign, -33, -e + 1.2, 0);
-    put(b, .sign, -7, -e + 1.2, 0);
-    put(b, .lights, -26, -128, 0);
-    put(b, .lights, -14, -124, pi);
-    put(b, .sign, -27, -118, 0.25);
-    structure(b, .cabins, &S.cabins, -42, 0, -134, half_pi);
+    line(b, .barrier, gate_x - 8, -e, gate_x + 8, -e, 4);
+    put(b, .lights, gate_x - 10, -e + 3, 0);
+    put(b, .lights, gate_x + 10, -e + 3, pi);
+    put(b, .sign, gate_x - 13, -e + 1.2, 0);
+    put(b, .sign, gate_x + 13, -e + 1.2, 0);
+    structure(b, .cabins, &S.cabins, -57.5, 0, -62, 0);
 
-    var c: f32 = -146;
+    var c: f32 = -e + 2;
 
-    while (c < -110) : (c += 3.2) {
-        put(b, .cone, -26.5, c, 0);
-        put(b, .cone, -13.5, c + 1.6, 0);
-    }
-}
-
-fn city(b: *Builder) void {
-    const kinds = [_]K{ .city_slab, .city_office, .city_prewar, .city_deco, .city_office, .city_prewar, .city_slab, .city_office };
-    var i: u32 = 0;
-
-    while (i < 72) : (i += 1) {
-        const fi: f32 = @floatFromInt(i);
-        const ring: f32 = @floatFromInt(i % 3);
-        const ang = fi / 72 * std.math.tau + b.rng.range(-0.03, 0.03);
-        const r = 212 + ring * 30 + b.rng.range(-6, 10);
-        const kind = kinds[(i * 5 + i / 3) % kinds.len];
-        const x = @sin(ang) * r;
-        const z = @cos(ang) * r;
-        const near = ring < 0.5;
-
-        b.putAt(kit.of(kind), vec(x, -7.6, z), -ang + pi + (if (near) @as(f32, 0) else b.rng.range(-0.3, 0.3)), b.rng.range(0.75, 1.2) * (if (near) @as(f32, 0.8) else 1.1));
+    while (c < -e + 14) : (c += 3.2) {
+        put(b, .cone, gate_x - 6.5, c, 0);
+        put(b, .cone, gate_x + 6.5, c + 1.6, 0);
     }
 }
 
@@ -594,7 +545,7 @@ fn core(b: *Builder) void {
     const F = [_]f32{ 0.3, 3.9, 7.5, 11.1, 14.7 };
 
     structure(b, .tower, &S.tower, tx, 0, tz, 0);
-    structure(b, .crane, &S.crane, 22, 0, -12, 0.8);
+    structure(b, .crane, &S.crane, 26, 0, -6, 0.8);
 
     at(b, .pallet, tx - 6, F[0], tz + 6, 0);
     at(b, .pallet, tx - 4.6, F[0], tz + 6, 0.1);
@@ -662,8 +613,11 @@ fn core(b: *Builder) void {
 
     line(b, .barrier, -38, 36, -6, 36, 4);
     line(b, .barrier, 6, 36, 38, 36, 4);
-    line(b, .fence, 38, -38, 38, -4, 4);
-    line(b, .fence, 38, 10, 38, 34, 4);
+    run(b, .fence, 38, 10, 38, 34);
+}
+
+fn pp(b: *Builder, kind: K, dx: f32, dz: f32, yaw: f32) void {
+    put(b, kind, pit_c[0] + dx * pit_k, pit_c[1] + dz * pit_k, yaw);
 }
 
 fn pitSite(b: *Builder) void {
@@ -689,45 +643,41 @@ fn pitSite(b: *Builder) void {
         put(b, .barrier, x, pit[3] + 1.4, 0);
     }
 
-    const fy = pit_floor;
-    const cx: f32 = 89;
-    const cz: f32 = -80;
     var i: i32 = -2;
 
     while (i <= 2) : (i += 1) {
         const fi: f32 = @floatFromInt(i);
 
-        at(b, .core, cx - 12, fy, cz + fi * 4.2, half_pi);
-        at(b, .formwork, cx + 12, fy, cz + fi * 4.1, -half_pi);
-        at(b, .rebar, cx + fi * 4, fy, cz - 10, 0);
-        at(b, .rebar, cx + fi * 4 + 1, fy, cz + 11, 0.2);
+        put(b, .core, pit_c[0] - 12 * pit_k, pit_c[1] + fi * 4.2, half_pi);
+        put(b, .formwork, pit_c[0] + 12 * pit_k, pit_c[1] + fi * 4.1, -half_pi);
+        put(b, .rebar, pit_c[0] + fi * 3.4, pit_c[1] - 10 * pit_k, 0);
+        put(b, .rebar, pit_c[0] + fi * 3.4 + 1, pit_c[1] + 11 * pit_k, 0.2);
     }
 
-    at(b, .core, cx - 4, fy, cz + 2, 0);
-    at(b, .core, cx + 4, fy, cz - 2, 0);
-    at(b, .spool, cx - 18, fy, cz - 16, 0.05);
-    at(b, .skip, cx + 2, fy, cz - 22, half_pi);
-    at(b, .skip, cx + 22, fy, cz - 20, 0);
-    at(b, .genset, cx + 20, fy, cz + 18, half_pi + 0.05);
-    at(b, .pallet, cx + 8, fy, cz + 18, 0);
-    at(b, .bag, cx - 14, fy, cz + 17, 0.3);
-    at(b, .bag, cx - 12.8, fy, cz + 17.6, 0.9);
-    at(b, .pipes, cx - 4, fy, cz + 18, 0);
-    at(b, .pipes, cx + 2, fy, cz - 15, half_pi);
-    at(b, .drums, cx - 8, fy, cz - 8, 0);
-    at(b, .lamp, cx + 24, fy, cz - 24, 0.6);
-    at(b, .scafstack, cx + 4, fy, cz + 22, 0);
-    b.putAt(kit.of(.spoil), vec(cx + 22, fy, cz + 2), 0.4, 2.4);
-    b.putAt(kit.of(.spoil), vec(cx - 22, fy, cz + 14), 1.4, 2.0);
+    pp(b, .core, -4, 2, 0);
+    pp(b, .core, 4, -2, 0);
+    pp(b, .spool, -18, -16, 0.05);
+    pp(b, .skip, 2, -22, half_pi);
+    pp(b, .skip, 22, -20, 0);
+    pp(b, .genset, 20, 18, half_pi + 0.05);
+    pp(b, .pallet, 8, 18, 0);
+    pp(b, .bag, -14, 17, 0.3);
+    pp(b, .bag, -12.8, 17.6, 0.9);
+    pp(b, .pipes, -4, 18, 0);
+    pp(b, .pipes, 2, -15, half_pi);
+    pp(b, .drums, -8, -8, 0);
+    pp(b, .lamp, 22, -22, 0.6);
+    pp(b, .scafstack, 4, 22, 0);
+    putS(b, .spoil, pit_c[0] + 22 * pit_k, pit_c[1] + 2 * pit_k, 0.4, 2.4);
+    putS(b, .spoil, pit_c[0] - 22 * pit_k, pit_c[1] + 14 * pit_k, 1.4, 2.0);
 
-    put(b, .drums, pit[2] + 14, -70, 0);
-    put(b, .genset, pit[0] - 8, -60, 0);
-    put(b, .scafstack, pit[0] - 8, -98, 0);
+    put(b, .genset, pit[0] - 8, pit[3] - 6, 0);
+    put(b, .scafstack, pit[0] - 8, pit[1] + 6, 0);
     put(b, .lamp, pit[0] - 5, pit[3] + 6, 0.7);
-    line(b, .fence, pit[0] - 3, pit[1] - 3, pit[0] - 3, ramp_z[0] - 4, 4);
-    line(b, .fence, pit[0] - 3, ramp_z[1] + 4, pit[0] - 3, pit[3] - 3, 4);
-    line(b, .fence, pit[2] + 3, pit[1] - 3, pit[2] + 3, pit[3] - 3, 4);
-    line(b, .fence, pit[0] - 3, pit[1] - 3, pit[2] + 3, pit[1] - 3, 4);
+    run(b, .fence, pit[0] - 3, pit[1] - 3, pit[0] - 3, ramp_z[0] - 4);
+    run(b, .fence, pit[0] - 3, ramp_z[1] + 4, pit[0] - 3, pit[3] - 3);
+    run(b, .fence, pit[2] + 3, pit[1] - 3, pit[2] + 3, pit[3] - 3);
+    run(b, .fence, pit[0] - 3, pit[1] - 3, pit[2] + 3, pit[1] - 3);
     line(b, .barrier, ramp_x[0], ramp_z[0] - 3.5, ramp_x[1] - 6, ramp_z[0] - 3.5, 4);
     line(b, .barrier, ramp_x[0], ramp_z[1] + 3.5, ramp_x[1] - 6, ramp_z[1] + 3.5, 4);
 }
@@ -771,317 +721,52 @@ fn tower2Site(b: *Builder) void {
 }
 
 fn extras(b: *Builder) void {
-    structure(b, .tower2, &S.tower2, 120, 0, 62, half_pi);
-    at(b, .pallet, 118, 0.3, 60, 0);
-    at(b, .drums, 122, 3.9, 64, 0);
-    at(b, .timber, 120, 7.5, 58, 0);
-    at(b, .rebar, 121, 11.1, 66, 0);
-    structure(b, .cabins, &S.cabins, 10, 0, -132, 0);
-    line(b, .hoarding, -40, -56, -22, -56, 4);
-    line(b, .hoarding, -18, -56, 0, -56, 4);
-    line(b, .hoarding, 12, -56, 38, -56, 4);
-    line(b, .hoarding, -56, -36, -56, -8, 4);
-    line(b, .hoarding, -56, 8, -56, 34, 4);
-    line(b, .hoarding, 56, -30, 56, -8, 4);
-    line(b, .hoarding, 56, 8, 56, 30, 4);
-    line(b, .hoarding, -36, 52, -12, 52, 4);
-    line(b, .hoarding, 12, 52, 36, 52, 4);
-    line(b, .fence, -90, -60, -60, -60, 4);
-    line(b, .fence, 70, -10, 90, -10, 4);
-    line(b, .hoarding, -60, 88, -30, 88, 4);
-    line(b, .hoarding, 30, 70, 30, 86, 4);
-}
-
-fn compound(b: *Builder) void {
-    structure(b, .cabins, &S.cabins, -124, 0, 120, pi);
-    structure(b, .cabins, &S.cabins, -89, 0, 120, pi);
-
-    var i: u32 = 0;
-
-    while (i < 5) : (i += 1) {
-        const fi: f32 = @floatFromInt(i);
-
-        put(b, .toilet, -142 + fi * 1.4, 104, 0);
-    }
-
-    put(b, .shelter, -140, 128, half_pi);
-    put(b, .genset, -104, 136, 0);
-    put(b, .vault, -108, 108, 0);
-    put(b, .vault, -105.6, 108, 0);
-    put(b, .lamp, -100, 104, 1.2);
-    put(b, .lamp, -142, 142, 2.0);
-    put(b, .precast, -120, 98, half_pi + 0.04);
-    put(b, .drums, -84, 108, 0.3);
-    put(b, .drums, -80, 104, 1.1);
-    put(b, .skip, -86, 140, 0);
-    put(b, .skip, -82, 140, 0);
-    put(b, .sign, -100, 96, 0);
-    put(b, .drums, -112, 104, 0);
-    line(b, .fence, -146, 92, -104, 92, 4);
-    line(b, .fence, -88, 92, -72, 92, 4);
-    line(b, .fence, -72, 92, -72, 146, 4);
+    run(b, .hoarding, -36, 52, -12, 52);
+    run(b, .hoarding, 12, 52, 36, 52);
+    line(b, .barrier, 40, -10, 48, -10, 4);
 }
 
 fn containerYard(b: *Builder) void {
     for (stacks) |st| stackAt(b, st);
 
-    put(b, .pipes, -126, -24, half_pi);
-    put(b, .precast, -108, 26, 0);
-    put(b, .lamp, -96, -46, 0.3);
-    put(b, .drums, -126, 12, 0);
-    put(b, .drums, -110, -2, 0.4);
-    put(b, .spool, -98, 4, 0.2);
-    put(b, .pallet, -126, -4, 0);
-    put(b, .pallet, -124.6, -4.2, 0.1);
-    put(b, .blocks, -94, -20, half_pi);
-    put(b, .blocks, -94, 26, half_pi);
-    put(b, .timber, -112, 30, 0);
-    line(b, .fence, -146, -54, -96, -54, 4);
-    line(b, .fence, -146, 36, -110, 36, 4);
-}
-
-fn laydown(b: *Builder) void {
-    addPad(-104, -105, 41, 38, 1);
-
-    var row: f32 = -140;
-    var r: u32 = 0;
-
-    while (row < -72) : (row += 9.5) {
-        var x: f32 = -140;
-        var c: u32 = 0;
-
-        while (x < -66) : (x += 6) {
-            const pick = (r * 7 + c * 3) % 8;
-            const z = row + 6;
-
-            switch (pick) {
-                0, 1 => {
-                    for ([_]f32{ -1.6, 0, 1.6 }) |o| {
-                        put(b, .wrap, x + o * 0.66, z, 0);
-                        b.putAt(kit.of(.wrap), vec(x + o * 0.66, t.height(x, z) + 1.21, z), 0.02, 1);
-                    }
-
-                    put(b, .ibc, x - 1, z + 1.6, 0);
-                    put(b, .ibc, x + 0.3, z + 1.6, 0);
-                },
-                2 => {
-                    put(b, .scaffold, x, z, 0);
-                    b.putAt(kit.of(.scaffold), vec(x, t.height(x, z) + 3.1, z), 0, 1);
-                    api.box(b, x - 2, t.height(x, z) - 0.5, z - 0.7, x + 2, t.height(x, z) + 6.2, z + 0.7);
-                    put(b, .scafstack, x, z + 2, 0);
-                },
-                3 => {
-                    put(b, .precast, x - 1, z, 0);
-                    b.putAt(kit.of(.precast), vec(x - 1, t.height(x, z) + 0.9, z), 0.03, 1);
-                    put(b, .rebar, x + 2, z, 0.1);
-                },
-                4 => {
-                    put(b, .pipes, x, z, 0);
-                    put(b, .pipes, x, z + 2.6, 0);
-                },
-                5 => {
-                    put(b, .timber, x, z, 0);
-                    b.putAt(kit.of(.timber), vec(x, t.height(x, z) + 0.92, z), 0.04, 1);
-                },
-                6 => {
-                    put(b, .spool, x - 0.8, z, 0);
-                    put(b, .spool, x + 0.8, z, 0.3);
-                    put(b, .bag, x, z + 2, 0.4);
-                },
-                else => structure(b, .box_blue, &S.box_blue, x, t.height(x, z), z, 0),
-            }
-
-            c += 1;
-        }
-
-        r += 1;
-    }
-
-    put(b, .lamp, -66, -72, 0.3);
-    put(b, .lamp, -142, -144, 1);
-    put(b, .lamp, -104, -108, 2);
-    line(b, .fence, -146, -64, -70, -64, 4);
-}
-
-fn earthworks(b: *Builder) void {
-    const heaps = [_][4]f32{
-        .{ 128, -134, 4.6, 0.3 },
-        .{ 140, -116, 3.6, 1.2 },
-        .{ 108, -132, 3.2, 2.5 },
-        .{ 84, -136, 4.0, 0.8 },
-        .{ 136, -92, 3.0, 2.0 },
-        .{ 60, -136, 3.4, 1.6 },
-        .{ 30, -132, 3.0, 0.4 },
-        .{ 136, 136, 4.0, 2.2 },
-        .{ 118, 140, 3.0, 0.5 },
-    };
-
-    for (heaps) |h| putS(b, .spoil, h[0], h[1], h[3], h[2]);
-
-    for ([_][4]f32{ .{ 96, -138, 0, 4.4 }, .{ 70, -118, 1.0, 3.6 }, .{ 50, -140, 2.0, 3.0 }, .{ 124, -104, 0.6, 3.2 }, .{ 144, -132, 1.4, 2.6 } }) |h| putS(b, .spoil, h[0], h[1], h[2], h[3]);
-
-    for ([_][3]f32{ .{ 104, -116, 0 }, .{ 108.2, -116, 0.04 }, .{ 82, -124, half_pi }, .{ 60, -126, 0.2 }, .{ 132, -122, half_pi }, .{ 40, -118, 0 } }) |q| put(b, .sandbags, q[0], q[1], q[2]);
-
-    for ([_][3]f32{ .{ 90, -118, 0 }, .{ 120, -112, 1.2 }, .{ 74, -132, 0.4 } }) |q| putS(b, .tplate, q[0], q[1], q[2], 1.4);
-
-    structure(b, .box_green, &S.box_green, 114, t.height(114, -142), -142, 0);
-    structure(b, .box_red, &S.box_red, 114, t.height(114, -142) + 2.59, -142, 0.03);
-    put(b, .sitecabin, 36, -140, half_pi);
-    put(b, .toilet, 41, -142, 0);
-    put(b, .gantry, 140, -144, 0);
-
-    put(b, .timber, 116, -118, 0.4);
-    put(b, .blocks, 96, -120, half_pi);
-    put(b, .pipes, 136, -66, 0);
-    put(b, .pipes, 46, -126, 0);
-    put(b, .lamp, 142, -100, 4);
-
-    const muds = [_][3]f32{ .{ 112, -124, 0 }, .{ 116, -124, 0 }, .{ 120, -124, 0 }, .{ 104, -128, 0.1 }, .{ -20, -110, 0 }, .{ -20, -106, 0 }, .{ -20, -86, 0 }, .{ 44, -60, 0 }, .{ 40, -80, 0 } };
-
-    for (muds) |m| b.putAt(kit.of(.mud), vec(m[0], t.height(m[0], m[1]) + 0.01, m[1]), m[2], 1);
+    put(b, .pipes, -60, -24, half_pi);
+    put(b, .drums, -60, 12, 0);
+    put(b, .pallet, -60, -6, 0);
+    put(b, .pallet, -58.6, -6.2, 0.1);
+    put(b, .timber, -60, 30, 0);
+    structure(b, .crane, &S.crane, -62, 0, 36, 1.83);
 }
 
 fn plantYard(b: *Builder) void {
-    const rows = [_]struct { kind: K, x: f32, z: f32, yaw: f32 }{
-        .{ .kind = .spool, .x = 104, .z = -30, .yaw = 0 },
-        .{ .kind = .pipes, .x = 112, .z = -30, .yaw = 0 },
-        .{ .kind = .timber, .x = 120, .z = -30, .yaw = 0 },
-        .{ .kind = .blocks, .x = 128, .z = -30, .yaw = 0 },
-        .{ .kind = .skip, .x = 135, .z = -30, .yaw = 0 },
-        .{ .kind = .genset, .x = 104, .z = 22, .yaw = pi },
-        .{ .kind = .pipes, .x = 113, .z = 22, .yaw = pi },
-        .{ .kind = .rebar, .x = 122, .z = 22, .yaw = pi },
-        .{ .kind = .precast, .x = 131, .z = 22, .yaw = pi },
-    };
-
-    for (rows) |r| put(b, r.kind, r.x, r.z, r.yaw);
-
-    put(b, .drums, 96, -12, half_pi);
-    put(b, .genset, 96, 12, half_pi);
-    put(b, .genset, 140, -12, half_pi);
-    put(b, .drums, 140, 12, 0);
-    put(b, .lamp, 100, 0, 1);
-    put(b, .shelter, 140, 36, -half_pi);
-    line(b, .fence, 92, -40, 146, -40, 4);
-    line(b, .fence, 92, 34, 120, 34, 4);
-}
-
-fn northSide(b: *Builder) void {
-    var i: u32 = 0;
-
-    while (i < 6) : (i += 1) {
-        const fi: f32 = @floatFromInt(i);
-
-        put(b, .core, -30 + fi * 4.2, 100, 0);
-        put(b, .formwork, -30 + fi * 4.2, 114, 0);
-        put(b, .core, -6, 98 + fi * 4.2, half_pi);
-    }
-
-    put(b, .rebar, -22, 107, 0);
-    put(b, .rebar, -14, 107, 0.3);
-    put(b, .mixer, -18, 106, 0.6);
-    put(b, .drums, 18, 112, 0);
-    put(b, .pipes, 30, 92, half_pi);
-    put(b, .blocks, 52, 104, 0);
-    put(b, .pipes, 26, 132, half_pi);
-    put(b, .pipes, 30, 132, half_pi);
-    put(b, .lamp, -36, 92, 0.2);
-    put(b, .shelter, -40, 136, half_pi);
-    put(b, .toilet, -40, 142, 0);
-    put(b, .toilet, -38.6, 142, 0);
-    put(b, .blocks, 10, 90, 0);
-    put(b, .blocks, -14, 128, 0);
-    put(b, .blocks, 60, 124, half_pi);
-
-    put(b, .silo, 104, 112, 0);
-    put(b, .silo, 108, 112, 0);
-    put(b, .silo, 112, 112, 0);
-    put(b, .scafstack, 96, 96, 0);
-    put(b, .scafstack, 120, 96, 0.04);
-    put(b, .drums, 124, 128, 0.4);
-    put(b, .mixer, 92, 124, 1.4);
-    put(b, .mixer, 94, 126, 0.2);
-    put(b, .pallet, 88, 130, 0);
-    put(b, .pallet, 89.4, 130, 0);
-    put(b, .pipes, 136, 116, half_pi);
-    put(b, .skip, 80, 140, 0);
-    put(b, .skip, 84, 140, 0);
-    put(b, .genset, 96, 140, 0);
-    line(b, .fence, 76, 86, 146, 86, 4);
-}
-
-fn westCenter(b: *Builder) void {
-    put(b, .pipes, -60, -20, 0);
-    put(b, .pipes, -60, -16, 0);
-    put(b, .pipes, -66, -18, half_pi);
-    put(b, .spool, -72, 10, 0);
-    put(b, .spool, -74, 12, 1.0);
-    put(b, .spool, -70, 13, 2.0);
-    put(b, .timber, -58, 16, 0);
-    put(b, .timber, -58, 19, 0);
-    put(b, .blocks, -66, 26, 0);
-    put(b, .blocks, -80, -30, half_pi);
-    put(b, .blocks, -54, -34, 0);
-    put(b, .skip, -80, 18, half_pi);
-    put(b, .skip, -70, -4, 0.3);
-    put(b, .lamp, -54, 6, 0.6);
-    put(b, .drums, -86, -12, 0);
-    put(b, .scafstack, -64, 40, half_pi);
-    put(b, .scafstack, -84, 40, 0);
-    put(b, .scafstack, -84, 42, 0);
-    put(b, .precast, -40, 74, 0.6);
-    put(b, .rebar, -88, 70, 0);
-    put(b, .spool, -56, 80, 0.4);
-    put(b, .pipes, -52, 66, half_pi);
+    put(b, .genset, 52, 24, pi);
+    put(b, .pipes, 59, 24, pi);
+    put(b, .rebar, 66, 24, pi);
+    put(b, .drums, 50, 14, half_pi);
+    put(b, .lamp, 50, -4, 1);
 }
 
 fn roadside(b: *Builder) void {
-    var z: f32 = -110;
+    var z: f32 = -edge + 14;
 
-    while (z < -50) : (z += 4) {
+    while (z < -48) : (z += 4) {
         if (@mod(z, 24) < 6) continue;
 
-        put(b, .barrier, -27, z, half_pi);
+        put(b, .barrier, gate_x + 7, z, half_pi);
     }
 
-    put(b, .lights, -16, -48, 0);
-    put(b, .lights, -12, -40, 0.4);
-    put(b, .sign, -27, -52, half_pi);
-    put(b, .precast, -14, -90, 0);
-    put(b, .lamp, -12, -70, 1.0);
-    put(b, .skip, 10, -54, 0);
-    put(b, .bag, 15, -55, 0.3);
-    put(b, .bag, 16.2, -54.4, 1.1);
-    put(b, .genset, 28, -56, 0);
-    put(b, .drums, 4, -60, 0);
-    put(b, .blocks, -6, -64, 0);
-    put(b, .blocks, 22, -68, half_pi);
-    put(b, .spool, 32, -60, 0.4);
-
-    var c: f32 = -40;
-
-    while (c < 42) : (c += 5) {
-        put(b, .cone, c, -48.5, 0);
-    }
+    put(b, .sign, gate_x + 7, -48, half_pi);
 }
 
 const reserved = [_]Rect{
     .{ .x0 = -32, .z0 = -16, .x1 = 40, .z1 = 38 },
-    .{ .x0 = -90, .z0 = 44, .x1 = -52, .z1 = 80 },
-    .{ .x0 = 46, .z0 = 38, .x1 = 92, .z1 = 70 },
-    .{ .x0 = 50, .z0 = -116, .x1 = 126, .z1 = -40 },
-    .{ .x0 = 18, .z0 = -92, .x1 = 62, .z1 = -68 },
-    .{ .x0 = -148, .z0 = 90, .x1 = -70, .z1 = 148 },
-    .{ .x0 = -148, .z0 = -56, .x1 = -92, .z1 = 38 },
-    .{ .x0 = -148, .z0 = -148, .x1 = -60, .z1 = -62 },
-    .{ .x0 = 92, .z0 = -42, .x1 = 148, .z1 = -26 },
-    .{ .x0 = 92, .z0 = 18, .x1 = 148, .z1 = 40 },
-    .{ .x0 = 74, .z0 = 84, .x1 = 148, .z1 = 148 },
-    .{ .x0 = -36, .z0 = 88, .x1 = 4, .z1 = 124 },
-    .{ .x0 = -50, .z0 = -148, .x1 = 8, .z1 = -112 },
-    .{ .x0 = 22, .z0 = -148, .x1 = 148, .z1 = -110 },
-    .{ .x0 = 106, .z0 = 50, .x1 = 134, .z1 = 76 },
-    .{ .x0 = -2, .z0 = -142, .x1 = 22, .z1 = -122 },
+    .{ .x0 = -70, .z0 = 44, .x1 = -44, .z1 = 70 },
+    .{ .x0 = 36, .z0 = 42, .x1 = 66, .z1 = 66 },
+    .{ .x0 = 6, .z0 = -70, .x1 = 68, .z1 = -12 },
+    .{ .x0 = -28, .z0 = -50, .x1 = 12, .z1 = -26 },
+    .{ .x0 = -70, .z0 = -36, .x1 = -50, .z1 = 30 },
+    .{ .x0 = -68, .z0 = 28, .x1 = -56, .z1 = 42 },
+    .{ .x0 = -70, .z0 = -70, .x1 = -46, .z1 = -54 },
+    .{ .x0 = 46, .z0 = 10, .x1 = 70, .z1 = 28 },
 };
 
 fn free(x: f32, z: f32, r: f32) bool {
@@ -1132,12 +817,12 @@ fn cluster(b: *Builder, x: f32, z: f32) void {
 }
 
 fn clutter(b: *Builder) void {
-    var gx: f32 = -140;
+    var gx: f32 = -edge + 6;
 
-    while (gx < 140) : (gx += 8.5) {
-        var gz: f32 = -140;
+    while (gx < edge - 6) : (gx += 11) {
+        var gz: f32 = -edge + 6;
 
-        while (gz < 140) : (gz += 8.5) {
+        while (gz < edge - 6) : (gz += 11) {
             const x = gx + b.rng.range(-3, 3);
             const z = gz + b.rng.range(-3, 3);
 
@@ -1145,7 +830,7 @@ fn clutter(b: *Builder) void {
 
             if (moundAt(x, z).h > 0.1 or moundAt(x + 4, z).h > 0.1 or moundAt(x - 4, z).h > 0.1) continue;
 
-            if (b.rng.next() < 0.12) continue;
+            if (b.rng.next() < 0.35) continue;
 
             cluster(b, x, z);
         }
@@ -1345,12 +1030,12 @@ fn module(b: *Builder, x: f32, z: f32) void {
 }
 
 fn fill(b: *Builder) void {
-    var gx: f32 = -136;
+    var gx: f32 = -edge + 10;
 
-    while (gx < 138) : (gx += 5) {
-        var gz: f32 = -136;
+    while (gx < edge - 9) : (gx += 16) {
+        var gz: f32 = -edge + 10;
 
-        while (gz < 138) : (gz += 5) {
+        while (gz < edge - 9) : (gz += 16) {
             const x = gx;
             const z = gz;
 
@@ -1415,15 +1100,15 @@ fn mini(b: *Builder, x: f32, z: f32) void {
 }
 
 fn fillMini(b: *Builder) void {
-    var gx: f32 = -138;
+    var gx: f32 = -edge + 8;
 
-    while (gx < 140) : (gx += 4) {
-        var gz: f32 = -138;
+    while (gx < edge - 7) : (gx += 10) {
+        var gz: f32 = -edge + 8;
 
-        while (gz < 140) : (gz += 4) {
+        while (gz < edge - 7) : (gz += 10) {
             if (!free(gx, gz, 5) or moundAt(gx, gz).h > 0.1 or moundAt(gx + 5, gz).h > 0.1 or moundAt(gx - 5, gz).h > 0.1 or moundAt(gx, gz + 5).h > 0.1 or moundAt(gx, gz - 5).h > 0.1) continue;
 
-            if (b.rng.next() < 0.25) continue;
+            if (b.rng.next() < 0.55) continue;
 
             mini(b, gx, gz);
 
@@ -1441,27 +1126,31 @@ var claimed_n: usize = 0;
 fn pitCover(b: *Builder) void {
     const fy = pit_floor;
 
-    for ([_][3]f32{ .{ 68, -60, 0 }, .{ 76, -100, 0.1 }, .{ 108, -60, half_pi }, .{ 110, -98, 0.3 }, .{ 96, -66, 0 }, .{ 70, -84, half_pi } }) |q| at(b, .sandbags, q[0], fy, q[1], q[2]);
+    for ([_][3]f32{ .{ -21, 20, 0 }, .{ -13, -20, 0.1 }, .{ 19, 20, half_pi }, .{ 21, -18, 0.3 }, .{ 7, 14, 0 }, .{ -19, -4, half_pi } }) |q| pp(b, .sandbags, q[0], q[1], q[2]);
 
-    for ([_][2]f32{ .{ 74, -70 }, .{ 74.6, -71.2 }, .{ 104, -92 }, .{ 102.8, -92.4 } }) |q| at(b, .ibc, q[0], fy, q[1], 0.2);
+    for ([_][2]f32{ .{ -15, 10 }, .{ -14.4, 8.8 }, .{ 15, -12 }, .{ 13.8, -12.4 } }) |q| pp(b, .ibc, q[0], q[1], 0.2);
 
-    for ([_][2]f32{ .{ 98, -104 }, .{ 99, -104 }, .{ 66, -96 }, .{ 66, -95 } }) |q| at(b, .wrap, q[0], fy, q[1], 0);
+    for ([_][2]f32{ .{ 9, -24 }, .{ 10, -24 }, .{ -23, -16 }, .{ -23, -15 } }) |q| pp(b, .wrap, q[0], q[1], 0);
 
-    b.putAt(kit.of(.framebay), vec(80, fy, -100), 0, 1.5);
-    b.putAt(kit.of(.framebay), vec(104, fy, -62), half_pi, 1.5);
+    const bays = [_][2]f32{ .{ pit_c[0] - 9 * pit_k, pit_c[1] - 20 * pit_k }, .{ pit_c[0] + 15 * pit_k, pit_c[1] + 18 * pit_k } };
 
-    for ([_][2]f32{ .{ 80, -100 }, .{ 104, -62 } }) |c| {
+    b.putAt(kit.of(.framebay), vec(bays[0][0], fy, bays[0][1]), 0, 1.5);
+    b.putAt(kit.of(.framebay), vec(bays[1][0], fy, bays[1][1]), half_pi, 1.5);
+
+    for (bays) |c| {
         for ([_]f32{ -2.8, 2.8 }) |ox| {
             for ([_]f32{ -2.8, 2.8 }) |oz| api.box(b, c[0] + ox - 0.2, fy - 0.5, c[1] + oz - 0.2, c[0] + ox + 0.2, fy + 4.6, c[1] + oz + 0.2);
         }
     }
 
-    for ([_]f32{ 64, 68, 72 }) |x| {
-        b.putAt(kit.of(.scaffold), vec(x, fy, -51.5), 0, 1);
-        b.putAt(kit.of(.scaffold), vec(x, fy + 3.1, -51.5), 0, 1);
+    const sz = pit[3] - 3.5;
+
+    for ([_]f32{ -14, -10, -6 }) |dx| {
+        b.putAt(kit.of(.scaffold), vec(pit_c[0] + dx, fy, sz), 0, 1);
+        b.putAt(kit.of(.scaffold), vec(pit_c[0] + dx, fy + 3.1, sz), 0, 1);
     }
 
-    api.box(b, 62, fy - 0.5, -52.3, 74, fy + 6.2, -50.7);
+    api.box(b, pit_c[0] - 16, fy - 0.5, sz - 0.8, pit_c[0] - 4, fy + 6.2, sz + 0.8);
 }
 
 fn roadDressing(b: *Builder) void {
@@ -1475,7 +1164,7 @@ fn roadDressing(b: *Builder) void {
         var d: f32 = 6;
         var n: u32 = 0;
 
-        while (d < len - 6) : (d += 5.5) {
+        while (d < len - 6) : (d += 11) {
             n += 1;
 
             for ([_]f32{ -1, 1 }) |side| {
@@ -1538,9 +1227,9 @@ fn decals(b: *Builder) void {
 
     var i: u32 = 0;
 
-    while (i < 220) : (i += 1) {
-        const x = b.rng.range(-142, 142);
-        const z = b.rng.range(-142, 142);
+    while (i < 60) : (i += 1) {
+        const x = b.rng.range(-edge + 4, edge - 4);
+        const z = b.rng.range(-edge + 4, edge - 4);
         const near = roadDist(x, z) < 9;
         const kind: K = if (near and b.rng.next() < 0.6) .puddle else if (b.rng.next() < 0.55) .gravel else .puddle;
 
@@ -1556,25 +1245,18 @@ fn build(b: *Builder) void {
     pad_n = 0;
     claimed_n = 0;
     perimeter(b);
-    city(b);
     core(b);
     pitSite(b);
     frameSite(b);
     tower2Site(b);
     extras(b);
-    compound(b);
     containerYard(b);
-    laydown(b);
-    earthworks(b);
     plantYard(b);
-    northSide(b);
-    westCenter(b);
     roadside(b);
     fill(b);
     fillMini(b);
     roadDressing(b);
     pitCover(b);
-    structure(b, .crane, &S.crane, -86, 0, 52, 2.6);
     clutter(b);
     decals(b);
 }

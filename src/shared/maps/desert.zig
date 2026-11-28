@@ -1,5 +1,6 @@
 const std = @import("std");
 const api = @import("api.zig");
+const dk = @import("desert_kit.zig");
 
 const wd = api.world;
 const terrain = api.terrain;
@@ -19,31 +20,25 @@ const lowest = wd.lowest;
 const covered = wd.covered;
 const clearance = wd.clearance;
 const safeSpawns = wd.safeSpawns;
-const kitHouse = wd.kitHouse;
 const rotPoint = wd.rotPoint;
 const kit_houses = wd.kit_houses;
-const runway = wd.runway;
-const helipad = wd.helipad;
-const airstripPocket = wd.airstripPocket;
-const ruinsPocket = wd.ruinsPocket;
-const oasisPocket = wd.oasisPocket;
 const compound = wd.compound;
+const kitHouse = wd.kitHouse;
+const kit = dk.kit;
 
 pub const def: api.Def = .{
     .name = "Frontier Town",
     .note = "Western main street, mine camp",
     .tint = .{ 232, 168, 90 },
-    .half = 280,
-    .play = 250,
     .facet = 2.5,
-    .runway = .{ 150, -200, 80, 15 },
-    .helipads = .{ .{ 90, -168 }, .{ 115, -168 }, .{ 140, -168 } },
+    .configure = setup,
     .height = height,
     .ground = groundColor,
     .road = roadDist,
     .flat = flatMask,
-    .build = desertNature,
+    .build = frontier,
     .spots = setSpots,
+    .props = &dk.table,
     .palette = .{
         .sun_dir = .{ 0.55, 0.64, 0.53 },
         .sun_tint = .{ 1.18, 0.98, 0.78 },
@@ -57,14 +52,177 @@ pub const def: api.Def = .{
         .zenith = .{ 0.05, 0.2, 0.58 },
     },
     .backdrop = .{ 206, 186, 146 },
-    .aircraft = true,
-    .tanks = true,
     .grip = 0.72,
-    .tufts = 0.85,
 };
 
+const HouseSite = struct { first: usize, count: usize, variant: usize, x: f32, z: f32, yaw: f32 };
+
+var house_sites: [128]HouseSite = undefined;
+var site_count: usize = 0;
+
+fn frontier(b: *Builder) void {
+    site_count = 0;
+    desertNature(b);
+    refit(b);
+    clearHouses(b);
+    seatMesas(b);
+
+    for (b.placed.items) |*p| p.kind = reskin(p.kind);
+}
+
+fn house(b: *Builder, x: f32, z: f32, front: [2]f32, v: usize) void {
+    const first = b.solids.items.len;
+
+    kitHouse(b, x, z, front, v);
+
+    if (site_count == house_sites.len) return;
+
+    house_sites[site_count] = .{ .first = first, .count = b.solids.items.len - first, .variant = v, .x = x, .z = z, .yaw = std.math.atan2(front[0], front[1]) };
+    site_count += 1;
+}
+
+fn refit(b: *Builder) void {
+    var i = site_count;
+
+    while (i > 0) {
+        i -= 1;
+
+        const s = house_sites[i];
+        const y = lowest(s.x, s.z, @max(kit_houses[s.variant].w, kit_houses[s.variant].d) / 2 + 0.5) + 0.4;
+        const blocks = dk.blocks(look(s.variant));
+        var fitted: [8]std.meta.Child(@TypeOf(b.solids.items)) = undefined;
+
+        for (blocks, 0..) |bl, k| {
+            const r = wd.rotBox(s.x, s.z, s.yaw, bl[0], bl[1], bl[2], bl[3]);
+
+            fitted[k] = .{ .shape = .{ .box = .{ .min = vec(r[0], y - 0.9, r[1]), .max = vec(r[2], y + bl[4] + 0.1, r[3]) } } };
+        }
+
+        b.solids.replaceRange(b.gpa, s.first, s.count, fitted[0..blocks.len]) catch {};
+    }
+}
+
+fn clearHouses(b: *Builder) void {
+    var i = b.placed.items.len;
+
+    while (i > 0) {
+        i -= 1;
+
+        const p = b.placed.items[i];
+
+        if (p.kind != .kd_walk and buried(p.kind, p.pos.x, p.pos.z)) _ = b.placed.orderedRemove(i);
+    }
+}
+
+fn buried(kind: Kind, x: f32, z: f32) bool {
+    for (kit_houses) |h| {
+        if (h.kind == kind) return false;
+    }
+
+    if (kind == .kd_flag and nearHouse(x, z, 1.2)) return true;
+
+    for (house_sites[0..site_count]) |s| {
+        for (dk.blocks(look(s.variant))) |bl| {
+            if (bl[4] < 1) continue;
+
+            const r = wd.rotBox(s.x, s.z, s.yaw, bl[0], bl[1], bl[2], bl[3]);
+
+            if (x > r[0] + 0.15 and x < r[2] - 0.15 and z > r[1] + 0.15 and z < r[3] - 0.15) return true;
+        }
+    }
+
+    return false;
+}
+
+fn nearHouse(x: f32, z: f32, margin: f32) bool {
+    for (house_sites[0..site_count]) |s| {
+        const info = dk.table[@intFromEnum(look(s.variant))];
+        const r = wd.rotBox(s.x, s.z, s.yaw, info.min[0], info.min[2], info.max[0], info.max[2]);
+
+        if (x > r[0] - margin and x < r[2] + margin and z > r[1] - margin and z < r[3] + margin) return true;
+    }
+
+    return false;
+}
+
+fn seatMesas(b: *Builder) void {
+    const inner = terrain.play + 9;
+    const outer = terrain.play + 16;
+
+    for (b.placed.items) |*p| {
+        if (p.kind != .kd_mesa_0 and p.kind != .kd_mesa_1 and p.kind != .kd_mesa_2) continue;
+
+        if (@abs(@abs(p.pos.x) - inner) < 0.1) p.pos.x = std.math.sign(p.pos.x) * outer;
+        if (@abs(@abs(p.pos.z) - inner) < 0.1) p.pos.z = std.math.sign(p.pos.z) * outer;
+
+        p.pos.y = terrain.height(p.pos.x, p.pos.z) - 3;
+    }
+}
+
+fn look(v: usize) dk.K {
+    return switch (v) {
+        0, 5 => .house_0,
+        1 => .house_1,
+        3 => .house_3,
+        4 => .house_4,
+        2, 6 => .house_6,
+        7 => .house_7,
+        8 => .house_8,
+        9, 10 => .house_10,
+        else => .house_11,
+    };
+}
+
+fn reskin(k: Kind) Kind {
+    for (kit_houses, 0..) |h, v| {
+        if (h.kind == k) return kit.of(look(v));
+    }
+
+    return switch (k) {
+        .kd_barrel => kit.of(.barrel),
+        .kd_bench => kit.of(.bench),
+        .kd_box => kit.of(.box),
+        .kd_cactus_0 => kit.of(.cactus),
+        .kd_cactus_1 => kit.of(.pear),
+        .kd_chest => kit.of(.chest),
+        .kd_crate => kit.of(.crate),
+        .kd_fence => kit.of(.fence),
+        .kd_flag => kit.of(.pole),
+        .kd_fountain => kit.of(.watertower),
+        .kd_lantern => kit.of(.lantern),
+        .kd_mesa_0 => kit.of(.mesa_0),
+        .kd_mesa_1 => kit.of(.mesa_1),
+        .kd_mesa_2 => kit.of(.mesa_2),
+        .kd_obelisk => kit.of(.headframe),
+        .kd_palm_0 => kit.of(.deadtree),
+        .kd_palm_2 => kit.of(.saguaro),
+        .kd_patch_0 => kit.of(.gravel),
+        .kd_patch_1 => kit.of(.tumbleweed),
+        .kd_pillar => kit.of(.pillar),
+        .kd_rock_0 => kit.of(.rock_0),
+        .kd_rock_1 => kit.of(.rock_1),
+        .kd_rock_2 => kit.of(.rock_2),
+        .kd_rock_3 => kit.of(.rock_3),
+        .kd_rock_4 => kit.of(.rock_4),
+        .kd_scrub => kit.of(.sage),
+        .kd_stall_2 => kit.of(.windmill),
+        .kd_tent_0 => kit.of(.orebin),
+        .kd_walk => kit.of(.walk),
+        .dk_drift_0 => kit.of(.drift),
+        .dk_truck_wreck => kit.of(.spoil),
+        else => k,
+    };
+}
+
+fn setup() void {
+    terrain.town_center = .{ 0, -2 };
+    terrain.town_half = .{ 50, 42 };
+    terrain.market = .{ 24, 10, 12 };
+    terrain.oasis = .{ -58, 57 };
+}
+
 fn roadDist(x: f32, z: f32) f32 {
-    return @min(@abs(x - terrain.roadLine(z)), @min(@abs(z - (150 + 10 * @sin(x * 0.013))), @abs(z - (-140 + 5 * @sin(x * 0.017)))));
+    return @abs(x - terrain.roadLine(z));
 }
 
 fn flatMask(x: f32, z: f32) f32 {
@@ -76,10 +234,43 @@ fn waterLevel() f32 {
 }
 
 fn setSpots(gpa: std.mem.Allocator) void {
-    wd.roadside(gpa);
+    roadSpots(gpa);
     townLoot(gpa);
     wd.parkClear(gpa);
     townSpawns(gpa);
+}
+
+fn onRoad(z: f32, offset: f32) Vec3 {
+    const x = terrain.roadLine(z) + offset;
+
+    return vec(x, terrain.height(x, z), z);
+}
+
+fn roadSpots(gpa: std.mem.Allocator) void {
+    var spots: std.ArrayList(Vec3) = .empty;
+    var anchors: std.ArrayList(Vec3) = .empty;
+    var parked: std.ArrayList(wd.Spot) = .empty;
+    const reach = api.arena_half - 14;
+    var z: f32 = -reach;
+    var i: u32 = 0;
+
+    while (z <= reach) : ({
+        z += 13;
+        i += 1;
+    }) {
+        const side: f32 = if (i % 2 == 0) 1 else -1;
+        const ahead = terrain.roadLine(z + 1) - terrain.roadLine(z);
+        const yaw = std.math.atan2(ahead, 1);
+
+        spots.append(gpa, onRoad(z, side * 3)) catch {};
+        anchors.append(gpa, onRoad(z, side * 20).add(.{ .y = 12 })) catch {};
+
+        if (i % 2 == 0) parked.append(gpa, .{ .pos = onRoad(z + 4, side * (terrain.road_half - 1.6)), .yaw = if (side > 0) yaw else yaw + std.math.pi }) catch {};
+    }
+
+    wd.weapon_spots = spots.toOwnedSlice(gpa) catch &.{};
+    wd.drone_anchors = anchors.toOwnedSlice(gpa) catch &.{};
+    wd.vehicle_spots = parked.toOwnedSlice(gpa) catch &.{};
 }
 
 fn height(x: f32, z: f32) f32 {
@@ -90,15 +281,14 @@ fn height(x: f32, z: f32) f32 {
     const profile = if (u < 0.78) terrain.smooth(0, 0.78, u) else 1 - terrain.smooth(0.78, 1, u);
     const dunes = profile * 6.5 * (0.5 + terrain.fbm(x * 0.014 + 5, z * 0.014));
     const rolling = (terrain.fbm(x * 0.01, z * 0.01) - 0.4) * 7;
-    const ridge = terrain.smooth(terrain.play - 10, terrain.half, box) * 10;
+    const ridge = terrain.smooth(terrain.play - 1, terrain.half - 6, box) * 12;
     const od = terrain.oasisDistance(x, z);
     const pool = (1 - terrain.smooth(6, 15, od)) * 2.6;
     const open = terrain.smooth(8, 18, od);
 
     const inside = terrain.townMask(x, z);
-    const strip = @max(@max(terrain.runwayMask(x, z), terrain.padMask(x, z)), terrain.pocketMask(x, z));
 
-    return (dunes + @max(rolling, -1)) * (1 - flat) * open * (1 - inside) * (1 - strip) + ridge - pool;
+    return (dunes + @max(rolling, -0.15)) * (1 - flat) * open * (1 - inside) + ridge - pool;
 }
 
 fn groundColor(x: f32, z: f32) api.Rgb {
@@ -132,7 +322,8 @@ fn groundColor(x: f32, z: f32) api.Rgb {
     }
 
     const sand = [3]f32{ 206, 186, 146 };
-    const lane = @min(@min(@abs(z - -36), @abs(z - 22)), @min(@abs(x - -30), @abs(x - 46)));
+    const tc = t.town_center;
+    const lane = @min(@min(@abs(z - (tc[1] - 28)), @abs(z - (tc[1] + 30))), @min(@abs(x - (tc[0] - 34)), @abs(x - (tc[0] + 42))));
     const town_k = t.smooth(0.3, 0.7, town);
 
     if (town_k > 0) {
@@ -347,7 +538,7 @@ fn rowHouses(b: *Builder, built: *std.ArrayList([4]f32)) void {
 
                 if (rowFree(built.items, cx, cz, hx, hz)) {
                     built.append(b.gpa, .{ cx, cz, hx, hz }) catch {};
-                    kitHouse(b, cx, cz, front, variant);
+                    house(b, cx, cz, front, variant);
                     run += 1;
                     t += w + 0.15;
 
@@ -388,7 +579,7 @@ fn desertTown(b: *Builder) void {
 
     rowHouses(b, &built);
 
-    while (tries < 900 and built.items.len < 78) : (tries += 1) {
+    while (tries < 900 and built.items.len < 56) : (tries += 1) {
         const cx = tc[0] + b.rng.range(-th[0] + 4, th[0] - 4);
         const cz = tc[1] + b.rng.range(-th[1] + 4, th[1] - 4);
         const front = facing(cx, cz);
@@ -410,7 +601,7 @@ fn desertTown(b: *Builder) void {
         if (!clear_spot) continue;
 
         built.append(b.gpa, .{ cx, cz, hx, hz }) catch {};
-        kitHouse(b, cx, cz, front, variant);
+        house(b, cx, cz, front, variant);
 
         if (b.rng.next() < 0.3) b.put(.kd_palm_2, cx + hx + 0.3, cz - hz + 0.8, b.rng.range(0, 6.28), 1);
     }
@@ -436,8 +627,6 @@ fn kdScatter(b: *Builder) void {
 
             if (terrain.roadDistance(px, pz) < terrain.road_half + 0.5 or terrain.oasisDistance(px, pz) < 13) continue;
 
-            if (terrain.runwayMask(px, pz) > 0.05 or terrain.padMask(px, pz) > 0.05) continue;
-
             if (1 - terrain.normal(px, pz).y > 0.08) continue;
 
             if (covered(b, px, pz, 1.5)) continue;
@@ -459,12 +648,13 @@ fn kdScatter(b: *Builder) void {
 fn desertNature(b: *Builder) void {
     desertTown(b);
 
-    var x: f32 = -terrain.half + 4;
+    const edge = terrain.play - 3;
+    var x: f32 = -edge;
 
-    while (x < terrain.half - 4) : (x += 8) {
-        var z: f32 = -terrain.half + 4;
+    while (x < edge) : (x += 8) {
+        var z: f32 = -edge;
 
-        while (z < terrain.half - 4) : (z += 8) {
+        while (z < edge) : (z += 8) {
             const px = x + b.rng.range(-3.5, 3.5);
             const pz = z + b.rng.range(-3.5, 3.5);
             const od = terrain.oasisDistance(px, pz);
@@ -472,10 +662,6 @@ fn desertNature(b: *Builder) void {
             if (terrain.roadDistance(px, pz) < terrain.road_half + 2 or od < 13) continue;
 
             if (terrain.townMask(px, pz) > 0.05) continue;
-
-            if (terrain.runwayMask(px, pz) > 0.05 or terrain.padMask(px, pz) > 0.05 or terrain.pocketMask(px, pz) > 0.1) continue;
-
-            if (@max(@abs(px), @abs(pz)) > 130 and b.rng.next() < 0.35) continue;
 
             if (1 - terrain.normal(px, pz).y > 0.3) continue;
 
@@ -502,33 +688,57 @@ fn desertNature(b: *Builder) void {
         b.put(if (b.rng.next() < 0.6) .kd_palm_0 else .kd_palm_2, terrain.oasis[0] + @cos(a) * r, terrain.oasis[1] + @sin(a) * r, b.rng.range(0, 6.28), b.rng.range(0.85, 1.2));
     }
 
-
-    b.put(.kd_obelisk, terrain.roadLine(-70) + 16, -70, 0.3, 1);
-
-    runway(b);
-
-    for (terrain.helipads) |p| helipad(b, p[0], p[1]);
-
-    airstripPocket(b);
-    ruinsPocket(b);
-    oasisPocket(b);
+    oasisCamp(b);
+    b.put(.kd_obelisk, terrain.roadLine(-60) + 16, -60, 0.3, 1);
     kdScatter(b);
+    compounds(b);
+    camps(b);
+    coverClusters(b);
+    edgeRocks(b);
+}
 
-    var gx: f32 = -200;
+fn oasisCamp(b: *Builder) void {
+    const ox = terrain.oasis[0];
+    const oz = terrain.oasis[1];
 
-    while (gx <= 200) : (gx += 30) {
-        var gz: f32 = -200;
+    for ([_][3]f32{ .{ 20, 0, 1.57 }, .{ 20, -0.6, 4.2 } }) |t| {
+        const x = ox + @cos(t[1]) * t[0];
+        const z = oz + @sin(t[1]) * t[0];
 
-        while (gz <= 200) : (gz += 30) {
+        b.putAt(.kd_tent_0, vec(x, terrain.height(x, z), z), t[2], 1);
+    }
+
+    coverNode(b, ox + 26, oz - 6, 0.6);
+}
+
+fn compounds(b: *Builder) void {
+    const c = terrain.play - 14;
+    const sites = [_][3]f32{ .{ -c, -c, 0 }, .{ c, -c, 1 }, .{ c, c, 0 } };
+
+    for (sites) |o| {
+        compound(b, o[0], o[1], 16, o[2] > 0.5);
+        b.put(.kd_box, o[0] + 3, o[1] + 2, 0.3, 1);
+        b.put(.kd_crate, o[0] - 2, o[1] + 4, 1.1, 1);
+        b.put(b.rng.pick(Kind, &.{ .kd_barrel, .kd_barrel, .kd_chest }), o[0] - 4, o[1] - 3, 0, 1);
+    }
+}
+
+fn camps(b: *Builder) void {
+    const edge = terrain.play - 8;
+    var gx: f32 = -edge;
+
+    while (gx <= edge) : (gx += 30) {
+        var gz: f32 = -edge;
+
+        while (gz <= edge) : (gz += 30) {
             const ox = gx + b.rng.range(-9, 9);
             const oz = gz + b.rng.range(-9, 9);
             const rx = @abs(ox - terrain.town_center[0]) - terrain.town_half[0];
             const rz = @abs(oz - terrain.town_center[1]) - terrain.town_half[1];
-            const out = @max(rx, rz);
 
-            if (out < 10 or out > 150) continue;
+            if (@max(rx, rz) < 10 or !api.inArena(ox, oz, 6)) continue;
 
-            if (terrain.roadDistance(ox, oz) < terrain.road_half + 6 or terrain.runwayMask(ox, oz) > 0.02 or terrain.padMask(ox, oz) > 0.02 or terrain.pocketMask(ox, oz) > 0.05 or terrain.oasisDistance(ox, oz) < 22) continue;
+            if (terrain.roadDistance(ox, oz) < terrain.road_half + 6 or terrain.oasisDistance(ox, oz) < 22 or covered(b, ox, oz, 8)) continue;
 
             if (1 - terrain.normal(ox, oz).y > 0.12) continue;
 
@@ -536,97 +746,123 @@ fn desertNature(b: *Builder) void {
             const roll = b.rng.next();
             const g = terrain.height(ox, oz);
 
-            if (roll < 0.3) {
-                var j: u32 = 0;
-                const n = 3 + @as(u32, @intFromFloat(b.rng.next() * 2.99));
-
-                while (j < n) : (j += 1) {
-                    const ang = yaw + @as(f32, @floatFromInt(j)) * 2.1;
-                    const d = b.rng.range(1.5, 4.5);
-
-                    b.put(if (j % 2 == 0) .kd_palm_0 else .kd_palm_2, ox + @cos(ang) * d, oz + @sin(ang) * d, b.rng.range(0, 6.28), b.rng.range(0.85, 1.2));
-                }
-
-                b.put(.kd_scrub, ox + 3.5, oz - 2.5, yaw, 1.1);
-                b.putAt(.dk_drift_1, vec(ox - 4, lowest(ox - 4, oz + 3, 3) + 0.15, oz + 3), yaw, 0.9);
-            } else if (roll < 0.5) {
+            if (roll < 0.35) {
                 b.putAt(.kd_tent_0, vec(ox, g, oz), yaw, 1);
-                b.putAt(.kd_tent_0, vec(ox + @cos(yaw) * 7, terrain.height(ox + @cos(yaw) * 7, oz - @sin(yaw) * 7), oz - @sin(yaw) * 7), yaw + 0.5, 0.9);
                 b.put(.kd_crate, ox + @sin(yaw) * 3.5, oz + @cos(yaw) * 3.5, yaw, 1);
                 b.put(.kd_box, ox + @sin(yaw) * 3.8 + 1.2, oz + @cos(yaw) * 3.8, yaw, 1);
                 b.put(.kd_barrel, ox - @sin(yaw) * 3.5, oz - @cos(yaw) * 3.5, yaw, 1);
                 b.put(.kd_palm_2, ox - 5, oz + 4, yaw, 1);
-            } else if (roll < 0.68) {
+            } else if (roll < 0.65) {
                 b.putAt(.dk_truck_wreck, vec(ox, g - 0.05, oz), yaw, 1);
                 b.putAt(.dk_drift_0, vec(ox + @sin(yaw) * 2, lowest(ox, oz, 3) + 0.15, oz + @cos(yaw) * 2), yaw + 1.4, 0.9);
                 b.put(.kd_barrel, ox + @cos(yaw) * 3.4, oz - @sin(yaw) * 3.4, yaw, 1);
                 b.put(.kd_scrub, ox - 3, oz + 2, yaw, 1);
-            } else if (roll < 0.86) {
+            } else {
                 b.putAt(.kd_fence, vec(ox, lowest(ox, oz, 3) + 0.3, oz), yaw, 1.1);
                 b.putAt(.kd_fence, vec(ox + @sin(yaw) * 4.5, lowest(ox + @sin(yaw) * 4.5, oz + @cos(yaw) * 4.5, 3) + 0.3, oz + @cos(yaw) * 4.5), yaw + 1.57, 0.9);
                 b.putAt(b.rng.pick(Kind, &.{ .kd_rock_1, .kd_rock_3 }), vec(ox - 3, lowest(ox - 3, oz - 3, 2) + 0.2, oz - 3), yaw, 1);
                 b.put(.kd_palm_2, ox + 3, oz - 4, yaw, 1);
-            } else {
-                b.putAt(.dk_drift_2, vec(ox, lowest(ox, oz, 4) + 0.15, oz), yaw, 1.2);
-                b.put(.kd_scrub, ox + 4, oz + 1, yaw, 1.2);
-                b.put(.kd_scrub, ox - 3, oz - 2, yaw, 0.9);
             }
         }
     }
+}
 
-    var cx_: f32 = -terrain.play + 12;
+fn coverCluster(b: *Builder, cx: f32, cz: f32) void {
+    const n = 3 + @as(u32, @intFromFloat(b.rng.next() * 3.99));
+    const yaw = b.rng.range(0, 6.28);
+    var i: u32 = 0;
 
-    while (cx_ < terrain.play - 12) : (cx_ += 22) {
-        var cz_: f32 = -terrain.play + 12;
+    while (i < n) : (i += 1) {
+        const a = yaw + @as(f32, @floatFromInt(i)) * 1.1 + b.rng.range(-0.2, 0.2);
+        const d = if (i == 0) 0 else b.rng.range(1.6, 3.4);
+        const px = cx + @sin(a) * d;
+        const pz = cz + @cos(a) * d;
+        const roll = b.rng.next();
 
-        while (cz_ < terrain.play - 12) : (cz_ += 22) {
-            const ox = cx_ + b.rng.range(-8, 8);
-            const oz = cz_ + b.rng.range(-8, 8);
+        if (roll < 0.4) {
+            const k = b.rng.range(0.7, 1.05);
 
-            if (terrain.townMask(ox, oz) > 0.02 or terrain.roadDistance(ox, oz) < terrain.road_half + 4 or terrain.runwayMask(ox, oz) > 0.02 or terrain.padMask(ox, oz) > 0.02 or terrain.pocketMask(ox, oz) > 0.05 or terrain.oasisDistance(ox, oz) < 20) continue;
+            b.putAt(.kd_rock_0, vec(px, lowest(px, pz, k) + 0.15, pz), b.rng.range(0, 6.28), k);
+        } else if (roll < 0.65) {
+            const k = b.rng.range(1.0, 1.3);
 
-            const roll = b.rng.next();
-            const yaw = b.rng.range(0, 6.28);
-
-            const flat_spot = 1 - terrain.normal(ox, oz).y < 0.06;
-
-            if (roll < 0.3 and flat_spot) {
-                b.putAt(b.rng.pick(Kind, &.{ .dk_drift_0, .dk_drift_1, .dk_drift_2 }), vec(ox, lowest(ox, oz, 3) + 0.15, oz), yaw, b.rng.range(0.8, 1.3));
-                b.put(.kd_scrub, ox + 3, oz + 1.5, yaw, b.rng.range(0.8, 1.3));
-            } else if (roll < 0.5) {
-                b.putAt(.kd_fence, vec(ox, lowest(ox, oz, 3) + 0.3, oz), yaw, 1);
-                if (flat_spot) b.putAt(.dk_drift_0, vec(ox + @cos(yaw) * 1.5, lowest(ox, oz, 3) + 0.15, oz - @sin(yaw) * 1.5), yaw + 0.3, 0.8);
-                b.put(b.rng.pick(Kind, &.{ .kd_crate, .kd_barrel, .kd_chest }), ox + 2.5, oz - 2, yaw, 1);
-            } else if (roll < 0.75) {
-                b.putAt(b.rng.pick(Kind, &.{ .kd_rock_0, .kd_rock_2, .kd_rock_4 }), vec(ox, lowest(ox, oz, 2) + 0.2, oz), yaw, b.rng.range(1.0, 1.6));
-                b.put(.kd_scrub, ox + 2.6, oz - 1.2, yaw, 1);
-                b.put(.kd_scrub, ox - 2.2, oz + 2, yaw + 1, 0.8);
-            } else if (roll < 0.9) {
-                b.put(b.rng.pick(Kind, &.{ .kd_scrub, .kd_cactus_0, .kd_cactus_1 }), ox, oz, yaw, b.rng.range(0.9, 1.3));
-            }
+            b.putAt(.kd_rock_4, vec(px, lowest(px, pz, 0.6 * k) + 0.1, pz), b.rng.range(0, 6.28), k);
+        } else if (roll < 0.8) {
+            b.putAt(.kd_box, vec(px, terrain.height(px, pz), pz), a, 1);
+        } else {
+            b.putAt(.kd_crate, vec(px, terrain.height(px, pz), pz), a, 1.2);
         }
     }
 
-    var ma: f32 = 0.2;
+    b.put(.kd_scrub, cx + @cos(yaw) * 4, cz - @sin(yaw) * 4, yaw, 1.1);
+    b.put(.kd_scrub, cx - @cos(yaw) * 3.5, cz + @sin(yaw) * 3.5, yaw + 1, 0.9);
+}
 
-    while (ma < 6.28) : (ma += 0.42) {
-        const rr = terrain.play + 30 + b.rng.range(-6, 14);
-        const sq = 1 / @max(@abs(@cos(ma)), @abs(@sin(ma)));
-        const mx = @cos(ma) * rr * @min(sq, 1.25);
-        const mz = @sin(ma) * rr * @min(sq, 1.25);
+fn coverClusters(b: *Builder) void {
+    const tc = terrain.town_center;
+    const th = terrain.town_half;
+    const p = terrain.play;
+    const x0 = (tc[0] - th[0] - p) / 2;
+    const x1 = (tc[0] + th[0] + p) / 2;
+    const z0 = (tc[1] - th[1] - p) / 2;
+    const z1 = (tc[1] + th[1] + p) / 2;
+    const ring = [_][4]f32{ .{ x0, z0, x1, z0 }, .{ x1, z0, x1, z1 }, .{ x1, z1, x0, z1 }, .{ x0, z1, x0, z0 } };
 
-        b.putAt(b.rng.pick(Kind, &.{ .kd_mesa_0, .kd_mesa_1, .kd_mesa_2 }), vec(mx, terrain.height(mx, mz) - 3, mz), b.rng.range(0, 6.28), b.rng.range(0.8, 1.2));
+    for (ring) |r| {
+        const len = @abs(r[2] - r[0]) + @abs(r[3] - r[1]);
+        var d: f32 = b.rng.range(4, 12);
+
+        while (d < len) : (d += b.rng.range(25, 34)) {
+            const k = d / len;
+            const cx = r[0] + (r[2] - r[0]) * k + b.rng.range(-5, 5);
+            const cz = r[1] + (r[3] - r[1]) * k + b.rng.range(-5, 5);
+
+            if (terrain.roadDistance(cx, cz) < terrain.road_half + 3 or terrain.oasisDistance(cx, cz) < 18 or covered(b, cx, cz, 6)) continue;
+
+            coverCluster(b, cx, cz);
+        }
     }
 
-    const outposts = [_][3]f32{ .{ -150, 110, 0 }, .{ 170, 190, 1 }, .{ -200, -80, 0 }, .{ 200, 40, 1 }, .{ -110, -200, 1 }, .{ 70, 205, 0 }, .{ -205, 205, 1 }, .{ -30, -205, 0 }, .{ 120, -90, 1 }, .{ -90, 190, 0 } };
+    for ([_]f32{ -1, 1 }) |side| {
+        const start = if (side > 0) tc[1] + th[1] + 12 else tc[1] - th[1] - 12;
+        var z = start;
 
-    for (outposts) |o| {
-        if (terrain.roadDistance(o[0], o[1]) < terrain.road_half + 14) continue;
+        while (@abs(z) < p - 8) : (z += side * 14) {
+            for ([_]f32{ -1, 1 }) |sx| {
+                const cx = terrain.roadLine(z) + sx * (terrain.road_half + 5);
 
-        compound(b, o[0], o[1], 18, o[2] > 0.5);
-        b.put(.kd_box, o[0] + 3, o[1] + 2, 0.3, 1);
-        b.put(.kd_crate, o[0] - 2, o[1] + 4, 1.1, 1);
-        b.put(b.rng.pick(Kind, &.{ .kd_barrel, .kd_barrel, .kd_chest }), o[0] - 4, o[1] - 3, 0, 1);
+                if (covered(b, cx, z, 5)) continue;
+
+                coverCluster(b, cx, z + sx * 4);
+            }
+        }
+    }
+}
+
+fn edgeRocks(b: *Builder) void {
+    const ring = terrain.play + 9;
+    var a: f32 = -ring + 8;
+    var i: u32 = 0;
+
+    while (a < ring) : (a += 24) {
+        for ([_][2]f32{ .{ a, -ring }, .{ a, ring }, .{ -ring, a }, .{ ring, a } }) |m| {
+            const mesas = [_]Kind{ .kd_mesa_0, .kd_mesa_1, .kd_mesa_2 };
+            const kind = mesas[i % 3];
+
+            b.putAt(kind, vec(m[0], terrain.height(m[0], m[1]) - 3, m[1]), @as(f32, @floatFromInt(i)) * 1.7, b.rng.range(0.5, 0.65));
+            i += 1;
+        }
+    }
+
+    for ([_]f32{ -1, 1 }) |side| {
+        const z = side * (terrain.play - 2);
+        const rx = terrain.roadLine(z);
+        var o: f32 = -terrain.road_half;
+
+        while (o <= terrain.road_half) : (o += 2.5) b.putAt(.kd_fence, vec(rx + o, lowest(rx + o, z, 1.2) + 0.3, z), 0, 1);
+
+        b.putAt(.kd_rock_1, vec(rx - terrain.road_half - 2, lowest(rx - terrain.road_half - 2, z, 1) + 0.2, z), 0.4, 1.2);
+        b.putAt(.kd_rock_2, vec(rx + terrain.road_half + 2, lowest(rx + terrain.road_half + 2, z, 1) + 0.2, z), 1.9, 1.1);
     }
 }
 
@@ -636,7 +872,8 @@ fn townSpawns(gpa: std.mem.Allocator) void {
     var r: Rng = .{ .state = 9191 };
     const tc = terrain.town_center;
     const th = terrain.town_half;
-    const fixed = [_][3]f32{ .{ 14, 2, -1.5 }, .{ 26, -4, -1.45 } };
+    const c = terrain.play - 13;
+    const fixed = [_][3]f32{ .{ 14, 2, -1.5 }, .{ 26, -4, -1.45 }, .{ -c, -c + 14, 0.8 }, .{ c - 14, -c, -0.8 }, .{ c, c - 14, -2.4 }, .{ -c + 18, c, 2.4 } };
 
     for (fixed) |f| {
         const p = vec(f[0], terrain.height(f[0], f[1]), f[1]);
@@ -649,7 +886,7 @@ fn townSpawns(gpa: std.mem.Allocator) void {
 
     var tries: u32 = 0;
 
-    while (tries < 6000 and list.items.len < 10) : (tries += 1) {
+    while (tries < 6000 and list.items.len < 12) : (tries += 1) {
         const x = tc[0] + r.range(-th[0] + 6, th[0] - 6);
         const z = tc[1] + r.range(-th[1] + 6, th[1] - 6);
 
@@ -662,7 +899,7 @@ fn townSpawns(gpa: std.mem.Allocator) void {
         var spread = true;
 
         for (list.items) |q| {
-            if (q.sub(p).length() < 14) spread = false;
+            if (q.sub(p).length() < 20) spread = false;
         }
 
         if (!spread) continue;

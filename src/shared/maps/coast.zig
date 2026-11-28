@@ -17,12 +17,13 @@ const pi = std.math.pi;
 
 pub const def: api.Def = .{
     .name = "Boardwalk",
-    .note = "Seaside town, pier and harbour",
+    .note = "Seaside town, pier and promenade",
     .tint = .{ 226, 196, 140 },
-    .half = 215,
-    .play = 168,
+    .half = api.arena_half + api.arena_rim,
+    .play = api.arena_half,
     .facet = 2.0,
     .height = height,
+    .water = water,
     .ground = groundColor,
     .road = roadDist,
     .build = build,
@@ -40,10 +41,9 @@ pub const def: api.Def = .{
         .shade_tint = .{ 0.88, 0.93, 1.06 },
         .zenith = .{ 0.12, 0.36, 0.7 },
     },
-    .backdrop = .{ 44, 112, 140 },
+    .backdrop = .{ 48, 106, 128 },
     .floor_y = 0.12,
     .grip = 0.84,
-    .tufts = 0.35,
 };
 
 const sea_y: f32 = 0.35;
@@ -52,37 +52,28 @@ const wall_z: f32 = -20;
 const road_z0: f32 = -6;
 const road_z1: f32 = 4;
 const pier_x: f32 = 0;
-const pier_end: f32 = -150;
-const harbour_x: f32 = 100;
+const pier_end: f32 = -(api.arena_half - 14);
+const edge: f32 = api.arena_half;
+const street_end: f32 = api.arena_half - 7;
 
 fn shoreZ(x: f32) f32 {
-    return -56 + 5 * @sin(x * 0.021 + 0.7) + 3 * @sin(x * 0.053);
-}
-
-fn harbourWater(x: f32, z: f32) bool {
-    return x > harbour_x + 8 and z < -26 and z > -110;
-}
-
-fn seaDist(x: f32, z: f32) f32 {
-    if (harbourWater(x, z)) return @min(@min(x - harbour_x - 8, z - -110 + 40), -26 - z);
-
-    return shoreZ(x) - z;
+    return -40 + 4 * @sin(x * 0.021 + 0.7) + 2 * @sin(x * 0.053);
 }
 
 fn townLift(x: f32, z: f32) f32 {
     const street = @min(@max(0, z - 8), 52) * 0.035;
-    const hill = tr.smooth(58, 140, z) * 34 * (0.8 + 0.4 * tr.fbm(x * 0.012 + 3, 7));
-    const west = (1 - tr.smooth(-200, -110, x)) * tr.smooth(-10, 60, z) * 9;
-    const roll = (tr.fbm(x * 0.03 + 3, z * 0.03 - 5) - 0.5) * 2.4 * tr.smooth(62, 90, z);
+    const hill = tr.smooth(edge - 12, edge + 20, z) * 26 * (0.8 + 0.4 * tr.fbm(x * 0.012 + 3, 7));
+    const side = tr.smooth(edge, edge + 16, @abs(x)) * 9;
+    const roll = (tr.fbm(x * 0.03 + 3, z * 0.03 - 5) - 0.5) * 2.4 * tr.smooth(edge - 10, edge + 10, @max(z, @abs(x)));
 
-    return street + @max(hill, west) + roll;
+    return street + @max(hill, side) + @max(roll, 0);
 }
 
 fn dunes(x: f32, z: f32) f32 {
-    const m = 1 - tr.smooth(-120, -96, x);
+    const m = tr.smooth(edge - 6, edge + 12, @abs(x));
     const wave = @sin(x * 0.11 + z * 0.07) * 0.6 + tr.fbm(x * 0.05, z * 0.05) * 3;
 
-    return m * wave * tr.smooth(-58, -36, z);
+    return m * (wave + 5) * tr.smooth(shoreZ(x) - 2, shoreZ(x) + 14, z);
 }
 
 fn beachY(x: f32, z: f32) f32 {
@@ -93,10 +84,6 @@ fn beachY(x: f32, z: f32) f32 {
 }
 
 fn height(x: f32, z: f32) f32 {
-    if (harbourWater(x, z)) return sea_y - 0.02;
-
-    if (x > harbour_x - 2 and z < wall_z and z > -112) return prom_y;
-
     const s = shoreZ(x);
 
     if (z < s) return sea_y - 0.02;
@@ -111,27 +98,33 @@ fn height(x: f32, z: f32) f32 {
 fn roadDist(x: f32, z: f32) f32 {
     var best = @max(@abs(z - (road_z0 + road_z1) / 2) - 5, 0);
 
-    if (x > -170 and x < 170) best = @min(best, @max(@abs(z - high_z) - 4, 0));
+    if (@abs(x) > edge + 1) return 1000;
+
+    best = @min(best, @max(@abs(z - high_z) - 4, 0));
 
     for (streets_x) |sx| {
-        if (z > road_z1 and z < 72) best = @min(best, @max(@abs(x - sx) - 4, 0));
+        if (z > road_z1 and z < street_end) best = @min(best, @max(@abs(x - sx) - 4, 0));
     }
 
     return best;
 }
 
-const streets_x = [_]f32{ -100, -44, 44, 100 };
+const streets_x = [_]f32{ -44, 44 };
 const high_z: f32 = 42;
 
 fn onStreet(x: f32, z: f32) bool {
     return roadDist(x, z) <= 0;
 }
 
+fn water(x: f32, z: f32) bool {
+    return z < shoreZ(x) - 0.5;
+}
+
 fn waterColor(d: f32, x: f32, z: f32) api.Rgb {
     const wave = tr.fbm(x * 0.05 + 3, z * 0.05 - 4) * 0.1 + 0.95;
-    const shallow = [3]f32{ 126, 206, 196 };
-    const mid = [3]f32{ 52, 160, 172 };
-    const deep = [3]f32{ 44, 112, 140 };
+    const shallow = [3]f32{ 122, 188, 178 };
+    const mid = [3]f32{ 62, 141, 150 };
+    const deep = [3]f32{ 48, 106, 128 };
     const c = if (d < 12) mix3(shallow, mid, tr.smooth(0, 12, d)) else mix3(mid, deep, tr.smooth(12, 60, d));
 
     return shade(c, wave);
@@ -141,65 +134,59 @@ fn groundColor(x: f32, z: f32) api.Rgb {
     const light = api.light(x, z);
     const fleck = tr.fbm(x * 0.35 - 7, z * 0.35 + 5);
 
-    if (harbourWater(x, z)) return waterColor(@min(x - harbour_x - 8, -26 - z) * 0.6, x, z);
-
     const s = shoreZ(x);
 
-    if (z < s and !(x > harbour_x - 2 and z > -112)) return waterColor(s - z, x, z);
+    if (z < s) return waterColor(s - z, x, z);
 
     const ao = contact(x, z);
 
-    if (x > harbour_x - 2 and z < wall_z) return shade(mix3(.{ 178, 172, 160 }, .{ 158, 152, 142 }, fleck), light * ao);
-
     if (z < wall_z) {
         const wet = 1 - tr.smooth(s, s + 7, z);
-        const dry = mix3(.{ 232, 212, 168 }, .{ 220, 198, 152 }, fleck);
-        const sand = mix3(dry, .{ 184, 160, 120 }, wet * 0.8);
+        const dry = mix3(.{ 214, 192, 154 }, .{ 202, 179, 141 }, fleck);
+        const sand = mix3(dry, .{ 164, 142, 112 }, wet * 0.8);
         const tide = if (z - s > 7 and z - s < 8.2) @as(f32, 0.93) else 1;
 
         return shade(sand, light * tide * ao);
     }
 
-    if (z < road_z0) {
+    if (z < road_z0 and @abs(x) < edge + 1) {
         const cell = @mod(@floor(x / 2) + @floor(z / 2), 2);
-        const band = @mod(@floor(x / 8), 2);
-        const base: [3]f32 = if (band < 1) .{ 214, 204, 186 } else .{ 200, 178, 160 };
 
-        return shade(if (cell < 1) base else mix3(base, .{ 170, 160, 148 }, 0.25), light * ao);
+        return shade(if (cell < 1) .{ 190, 173, 145 } else .{ 184, 167, 139 }, light * ao);
     }
 
     if (@abs(x) < 38 and z > 26 and z < 58) {
         const cell = @mod(@floor(x / 2) + @floor(z / 2), 2);
 
-        return shade(if (cell < 1) .{ 198, 186, 166 } else .{ 186, 174, 154 }, light * ao);
+        return shade(if (cell < 1) .{ 180, 169, 152 } else .{ 167, 156, 140 }, light * ao);
     }
 
     if (onStreet(x, z)) {
         const patch = tr.fbm(x * 0.08, z * 0.08);
 
-        return shade(mix3(.{ 84, 86, 90 }, .{ 100, 100, 104 }, patch), light * ao);
+        return shade(mix3(.{ 96, 92, 88 }, .{ 110, 104, 97 }, patch), light * ao);
     }
 
     if (roadDist(x, z) < 2.6) {
         const cell = @mod(@floor(x / 1.5) + @floor(z / 1.5), 2);
 
-        return shade(if (cell < 1) .{ 186, 182, 174 } else .{ 176, 172, 164 }, light * ao);
+        return shade(if (cell < 1) .{ 186, 177, 161 } else .{ 177, 168, 153 }, light * ao);
     }
 
-    if (x < -110 and z < 30) {
+    if (@abs(x) > edge and z < 30) {
         const marram = tr.smooth(0.45, 0.6, tr.fbm(x * 0.09, z * 0.09));
 
-        return shade(mix3(.{ 220, 200, 156 }, .{ 150, 150, 92 }, marram * 0.8), light * ao);
+        return shade(mix3(.{ 204, 182, 144 }, .{ 138, 142, 98 }, marram * 0.8), light * ao);
     }
 
-    const lawn = mix3(.{ 112, 150, 72 }, .{ 136, 162, 84 }, fleck);
-    const worn = mix3(lawn, .{ 150, 140, 104 }, tr.smooth(0.6, 0.75, tr.fbm(x * 0.05, z * 0.05)) * 0.6);
+    const lawn = mix3(.{ 114, 132, 82 }, .{ 132, 146, 90 }, fleck);
+    const worn = mix3(lawn, .{ 150, 135, 105 }, tr.smooth(0.6, 0.75, tr.fbm(x * 0.05, z * 0.05)) * 0.6);
     const lane_z = @abs(@mod(z - 84.5 + @sin(x * 0.045) * 3, 17) - 8.5);
     const lane_x = @abs(@mod(x + 22 + @sin(z * 0.06) * 4, 44) - 22);
     const lane = @max(1 - tr.smooth(1.0, 1.8, 8.5 - lane_z), 1 - tr.smooth(1.0, 1.8, 22 - lane_x));
-    const gravel = mix3(.{ 196, 184, 158 }, .{ 176, 164, 140 }, tr.fbm(x * 1.3, z * 1.3));
+    const gravel = mix3(.{ 188, 173, 147 }, .{ 170, 156, 133 }, tr.fbm(x * 1.3, z * 1.3));
     const bed = tr.smooth(0.62, 0.7, tr.fbm(x * 0.21 + 7, z * 0.21 - 3));
-    const garden = mix3(worn, .{ 104, 84, 62 }, bed * 0.7);
+    const garden = mix3(worn, .{ 108, 85, 68 }, bed * 0.7);
     const hill = tr.smooth(68, 76, z) * (1 - tr.smooth(134, 142, z));
 
     return shade(mix3(if (hill > 0.5) garden else worn, gravel, lane * hill), light * ao);
@@ -334,9 +321,9 @@ fn putAt(b: *Builder, e: K, x: f32, y: f32, z: f32, yaw: f32) void {
 }
 
 fn seaWall(b: *Builder) void {
-    var x: f32 = -174;
+    var x: f32 = -edge;
 
-    while (x < harbour_x - 4) : (x += 4) {
+    while (x < edge) : (x += 4) {
         const cx = x + 2;
 
         if (@abs(cx - pier_x) < 5) continue;
@@ -347,11 +334,11 @@ fn seaWall(b: *Builder) void {
         box(b, x, by - 1, wall_z - 2.3, x + 4, prom_y + 0.15, wall_z);
     }
 
-    for ([_]f32{ -150, -84, -40, 44, 74 }) |sx| stairsDown(b, sx);
+    for ([_]f32{ -62, -40, 44, 62 }) |sx| stairsDown(b, sx);
 
-    x = -172;
+    x = -edge + 2;
 
-    while (x < harbour_x - 4) : (x += 4) {
+    while (x < edge - 2) : (x += 4) {
         const cx = x + 2;
 
         if (@abs(cx - pier_x) < 6) continue;
@@ -361,6 +348,18 @@ fn seaWall(b: *Builder) void {
         }
 
         putAt(b, .rail, cx, prom_y, wall_z + 0.15, 0);
+    }
+
+    for ([_]f32{ -1, 1 }) |sd| {
+        const ex = sd * (edge - 0.3);
+        var z = wall_z + 2;
+
+        while (z < road_z0) : (z += 4) {
+            putAt(b, .rail, ex, prom_y, z, half_pi);
+            box(b, ex - 0.15, prom_y, z - 2, ex + 0.15, prom_y + 1.15, z + 2);
+        }
+
+        putAt(b, .lamp, ex - sd * 0.8, prom_y, wall_z + 0.6, 0);
     }
 }
 
@@ -385,12 +384,12 @@ fn tiles(b: *Builder, e: K, x0: f32, x1: f32, z0: f32, z1: f32, y: ?f32) void {
 }
 
 fn promenade(b: *Builder) void {
-    tiles(b, .paving, -172, harbour_x - 2, wall_z, road_z0, prom_y);
+    tiles(b, .paving, -edge, edge, wall_z, road_z0, prom_y);
 
-    var x: f32 = -168;
+    var x: f32 = -edge + 7;
     var n: u32 = 0;
 
-    while (x < harbour_x - 6) : (x += 6) {
+    while (x < edge - 6) : (x += 6) {
         n += 1;
 
         if (@abs(x - pier_x) < 10) continue;
@@ -422,8 +421,8 @@ fn promenade(b: *Builder) void {
     }
 
     house(b, .kiosk, -60, wall_z + 8, 0);
-    house(b, .toilets, -120, wall_z + 8, 0);
-    house(b, .kiosk, 60, wall_z + 8, 0);
+    house(b, .toilets, 66, wall_z + 8, 0);
+    house(b, .kiosk, 54, wall_z + 8, 0);
     house(b, .arcade, 22, wall_z + 9.2, pi);
     house(b, .kiosk, -22, wall_z + 9.5, pi);
     putAt(b, .parasol, -16, prom_y, wall_z + 4, 0);
@@ -433,8 +432,8 @@ fn promenade(b: *Builder) void {
     lootY(b, 22, prom_y, wall_z + 3);
     lootY(b, -60, prom_y, wall_z + 3);
     lootY(b, 60, prom_y, wall_z + 3);
-    spawnY(b, -110, prom_y, wall_z + 5, pi);
-    spawnY(b, 80, prom_y, wall_z + 5, pi);
+    spawnY(b, -64, prom_y, wall_z + 5, pi);
+    spawnY(b, 40, prom_y, wall_z + 5, pi);
 }
 
 fn pier(b: *Builder) void {
@@ -521,18 +520,18 @@ fn pier(b: *Builder) void {
 
     lootY(b, pier_x, prom_y, hz);
     lootY(b, pier_x - 8, prom_y, hz - 8);
-    lootY(b, pier_x, prom_y, -70);
+    lootY(b, pier_x, prom_y, wall_z - 18);
     spawnY(b, pier_x, prom_y, hz + 6, 0);
-    spawnY(b, pier_x, prom_y, -90, 0);
+    spawnY(b, pier_x, prom_y, wall_z - 12, 0);
     anchor_list.append(b.gpa, vec(pier_x, prom_y + 18, hz)) catch {};
-    anchor_list.append(b.gpa, vec(pier_x, prom_y + 16, -80)) catch {};
+    anchor_list.append(b.gpa, vec(pier_x, prom_y + 16, wall_z - 20)) catch {};
     claimRect(pier_x - 13, hz - 13, pier_x + 13, wall_z);
 }
 
 fn beach(b: *Builder) void {
-    var gx: f32 = -136;
+    var gx: f32 = -68;
 
-    while (gx < harbour_x - 10) : (gx += 34) {
+    while (gx < edge - 4) : (gx += 34) {
         if (@abs(gx - pier_x) < 12) continue;
 
         var z: f32 = wall_z - 4;
@@ -548,12 +547,13 @@ fn beach(b: *Builder) void {
         put(b, .pots, gx + 3, shoreZ(gx) + 6, 0.4);
         put(b, .driftwood, gx + 5, shoreZ(gx) + 9, 1.3);
         loot(b, gx + 2.5, wall_z - 10);
-        spawnAt(b, gx + 3, wall_z - 12, pi);
+
+        if (@abs(gx + 3) < edge - 10) spawnAt(b, gx + 3, wall_z - 12, pi);
     }
 
-    var x: f32 = -150;
+    var x: f32 = -edge + 4;
 
-    while (x < harbour_x - 6) : (x += 7) {
+    while (x < edge - 6) : (x += 7) {
         if (@abs(x - pier_x) < 7) continue;
 
         const z0 = wall_z - 5;
@@ -585,27 +585,24 @@ fn beach(b: *Builder) void {
         }
     }
 
-    var hx: f32 = -100;
+    var hx: f32 = -56;
 
-    while (hx < -60) : (hx += 4.4) {
-        const e: K = switch (@as(u32, @intFromFloat(@mod(hx, 3)))) {
-            0 => .hut,
-            1 => .hut,
-            else => .hut,
-        };
+    while (hx < -44) : (hx += 4.4) {
+        if (taken(hx, wall_z - 6, 1)) continue;
+
         const y = beachY(hx, wall_z - 6);
 
-        putAt(b, e, hx, y, wall_z - 6, pi);
+        putAt(b, .hut, hx, y, wall_z - 6, pi);
         box(b, hx - 2, y - 0.5, wall_z - 8.4, hx + 2, y + 4.9, wall_z - 3.6);
     }
 
-    claimRect(-102, wall_z - 9, -58, wall_z);
+    claimRect(-58, wall_z - 9, -42, wall_z);
     putAt(b, .cubicles, 30, beachY(30, wall_z - 4.5), wall_z - 4.5, pi);
     box(b, 26, beachY(30, wall_z - 4.5) - 0.5, wall_z - 5.4, 34, beachY(30, wall_z - 4.5) + 2.2, wall_z - 3.6);
     claimRect(25, wall_z - 7, 35, wall_z);
 
-    for ([_]f32{ -70, 66 }) |tx| {
-        const tz = wall_z - 22;
+    for ([_]f32{ -22, 58 }) |tx| {
+        const tz = wall_z - 14;
         const y = beachY(tx, tz);
 
         putAt(b, .tower, tx, y, tz, pi);
@@ -648,25 +645,12 @@ fn jetty(b: *Builder, x: f32) void {
 }
 
 fn beachLife(b: *Builder) void {
-    for ([_]f32{ -119, -51, 51, 85 }) |jx| jetty(b, jx);
+    for ([_]f32{ -51, 51 }) |jx| jetty(b, jx);
 
-    for ([_]f32{ -140, 20 }) |tx| {
-        const tz = wall_z - 22;
-        const y = beachY(tx, tz);
+    var hx: f32 = 48;
 
-        putAt(b, .tower, tx, y, tz, pi);
-
-        for ([_][2]f32{ .{ -1.6, -1.6 }, .{ 1.6, -1.6 }, .{ -1.6, 1.6 }, .{ 1.6, 1.6 } }) |q| box(b, tx + q[0] - 0.15, y, tz + q[1] - 0.15, tx + q[0] + 0.15, y + 3, tz + q[1] + 0.15);
-
-        put(b, .flag, tx + 3, tz + 1, 0);
-        put(b, .buoy, tx - 3, tz + 1, 0);
-        claimRect(tx - 4, tz - 4, tx + 4, tz + 4);
-    }
-
-    var hx: f32 = 50;
-
-    while (hx < 94) : (hx += 4.4) {
-        if (@abs(hx - 74) < 4 or taken(hx, wall_z - 6, 1)) continue;
+    while (hx < edge - 6) : (hx += 4.4) {
+        if (@abs(hx - 62) < 4 or taken(hx, wall_z - 6, 1)) continue;
 
         const y = beachY(hx, wall_z - 6);
 
@@ -674,11 +658,11 @@ fn beachLife(b: *Builder) void {
         box(b, hx - 2, y - 0.5, wall_z - 8.4, hx + 2, y + 4.9, wall_z - 3.6);
     }
 
-    claimRect(48, wall_z - 9, 94, wall_z);
+    claimRect(46, wall_z - 9, edge - 4, wall_z);
 
-    var x: f32 = -150;
+    var x: f32 = -edge + 4;
 
-    while (x < harbour_x - 8) : (x += 5) {
+    while (x < edge - 8) : (x += 5) {
         const z = wall_z - 10 - b.rng.range(0, 14);
         const px = x + b.rng.range(-1.5, 1.5);
 
@@ -701,113 +685,28 @@ fn beachLife(b: *Builder) void {
 
         claimRect(px - 2, z - 2, px + 2, z + 2);
     }
-
-    for ([_]f32{ -172, -160, -150, -134, -118 }) |tx| {
-        put(b, .tamarisk, tx, 34 + b.rng.range(-3, 3), spin(b));
-        put(b, .tamarisk, tx + 5, 20 + b.rng.range(-3, 3), spin(b));
-    }
-}
-
-fn dunesWest(b: *Builder) void {
-    var z: f32 = wall_z - 4;
-
-    while (z < 40) : (z += 3) {
-        var x: f32 = -176;
-
-        while (x < -104) : (x += 3) {
-            const px = x + b.rng.range(-1.2, 1.2);
-            const pz = z + b.rng.range(-1.2, 1.2);
-
-            if (taken(px, pz, 0.6) or pz < shoreZ(px) + 4) continue;
-
-            const roll = rnd(b);
-
-            if (roll < 0.3) put(b, .marram, px, pz, spin(b)) else if (roll < 0.34) put(b, .shrub, px, pz, spin(b)) else if (roll < 0.36 and pz > 0) put(b, .pine, px, pz, spin(b));
-        }
-    }
-
-    var fz: f32 = -14;
-
-    while (fz < 36) : (fz += 12) {
-        var fx: f32 = -172;
-
-        while (fx < -112) : (fx += 4) {
-            if (@mod(@as(i32, @intFromFloat(-fx)), 20) < 4) continue;
-
-            put(b, .dunefence, fx, fz, 0);
-        }
-    }
-
-    spawnAt(b, -150, 10, half_pi);
-    spawnAt(b, -130, -30, half_pi);
-    loot(b, -140, 0);
-    loot(b, -160, 24);
-}
-
-fn harbour(b: *Builder) void {
-    var z: f32 = -26;
-
-    while (z > -110) : (z -= 4) {
-        putAt(b, .seawall, harbour_x + 6.8, sea_y - 1.4, z - 2, half_pi);
-        box(b, harbour_x + 5.6, sea_y - 2, z - 4, harbour_x + 8, prom_y, z);
-    }
-
-    var x: f32 = harbour_x + 10;
-
-    while (x < 214) : (x += 4) {
-        putAt(b, .revet, x, sea_y - 0.3, -112, 0);
-        putAt(b, .revet, x, sea_y - 0.2, -114, pi);
-    }
-
-    box(b, harbour_x + 8, -2, -115, 215, prom_y - 0.6, -110);
-
-    putAt(b, .slipway, harbour_x + 14, sea_y - 0.6, -30, 0);
-    house(b, .boatshed, harbour_x - 6, -40, -half_pi);
-    house(b, .boatshed, harbour_x - 6, -56, -half_pi);
-    house(b, .hmhut, harbour_x - 4, -76, -half_pi);
-    house(b, .toilets, harbour_x - 4, -94, -half_pi);
-
-    z = -32;
-
-    while (z > -108) : (z -= 6) {
-        putAt(b, .bollard, harbour_x + 4.6, prom_y, z, half_pi);
-    }
-
-    for ([_][3]f32{ .{ 103, -48, 0 }, .{ 102, -64, 0.6 }, .{ 103, -84, 1.3 }, .{ 104, -102, 0.2 } }) |p| {
-        putAt(b, .pots, p[0], prom_y, p[1], p[2]);
-        putAt(b, .pots, p[0] - 0.8, prom_y, p[1] + 0.6, p[2]);
-        putAt(b, .nets, p[0] - 1, prom_y, p[1] - 3, p[2]);
-        putAt(b, .bin, p[0] - 2.4, prom_y, p[1] + 3.6, 0);
-    }
-
-    claimRect(harbour_x - 12, -112, 176, wall_z);
-    lootY(b, harbour_x - 2, prom_y, -66);
-    lootY(b, harbour_x + 2, prom_y, -100);
-    spawnY(b, harbour_x - 2, prom_y, -104, 0);
-    spawnY(b, harbour_x - 8, prom_y, -30, -half_pi);
-    anchor_list.append(b.gpa, vec(140, 18, -70)) catch {};
 }
 
 fn seaRoad(b: *Builder) void {
-    var x: f32 = -170;
+    var x: f32 = -edge;
 
-    while (x < 170) : (x += 4) {
+    while (x < edge) : (x += 4) {
         putAt(b, .kerb, x + 2, height(x + 2, road_z0), road_z0, 0);
         putAt(b, .kerb, x + 2, height(x + 2, road_z1), road_z1, 0);
 
         if (@mod(@as(i32, @intFromFloat(x)), 8) == 0) putAt(b, .line, x + 2, height(x + 2, -1) + 0.01, -1, 0);
     }
 
-    var px: f32 = -160;
+    var px: f32 = -edge + 6;
 
-    while (px < 160) : (px += 6.5) {
+    while (px < edge - 4) : (px += 6.5) {
         if (rnd(b) < 0.45) continue;
 
         put(b, if (rnd(b) < 0.5) .planter else .tamarisk, px, road_z1 + 1.2, spin(b));
     }
 
     for ([_]f32{ -60, 60 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, height(cx, high_z), high_z), .yaw = half_pi }) catch {};
-    for ([_]f32{ -140, -70, 0, 70, 140 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, height(cx, -2.5), -2.5), .yaw = half_pi }) catch {};
+    for ([_]f32{ -56, 0, 56 }) |cx| park_list.append(b.gpa, .{ .pos = vec(cx, height(cx, -2.5), -2.5), .yaw = half_pi }) catch {};
 }
 
 const terrace_kinds = [_]K{ .terrace_a, .terrace_b, .terrace_c, .terrace_d, .terrace_b, .terrace_c, .terrace_a, .terrace_d, .terrace_c };
@@ -831,7 +730,7 @@ fn terraceRow(b: *Builder, x0: f32, x1: f32, z: f32, yaw: f32, seed: u32) void {
     }
 }
 
-const blocks_x = [_][2]f32{ .{ -168, -104 }, .{ -96, -48 }, .{ 48, 96 }, .{ 104, 166 } };
+const blocks_x = [_][2]f32{ .{ -edge + 3, -48 }, .{ 48, edge - 3 } };
 
 fn yard(b: *Builder, x0: f32, x1: f32, z0: f32, z1: f32) void {
     var x = x0 + 2;
@@ -865,9 +764,9 @@ fn yard(b: *Builder, x0: f32, x1: f32, z0: f32, z1: f32) void {
 }
 
 fn front(b: *Builder) void {
-    tiles(b, .sidewalk, -172, 172, road_z1, road_z1 + 6, null);
-    tiles(b, .sidewalk, -172, 172, high_z - 10, high_z - 4, null);
-    tiles(b, .sidewalk, -172, 172, high_z + 4, high_z + 8, null);
+    tiles(b, .sidewalk, -edge, edge, road_z1, road_z1 + 6, null);
+    tiles(b, .sidewalk, -edge, edge, high_z - 10, high_z - 4, null);
+    tiles(b, .sidewalk, -edge, edge, high_z + 4, high_z + 8, null);
     for (blocks_x, 0..) |s, n| {
         const seed: u32 = @intCast(n * 3);
 
@@ -880,12 +779,7 @@ fn front(b: *Builder) void {
         house(b, .corner, s[1] - 4.5, 29.5, 0);
 
         house(b, if (n % 2 == 1) .tavern else .corner, s[0] + 4.5, 54.5, pi);
-
-        if (n == 1 or n == 2) {
-            terraceRow(b, s[0] + 9, s[1] - 24, 54, pi, seed + 2);
-            house(b, .hotel, s[1] - 19, 54.5, pi);
-            house(b, .hotel, s[1] - 11, 54.5, pi);
-        } else terraceRow(b, s[0] + 9, s[1] - 9, 54, pi, seed + 2);
+        terraceRow(b, s[0] + 9, s[1] - 9, 54, pi, seed + 2);
 
         house(b, .corner, s[1] - 4.5, 54.5, pi);
         yard(b, s[0] + 9, s[1] - 9, 18.5, 25.5);
@@ -935,7 +829,7 @@ fn highStreet(b: *Builder, x0: f32, x1: f32) void {
     }
 
     lootY(b, (x0 + x1) / 2, tr.height((x0 + x1) / 2, high_z), high_z);
-    spawnAt(b, (x0 + x1) / 2 + 6, high_z, half_pi);
+    spawnAt(b, (x0 + x1) / 2, high_z - 2.5, half_pi);
 }
 
 fn square(b: *Builder) void {
@@ -971,58 +865,19 @@ fn square(b: *Builder) void {
 }
 
 fn hillside(b: *Builder) void {
-    const villas = [_]K{ .villa, .cottage, .split, .villa, .tavern, .cottage, .split };
-    var z: f32 = 76;
-    var row: u32 = 0;
+    var z: f32 = 66;
 
-    while (z < 128) : (z += 17) {
-        row += 1;
+    while (z < edge + 12) : (z += 4) {
+        var x: f32 = -edge - 12;
 
-        var x: f32 = -160 + @as(f32, @floatFromInt(row % 2)) * 10;
-
-        while (x < 160) : (x += 22) {
-            const px = x + b.rng.range(-3, 3);
-
-            if (taken(px, z, 5)) continue;
-
-            const hy = pi + b.rng.range(-0.22, 0.22);
-
-            house(b, villas[@as(usize, @intFromFloat(@abs(px))) % villas.len], px, z, hy);
-
-            for ([_]f32{ -6, -2, 2, 6 }) |fx| {
-                if (@abs(fx) < 3 and rnd(b) < 0.7) continue;
-
-                const fz = z - 7 + fx * @sin(hy - pi) * -1;
-
-                putAt(b, .picket, px + fx, tr.height(px + fx, fz), fz, hy - pi);
-            }
-
-            put(b, if (rnd(b) < 0.5) .tree else .tamarisk, px + 7, z + 3, spin(b));
-            put(b, .shrub, px - 6, z - 4, spin(b));
-            put(b, .shrub, px - 4.6, z - 5, spin(b));
-            put(b, .planter, px + 3.4, z - 5.4, 0);
-
-            if (rnd(b) < 0.5) put(b, .shed, px + 7, z - 4, 0.1 + b.rng.range(-0.3, 0.3)) else put(b, .bench, px + 6.5, z - 3.5, spin(b));
-
-            if (rnd(b) < 0.35) put(b, .tamarisk, px - 8, z + 2, spin(b));
-
-            if (rnd(b) < 0.5) lootY(b, px + 4, tr.height(px + 4, z - 7), z - 7);
-        }
-    }
-
-    z = 66;
-
-    while (z < 210) : (z += 4) {
-        var x: f32 = -214;
-
-        while (x < 214) : (x += 4.5) {
+        while (x < edge + 12) : (x += 4.5) {
             const px = x + b.rng.range(-1.8, 1.8);
             const pz = z + b.rng.range(-1.8, 1.8);
 
             if (taken(px, pz, 1.2) or (@abs(px) < 40 and pz < 70)) continue;
 
             const roll = rnd(b);
-            const far = pz > 140;
+            const far = pz > edge;
 
             if (roll < (if (far) @as(f32, 0.34) else 0.14)) {
                 put(b, if (rnd(b) < 0.6) .pine else .tree, px, pz, spin(b));
@@ -1032,35 +887,65 @@ fn hillside(b: *Builder) void {
         }
     }
 
-    for ([_]f32{ -120, -60, 0, 60, 120 }) |sx| spawnAt(b, sx, 100, pi);
+    anchor_list.append(b.gpa, vec(-40, 34, 50)) catch {};
+    anchor_list.append(b.gpa, vec(40, 34, 50)) catch {};
+}
 
-    anchor_list.append(b.gpa, vec(-80, 50, 110)) catch {};
-    anchor_list.append(b.gpa, vec(80, 50, 110)) catch {};
+fn edges(b: *Builder) void {
+    for ([_]f32{ -1, 1 }) |sd| {
+        for ([_][2]f32{ .{ road_z0 - 1, road_z1 + 6 }, .{ high_z - 10, high_z + 8 } }) |r| {
+            var z = r[0] + 2;
+
+            while (z < r[1]) : (z += 4) {
+                const x = sd * (edge + 1);
+                const y = tr.height(x, z);
+
+                putAt(b, .fence, x, y, z, half_pi);
+                box(b, x - 0.1, y - 0.5, z - 2, x + 0.1, y + 1.8, z + 2);
+            }
+
+            put(b, .planter, sd * (edge - 1.5), (r[0] + r[1]) / 2, 0);
+        }
+
+        var z: f32 = shoreZ(sd * edge) + 4;
+
+        while (z < wall_z - 2) : (z += 4) {
+            put(b, .dunefence, sd * (edge + 2), z, half_pi);
+        }
+
+        z = road_z1 + 7;
+
+        while (z < 66) : (z += 4.5) {
+            if (@abs(z - (high_z - 1)) < 10) continue;
+
+            put(b, if (rnd(b) < 0.5) .pine else .tamarisk, sd * (edge + 3 + b.rng.range(0, 6)), z + b.rng.range(-1.5, 1.5), spin(b));
+
+            if (rnd(b) < 0.5) put(b, .shrub, sd * (edge + 1.5), z + b.rng.range(-1, 1), spin(b));
+        }
+    }
+
+    for (streets_x) |sx| {
+        var x = sx - 4;
+
+        while (x < sx + 4) : (x += 4) {
+            const y = tr.height(x + 2, street_end);
+
+            putAt(b, .fence, x + 2, y, street_end, 0);
+            box(b, x, y - 0.5, street_end - 0.1, x + 4, y + 1.8, street_end + 0.1);
+        }
+    }
 }
 
 fn shoreFoam(b: *Builder) void {
-    var x: f32 = -214;
+    var x: f32 = -edge - 12;
 
-    while (x < 214) : (x += 6) {
-        if (x > harbour_x + 2) continue;
-
+    while (x < edge + 12) : (x += 6) {
         const z = shoreZ(x);
         const slope = shoreZ(x + 1) - shoreZ(x - 1);
 
         b.putAt(of(.foam), vec(x, sea_y + 0.01, z - 1.2), std.math.atan2(-slope * 0.5, 1) + b.rng.range(-0.08, 0.08), b.rng.range(0.9, 1.1));
 
         if (rnd(b) < 0.6) b.putAt(of(.ripple), vec(x + b.rng.range(-2, 2), sea_y + 0.005, z - 6 - b.rng.range(0, 6)), b.rng.range(-0.1, 0.1), b.rng.range(0.8, 1.2));
-    }
-
-    var z: f32 = -28;
-
-    while (z > -108) : (z -= 6) b.putAt(of(.foam), vec(harbour_x + 8.8, sea_y + 0.01, z), half_pi, 0.9);
-
-    var px: f32 = harbour_x + 12;
-
-    while (px < 214) : (px += 6) {
-        b.putAt(of(.foam), vec(px, sea_y + 0.01, -116), 0, 1);
-        b.putAt(of(.foam), vec(px + 3, sea_y + 0.01, -109.5), 0, 0.8);
     }
 
     var pz: f32 = wall_z - 30;
@@ -1080,7 +965,6 @@ fn build(b: *Builder) void {
     park_list = .empty;
     loot_list = .empty;
 
-    harbour(b);
     pier(b);
     seaWall(b);
     promenade(b);
@@ -1090,7 +974,7 @@ fn build(b: *Builder) void {
     hillside(b);
     beach(b);
     beachLife(b);
-    dunesWest(b);
+    edges(b);
     shoreFoam(b);
 }
 

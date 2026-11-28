@@ -43,6 +43,13 @@ fn release() void {
     stamp = &.{};
 }
 
+pub fn reset() void {
+    release();
+    built_ptr = 0;
+    built_len = 0;
+    usable = false;
+}
+
 fn build(pieces: []const map.Piece) void {
     release();
     built_ptr = @intFromPtr(pieces.ptr);

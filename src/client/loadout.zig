@@ -2,6 +2,8 @@ const std = @import("std");
 const rl = @import("raylib");
 const shared = @import("shared");
 const ui = @import("ui.zig");
+const theme = @import("theme.zig");
+const menu = @import("menu.zig");
 const audio = @import("audio.zig");
 const icons_mod = @import("icons.zig");
 const game_mod = @import("game.zig");
@@ -109,7 +111,7 @@ pub const Loadout = struct {
 
                 l.tab = tab;
                 l.sel = i;
-                l.rarity = @intFromEnum(held.rarity);
+                l.rarity = @backingInt(held.rarity);
 
                 return;
             }
@@ -351,7 +353,7 @@ pub const Loadout = struct {
 
     fn equip(l: *Loadout, g: *Game, w: u8) void {
         const a = &g.arsenal;
-        const held = Held.fresh(w, @enumFromInt(l.rarity));
+        const held = Held.fresh(w, @fromBackingInt(@intCast(l.rarity)));
         var slot = l.slot;
 
         if (isMelee(w)) {
@@ -385,30 +387,13 @@ pub const Loadout = struct {
         audio.ui(.click);
     }
 
-    pub fn drawButton(l: *const Loadout, font: rl.Font, pad: bool, hidden: f32) void {
+    pub fn drawButton(l: *const Loadout, pad: bool, hidden: f32) void {
         if (l.t > 0.99 or hidden > 0.99) return;
 
-        const r = buttonRect();
-        const u = unit();
-        const hot = rl.CheckCollisionPointRec(rl.GetMousePosition(), r);
-        const a = (1 - l.t) * (1 - hidden);
-        const label: [:0]const u8 = "LOADOUT";
-        const hint: [:0]const u8 = if (pad) "LB" else "L";
-        const size = 22 * u;
-
-        rl.DrawRectangleRounded(.{ .x = r.x + 3 * u, .y = r.y + 5 * u, .width = r.width, .height = r.height }, 0.5, 12, ui.fade(ui.ink, 0.35 * a));
-        rl.DrawRectangleRounded(r, 0.5, 12, ui.fade(if (hot) ui.white else ui.ink, (if (hot) @as(f32, 0.95) else 0.82) * a));
-        gunGlyph(r.x + 34 * u, r.y + r.height / 2, 13 * u, ui.fade(if (hot) ui.ink else ui.yellow, a));
-        ui.text(font, label, r.x + 58 * u, r.y + r.height / 2 - size / 2, size, ui.fade(if (hot) ui.ink else ui.white, a));
-
-        const kw = ui.width(font, hint, 15 * u) + 14 * u;
-        const kx = r.x + r.width - 18 * u - kw;
-
-        rl.DrawRectangleRounded(.{ .x = kx, .y = r.y + r.height / 2 - 13 * u, .width = kw, .height = 26 * u }, 0.4, 8, ui.fade(if (hot) ui.ink else ui.white, 0.16 * a));
-        ui.text(font, hint, kx + 7 * u, r.y + r.height / 2 - 8 * u, 15 * u, ui.fade(if (hot) ui.ink else ui.white, 0.75 * a));
+        menu.pauseButton(0, buttonRect(), .blaster, "LOADOUT", if (pad) "LB" else "L", theme.tones.sun_tone, 1 - (1 - l.t) * (1 - hidden));
     }
 
-    pub fn draw(l: *const Loadout, font: rl.Font, icons: *const icons_mod.Icons, g: *const Game, pad: bool) void {
+    pub fn draw(l: *const Loadout, icons: *const icons_mod.Icons, g: *const Game, pad: bool) void {
         if (l.t <= 0.001) return;
 
         const w: f32 = @floatFromInt(rl.GetScreenWidth());
@@ -417,73 +402,63 @@ pub const Loadout = struct {
         const e = ease(l.t);
         const lay = layout();
         const dy = (1 - e) * 28 * u;
-        const p = shift(lay.panel, dy);
+        const title = shift(lay.title, dy);
         const list = listFor(l.tab);
+        const mid = title.y + title.height / 2;
 
-        rl.DrawRectangleGradientV(0, 0, @intFromFloat(w), @intFromFloat(h), ui.fade(ui.rgba(24, 28, 42, 255), e), ui.fade(ui.rgba(9, 11, 17, 255), e));
-        rl.DrawCircleGradient(.{ .x = w / 2, .y = h * 0.42 }, w * 0.4, ui.fade(ui.rgba(120, 140, 180, 255), 0.12 * e), ui.fade(ui.rgba(120, 140, 180, 255), 0));
-        rl.DrawRectangle(0, @intFromFloat(p.y), @intFromFloat(w), @intFromFloat(150 * u), ui.fade(ui.rgba(8, 10, 16, 255), 0.35 * e));
-        rl.DrawRectangle(@intFromFloat(p.x + 28 * u), @intFromFloat(p.y + 150 * u), @intFromFloat(p.width - 56 * u), @intFromFloat(@max(1, 1.5 * u)), ui.fade(ui.white, 0.08 * e));
+        rl.DrawRectangle(0, 0, @intFromFloat(w), @intFromFloat(h), theme.fade(theme.navy, e));
+        theme.round(shift(lay.stage, dy), 32 * u, theme.fade(theme.night, 0.5 * e));
+        theme.dot(title.x + 30 * u, mid, 30 * u, theme.fade(theme.sun, e));
+        theme.icon(.blaster, title.x + 30 * u, mid, 42 * u, theme.fade(theme.navy, e));
+        theme.extruded(theme.heavy, "LOADOUT", title.x + 76 * u, mid, 60 * u, theme.cream, e);
+        l.drawRarity(lay, dy, e);
 
-        gunGlyph(p.x + 48 * u, p.y + 44 * u, 17 * u, ui.fade(ui.yellow, e));
-        ui.caps(font, "LOADOUT", p.x + 76 * u, p.y + 24 * u, 38 * u, ui.fade(ui.white, e));
-        l.drawRarity(font, lay, dy, e);
+        const bar = shift(.{ .x = tabRect(lay, 0).x, .y = tabRect(lay, 0).y, .width = tabRect(lay, 0).width * groups.len, .height = tabRect(lay, 0).height }, dy);
+
+        theme.round(bar, 22 * u, theme.fade(theme.night, 0.75 * e));
 
         for (groups, 0..) |gr, i| {
             const r = shift(tabRect(lay, i), dy);
             const active = i == l.tab;
-            const size = 18 * u;
-            const tw = ui.width(font, gr.name, size);
             const hot = l.using_mouse and rl.CheckCollisionPointRec(rl.GetMousePosition(), r);
+            const chip = theme.grow(r, -6 * u);
+            const fit = theme.fit(theme.heavy, gr.name, 30 * u, chip.width - 14 * u);
 
-            const chip = rl.Rectangle{ .x = r.x + 3 * u, .y = r.y + 8 * u, .width = r.width - 6 * u, .height = r.height - 14 * u };
-            const fit = @min(size, size * (chip.width - 18 * u) / @max(tw, 1));
-            const fw = ui.width(font, gr.name, fit);
+            if (active) theme.round(chip, 17 * u, theme.fade(theme.sun, e)) else if (hot) theme.round(chip, 17 * u, theme.fade(theme.cream, 0.12 * e));
 
-            rl.DrawRectangleRounded(chip, 0.25, 6, ui.fade(if (active) ui.white else if (hot) ui.rgba(54, 60, 78, 255) else ui.rgba(30, 35, 50, 255), 0.95 * e));
-            ui.text(font, gr.name, chip.x + chip.width / 2 - fw / 2, chip.y + chip.height / 2 - fit / 2 - 1 * u, fit, ui.fade(if (active) ui.ink else ui.white, (if (active) @as(f32, 1.0) else 0.8) * e));
+            theme.center(theme.heavy, gr.name, chip.x + chip.width / 2, chip.y + chip.height / 2, fit, theme.fade(if (active) theme.navy else theme.cream, (if (active or hot) @as(f32, 1) else 0.8) * e));
         }
-
-        const fi: usize = @intFromFloat(@floor(l.slide));
-        const from = shift(tabRect(lay, fi), dy);
-        const to = shift(tabRect(lay, @min(groups.len - 1, fi + 1)), dy);
-        const k = l.slide - @floor(l.slide);
-        const ux = from.x + (to.x - from.x) * k;
-
-        _ = ux;
 
         const equipped = heldIn(g, l.slot);
 
-        l.drawCarousel(font, icons, lay, list, dy, e, equipped);
+        l.drawCarousel(icons, lay, list, dy, e, equipped);
 
-        l.drawSlots(font, icons, g, lay, dy, e);
-        footer(font, lay, dy, e, pad);
+        l.drawSlots(icons, g, lay, dy, e);
+        footer(lay, dy, e, pad);
     }
 
-    fn drawRarity(l: *const Loadout, font: rl.Font, lay: Layout, dy: f32, e: f32) void {
+    fn drawRarity(l: *const Loadout, lay: Layout, dy: f32, e: f32) void {
         const u = unit();
         const label: [:0]const u8 = "RARITY";
-        const ls = 14 * u;
+        const ls = 24 * u;
         const first = shift(rarityRect(lay, 0), dy);
 
-        ui.text(font, label, first.x - ui.width(font, label, ls) - 14 * u, first.y + first.height / 2 - ls / 2, ls, ui.fade(ui.white, 0.45 * e));
+        theme.write(theme.heavy, label, first.x - theme.measure(theme.heavy, label, ls) - 16 * u, first.y + first.height / 2, ls, theme.fade(theme.cream, 0.6 * e));
 
         for (weapons.rarity_names, 0..) |name, i| {
             const r = shift(rarityRect(lay, i), dy);
             const col = ui.rarity[i];
             const on = i == l.rarity;
-            const size = 15 * u;
-            const tw = ui.width(font, name, size);
+            const size = theme.fit(theme.heavy, name, 25 * u, r.width - 14 * u);
 
-            rl.DrawRectangleRounded(r, 0.5, 10, ui.fade(col, (if (on) @as(f32, 0.95) else 0.14) * e));
+            if (on) theme.round(theme.grow(r, 5 * u), 19 * u, theme.fade(theme.cream, e));
 
-            if (on) rl.DrawRectangleRoundedLinesEx(r, 0.5, 10, 2 * u, ui.fade(ui.white, 0.9 * e));
-
-            ui.text(font, name, r.x + r.width / 2 - tw / 2, r.y + r.height / 2 - size / 2 - 1 * u, size, ui.fade(if (on) ui.ink else col, e));
+            theme.round(r, 15 * u, theme.fade(if (on) col else theme.night, (if (on) @as(f32, 1) else 0.75) * e));
+            theme.center(theme.heavy, name, r.x + r.width / 2, r.y + r.height / 2, size, theme.fade(if (on) theme.navy else col, e));
         }
     }
 
-    fn drawCarousel(l: *const Loadout, font: rl.Font, icons: *const icons_mod.Icons, lay: Layout, list: List, dy: f32, e: f32, equipped: ?Held) void {
+    fn drawCarousel(l: *const Loadout, icons: *const icons_mod.Icons, lay: Layout, list: List, dy: f32, e: f32, equipped: ?Held) void {
         const u = unit();
         const car = carouselShift(carousel(lay), dy);
 
@@ -494,17 +469,17 @@ pub const Loadout = struct {
         const s = weapons.specs[wpn];
         const col = ui.rarity[l.rarity];
         const cx = car.center.x + car.center.width / 2;
-        const cy = car.center.y + car.center.height * 0.55;
+        const cy = car.center.y + car.center.height * 0.57;
 
-        rl.DrawCircleGradient(.{ .x = cx, .y = cy }, car.center.width * 0.46, ui.fade(ui.rgba(150, 170, 210, 255), 0.14 * e), ui.fade(ui.rgba(150, 170, 210, 255), 0));
-        rl.DrawEllipse(@intFromFloat(cx), @intFromFloat(car.center.y + car.center.height * 0.93), car.center.width * 0.34, 14 * u, ui.fade(ui.rgba(0, 0, 0, 255), 0.28 * e));
+        theme.dot(cx, cy, @min(car.center.height * 0.43, car.center.width * 0.34), theme.fade(theme.slate, 0.55 * e));
+        rl.DrawEllipse(@intFromFloat(cx), @intFromFloat(car.center.y + car.center.height * 0.93), car.center.width * 0.3, 14 * u, theme.fade(theme.night, 0.5 * e));
 
         if (n > 1) {
             const lw = list.items[(l.sel + n - 1) % n];
             const rw = list.items[(l.sel + 1) % n];
 
-            neighbour(font, icons, car.left, lw, l.rarity, e);
-            neighbour(font, icons, car.right, rw, l.rarity, e);
+            neighbour(icons, car.left, lw, l.rarity, e);
+            neighbour(icons, car.right, rw, l.rarity, e);
             arrow(car.arrow_l, -1, e);
             arrow(car.arrow_r, 1, e);
         }
@@ -518,26 +493,27 @@ pub const Loadout = struct {
         const tex = icons.live.texture;
         const src = rl.Rectangle{ .x = 0, .y = 0, .width = @floatFromInt(tex.width), .height = -@as(f32, @floatFromInt(tex.height)) };
         const bob = @sin(t * 1.6) * 4 * u;
-        const iw = car.center.width;
+        const iw = @min(car.center.width, car.center.height * 2.1);
         const ih = iw / 2;
-        const dst = rl.Rectangle{ .x = car.center.x, .y = cy - ih / 2 + bob - l.spin * 0, .width = iw, .height = ih };
+        const dst = rl.Rectangle{ .x = cx - iw / 2, .y = cy - ih / 2 + bob, .width = iw, .height = ih };
 
         rl.DrawTexturePro(tex, src, dst, v2(0, 0), 0, ui.fade(ui.white, e));
 
         var name_buf: [64:0]u8 = @splat(0);
         const nm = std.ascii.upperString(name_buf[0..@min(s.name.len, 63)], s.name[0..@min(s.name.len, 63)]);
         const name: [:0]const u8 = name_buf[0..nm.len :0];
-        const ns = 30 * u;
-        const nw = ui.capsWidth(font, name, ns);
-        const ny = car.center.y - ns * 0.35;
-
-        ui.caps(font, name, cx - nw / 2, ny, ns, ui.fade(ui.white, e));
-        diamond(cx + nw / 2 + 18 * u, ny + ns * 0.5, 9 * u, ui.fade(col, e));
-
+        const ns = 50 * u;
         const rname = weapons.rarity_names[l.rarity];
-        const rs = 15 * u;
+        const rs = 26 * u;
+        const nw = theme.measure(theme.heavy, name, ns);
+        const rw = theme.measure(theme.heavy, rname, rs) + 28 * u;
+        const ny = car.center.y + 30 * u;
+        const nx = cx - (nw + 16 * u + rw) / 2;
+        const chip: rl.Rectangle = .{ .x = nx + nw + 16 * u, .y = ny - 19 * u, .width = rw, .height = 38 * u };
 
-        ui.text(font, rname, cx + nw / 2 + 32 * u, ny + ns * 0.5 - rs / 2, rs, ui.fade(col, e));
+        theme.extruded(theme.heavy, name, nx, ny, ns, theme.cream, e);
+        theme.round(chip, 12 * u, theme.fade(col, e));
+        theme.center(theme.heavy, rname, chip.x + rw / 2, ny, rs, theme.fade(theme.navy, e));
 
         const melee = s.class == .melee;
         const pw = icons_mod.power(s, l.rarity);
@@ -548,16 +524,18 @@ pub const Loadout = struct {
         const mtxt = std.fmt.bufPrintSentinel(&mbuf, "MAX {d}", .{pmax}, 0) catch "";
         const sy = car.stats.y;
         const px = car.stats.x;
-        const pl: [:0]const u8 = "POWER";
+        const card: rl.Rectangle = .{ .x = px, .y = sy, .width = car.stats.width, .height = car.stats.height };
 
-        ui.text(font, pl, px, sy, 15 * u, ui.fade(ui.white, 0.75 * e));
-        ui.text(font, ptxt, px, sy + 18 * u, 54 * u, ui.fade(ui.white, e));
+        theme.panel(card, 22 * u, theme.cream, e);
+        theme.write(theme.body, "POWER", px + 24 * u, sy + 22 * u, 24 * u, theme.fade(theme.soft, e));
+        theme.write(theme.heavy, ptxt, px + 24 * u, sy + 60 * u, 52 * u, theme.fade(theme.navy, e));
 
-        const pww = ui.width(font, ptxt, 54 * u);
-        const mw = ui.width(font, mtxt, 14 * u) + 16 * u;
+        const pww = theme.measure(theme.heavy, ptxt, 52 * u);
+        const mw = theme.measure(theme.heavy, mtxt, 22 * u) + 18 * u;
+        const max_chip: rl.Rectangle = .{ .x = px + 34 * u + pww, .y = sy + 46 * u, .width = mw, .height = 30 * u };
 
-        rl.DrawRectangleRounded(.{ .x = px + pww + 10 * u, .y = sy + 50 * u, .width = mw, .height = 22 * u }, 0.4, 6, ui.fade(ui.yellow, e));
-        ui.text(font, mtxt, px + pww + 18 * u, sy + 54 * u, 14 * u, ui.fade(ui.ink, e));
+        theme.round(max_chip, 9 * u, theme.fade(theme.sun, e));
+        theme.center(theme.heavy, mtxt, max_chip.x + mw / 2, max_chip.y + 15 * u, 22 * u, theme.fade(theme.navy, e));
 
         const dmg = s.damage * @as(f32, @floatFromInt(@max(s.pellets, 1))) * weapons.rarity_damage[l.rarity];
         const acc: u32 = @intFromFloat(std.math.clamp((1 - s.spread / 0.11) * 100, 5, 100));
@@ -570,39 +548,43 @@ pub const Loadout = struct {
         const v3 = if (melee) std.fmt.bufPrintSentinel(&b3, "{d}", .{@as(u32, @intFromFloat(s.range * 10))}, 0) catch "" else std.fmt.bufPrintSentinel(&b3, "{d}", .{s.mag}, 0) catch "";
         const labels = if (melee) [3][:0]const u8{ "DAMAGE", "SPEED", "REACH" } else [3][:0]const u8{ "ACCURACY", "RANGE", "MAGAZINE" };
         const vals = [3][:0]const u8{ v1, v2s, v3 };
-        const colw = (car.stats.width - 250 * u) / 3;
+        const start = @max(250 * u, pww + mw + 70 * u);
+        const colw = (car.stats.width - start) / 3;
 
         for (0..3) |k| {
-            const x = car.stats.x + 250 * u + colw * @as(f32, @floatFromInt(k));
+            const x = px + start + colw * @as(f32, @floatFromInt(k));
 
-            ui.text(font, labels[k], x, sy + 6 * u, 13 * u, ui.fade(ui.white, 0.6 * e));
-            ui.text(font, vals[k], x, sy + 26 * u, 34 * u, ui.fade(ui.white, e));
+            theme.write(theme.body, labels[k], x, sy + 22 * u, theme.fit(theme.body, labels[k], 24 * u, colw - 8 * u), theme.fade(theme.soft, e));
+            theme.write(theme.heavy, vals[k], x, sy + 60 * u, 46 * u, theme.fade(theme.navy, e));
         }
 
-        const on = equipped != null and equipped.?.weapon == wpn and @intFromEnum(equipped.?.rarity) == l.rarity;
+        const on = equipped != null and equipped.?.weapon == wpn and @backingInt(equipped.?.rarity) == l.rarity;
         const eb = car.equip;
         const hot = l.using_mouse and rl.CheckCollisionPointRec(rl.GetMousePosition(), eb);
-        const fill = if (on) ui.rgba(46, 52, 68, 255) else if (hot) ui.rgba(255, 216, 120, 255) else ui.accent;
+        const tone = if (on) theme.tones.navy_tone else theme.tones.coral_tone;
+        const face = theme.button(theme.tag("equip", 0), eb, 24 * u, tone, hot and !on, .{ .a = e }).face;
         const label: [:0]const u8 = if (on) "ACTIVE" else "EQUIP";
-        const ls = 30 * u;
+        const ls = 48 * u;
+        const lw = theme.measure(theme.heavy, label, ls);
+        const lx = face.x + face.width / 2 - (lw + (if (on) 52 * u else 0)) / 2;
+        const lm = face.y + face.height / 2;
 
-        rl.DrawRectangleRounded(eb, 0.2, 8, ui.fade(fill, e));
-        ui.caps(font, label, eb.x + eb.width / 2 - ui.capsWidth(font, label, ls) / 2, eb.y + eb.height / 2 - ls / 2 - 2 * u, ls, ui.fade(if (on) ui.rgba(170, 176, 190, 255) else ui.ink, e));
+        if (on) theme.icon(.check, lx + 18 * u, lm, 40 * u, theme.fade(theme.sun, e));
+
+        theme.write(theme.heavy, label, lx + (if (on) 52 * u else 0), lm, ls, theme.fade(tone.ink, e));
 
         var cbuf: [24:0]u8 = @splat(0);
         const ctxt = std.fmt.bufPrintSentinel(&cbuf, "{d} / {d}", .{ l.sel + 1, n }, 0) catch "";
-        const cs = 14 * u;
 
-        ui.text(font, ctxt, cx - ui.width(font, ctxt, cs) / 2, eb.y - cs - 10 * u, cs, ui.fade(ui.white, 0.45 * e));
+        theme.write(theme.body, ctxt, lay.stage.x + 24 * u, lay.stage.y + 30 * u + dy, 26 * u, theme.fade(theme.cream, 0.6 * e));
     }
 
-    fn drawSlots(l: *const Loadout, font: rl.Font, icons: *const icons_mod.Icons, g: *const Game, lay: Layout, dy: f32, e: f32) void {
+    fn drawSlots(l: *const Loadout, icons: *const icons_mod.Icons, g: *const Game, lay: Layout, dy: f32, e: f32) void {
         const u = unit();
         const title: [:0]const u8 = "SLOTS";
-        const ts = 14 * u;
         const first = shift(slotRect(lay, 0), dy);
 
-        ui.text(font, title, first.x, first.y - ts - 10 * u, ts, ui.fade(ui.white, 0.45 * e));
+        theme.write(theme.heavy, title, first.x, first.y - 22 * u, 24 * u, theme.fade(theme.cream, 0.6 * e));
 
         for (0..slot_count) |i| {
             const r = shift(slotRect(lay, i), dy);
@@ -611,47 +593,43 @@ pub const Loadout = struct {
             var buf: [8]u8 = undefined;
             const key = std.fmt.bufPrintSentinel(&buf, "{d}", .{i + 1}, 0) catch "";
             const pop = if (l.flash > 0 and l.flash_slot == i) l.flash else 0;
-            const grow = pop * 6 * u;
-            const box = rl.Rectangle{ .x = r.x - grow, .y = r.y - grow, .width = r.width + grow * 2, .height = r.height + grow * 2 };
+            const box = theme.grow(r, pop * 6 * u);
 
-            rl.DrawRectangleRounded(box, 0.12, 10, ui.fade(ui.rgba(22, 26, 38, 255), e));
-            rl.DrawRectangleRoundedLinesEx(box, 0.12, 10, 1, ui.fade(ui.edge, e));
+            if (gl > 0.01) theme.round(theme.grow(box, 5 * u * gl), 23 * u, theme.fade(theme.sun, gl * e));
 
-            if (gl > 0.01) rl.DrawRectangleRoundedLinesEx(box, 0.12, 10, 2 * u, ui.fade(ui.white, 0.85 * gl * e));
+            theme.round(theme.offset(box, 0, 6 * u), 18 * u, theme.fade(theme.night, e));
+            theme.round(box, 18 * u, theme.fade(theme.slate, e));
 
-            if (pop > 0) rl.DrawRectangleRounded(box, 0.2, 10, ui.fade(ui.white, pop * 0.25 * e));
+            if (pop > 0) theme.round(box, 18 * u, theme.fade(theme.cream, pop * 0.3 * e));
 
-            ui.text(font, key, box.x + 10 * u, box.y + 7 * u, 14 * u, ui.fade(ui.white, (0.4 + gl * 0.5) * e));
+            theme.write(theme.heavy, key, box.x + 14 * u, box.y + 18 * u, 24 * u, theme.fade(theme.cream, (0.55 + gl * 0.45) * e));
 
             if (i == game_mod.knife_slot) {
-                const ms = 11 * u;
                 const mt: [:0]const u8 = "MELEE";
 
-                ui.text(font, mt, box.x + box.width - ui.width(font, mt, ms) - 10 * u, box.y + 9 * u, ms, ui.fade(ui.white, 0.35 * e));
+                theme.write(theme.body, mt, box.x + box.width - theme.measure(theme.body, mt, 18 * u) - 12 * u, box.y + 18 * u, 18 * u, theme.fade(theme.cream, 0.5 * e));
             }
 
             const hd = held orelse {
-                const em: [:0]const u8 = "Empty";
-                const es = 14 * u;
-
-                ui.text(font, em, box.x + box.width / 2 - ui.width(font, em, es) / 2, box.y + box.height / 2 - es / 2, es, ui.fade(ui.white, 0.25 * e));
+                theme.center(theme.body, "Empty", box.x + box.width / 2, box.y + box.height / 2, 24 * u, theme.fade(theme.cream, 0.4 * e));
 
                 continue;
             };
             const tex = icons.tex[hd.weapon].texture;
             const pad = 10 * u;
-            const ih = box.height - pad * 2 - 14 * u;
+            const ih = box.height - pad * 2 - 18 * u;
             const iw = @min(box.width - pad * 2, ih * 2);
-            const dst = rl.Rectangle{ .x = box.x + box.width / 2 - iw / 2, .y = box.y + pad + 6 * u, .width = iw, .height = iw / 2 };
+            const dst = rl.Rectangle{ .x = box.x + box.width / 2 - iw / 2, .y = box.y + pad + 4 * u, .width = iw, .height = iw / 2 };
             const src = rl.Rectangle{ .x = 0, .y = 0, .width = @floatFromInt(tex.width), .height = -@as(f32, @floatFromInt(tex.height)) };
 
-            rl.DrawTexturePro(tex, src, dst, v2(0, 0), 0, ui.fade(ui.white, (0.6 + gl * 0.4) * e));
-            rl.DrawRectangleRounded(.{ .x = box.x + 10 * u, .y = box.y + box.height - 8 * u, .width = box.width - 20 * u, .height = 3 * u }, 1, 6, ui.fade(ui.rarity[@intFromEnum(hd.rarity)], e));
+            rl.DrawTexturePro(tex, src, dst, v2(0, 0), 0, ui.fade(ui.white, (0.7 + gl * 0.3) * e));
+            theme.round(.{ .x = box.x + 14 * u, .y = box.y + box.height - 10 * u, .width = box.width - 28 * u, .height = 5 * u }, 2.5 * u, theme.fade(ui.rarity[@backingInt(hd.rarity)], e));
 
-            const ns = 12 * u;
             const name = weapons.specs[hd.weapon].name;
+            var name_z: [48]u8 = undefined;
+            const text = std.fmt.bufPrintSentinel(&name_z, "{s}", .{name}, 0) catch "";
 
-            ui.text(font, name, box.x + box.width / 2 - ui.width(font, name, ns) / 2, box.y + box.height - 24 * u, ns, ui.fade(ui.white, (0.55 + gl * 0.45) * e));
+            theme.center(theme.body, text, box.x + box.width / 2, box.y + box.height - 26 * u, theme.fit(theme.body, text, 20 * u, box.width - 16 * u), theme.fade(theme.cream, (0.7 + gl * 0.3) * e));
         }
     }
 };
@@ -695,32 +673,28 @@ fn statsFor(s: weapons.Spec, rarity: u8) Stats {
     return out;
 }
 
-fn footer(font: rl.Font, lay: Layout, dy: f32, e: f32, pad: bool) void {
+fn footer(lay: Layout, dy: f32, e: f32, pad: bool) void {
     const u = unit();
     const b = shift(lay.back, dy);
-    const hint: [:0]const u8 = if (pad) "LB/RB class   LT/RT slot   A equip   X rarity   B back" else "Q/E class   1-5 slot   Enter or click equip   R rarity   Esc back";
-    const hs = 14 * u;
-    const bs = 19 * u;
-    const label: [:0]const u8 = "Done";
+    const hint: [:0]const u8 = if (pad) "LB / RB class   LT / RT slot   A equip   X rarity   B back" else "Q / E class   1-5 slot   Enter or click equip   R rarity   Esc back";
     const hot = rl.CheckCollisionPointRec(rl.GetMousePosition(), b);
+    const face = theme.button(theme.tag("loadout-done", 0), b, 20 * u, theme.tones.sun_tone, hot, .{ .a = e }).face;
 
-    ui.text(font, hint, lay.panel.x + 30 * u, b.y + b.height / 2 - hs / 2, hs, ui.fade(ui.white, 0.4 * e));
-    rl.DrawRectangleRounded(b, 0.5, 10, ui.fade(if (hot) ui.white else ui.yellow, e));
-    ui.text(font, label, b.x + b.width / 2 - ui.width(font, label, bs) / 2, b.y + b.height / 2 - bs / 2 - 1 * u, bs, ui.fade(ui.ink, e));
-}
+    theme.center(theme.heavy, "DONE", face.x + face.width / 2, face.y + face.height / 2, 40 * u, theme.fade(theme.navy, e));
 
-fn gunGlyph(x: f32, y: f32, r: f32, col: rl.Color) void {
-    rl.DrawRectangleRounded(.{ .x = x - r * 1.2, .y = y - r * 0.45, .width = r * 2.4, .height = r * 0.55 }, 0.4, 6, col);
-    rl.DrawRectangleRounded(.{ .x = x - r * 0.95, .y = y - r * 0.1, .width = r * 0.5, .height = r * 0.95 }, 0.4, 6, col);
-    rl.DrawRectangleRounded(.{ .x = x + r * 0.2, .y = y - r * 0.05, .width = r * 0.35, .height = r * 0.7 }, 0.3, 6, col);
-    rl.DrawRectangle(@intFromFloat(x + r * 1.1), @intFromFloat(y - r * 0.35), @intFromFloat(r * 0.5), @intFromFloat(@max(1, r * 0.2)), col);
+    if (!theme.view().touch or pad) theme.write(theme.body, hint, lay.panel.x + 30 * u, b.y + b.height / 2, 24 * u, theme.fade(theme.cream, 0.65 * e));
 }
 
 const Layout = struct {
     panel: rl.Rectangle,
+    title: rl.Rectangle,
+    tabs: rl.Rectangle,
+    stage: rl.Rectangle,
     cards: rl.Rectangle,
     slots: rl.Rectangle,
     back: rl.Rectangle,
+    rarity_h: f32,
+    touch: bool,
 };
 
 fn unit() f32 {
@@ -744,39 +718,54 @@ fn layout() Layout {
     const w: f32 = @floatFromInt(rl.GetScreenWidth());
     const h: f32 = @floatFromInt(rl.GetScreenHeight());
     const u = unit();
-    const pw = @min(1320 * u, w - 40 * u);
-    const ph = @min(860 * u, h - 40 * u);
+    const v = theme.view();
+    const least: f32 = if (v.touch) 9.2 * v.mm else 0;
+    const pw = @min(1380 * u, w - (v.left + w - v.right) + 20 * u);
+    const ph = @min(880 * u, h - 24 * u);
     const px = (w - pw) / 2;
     const py = (h - ph) / 2;
-    const foot = 66 * u;
-    const slots_h = 112 * u;
-    const top = py + 168 * u;
-    const slots_y = py + ph - foot - slots_h - 14 * u;
+    const inner = pw - 40 * u;
+    const head_h = @max(66 * u, least);
+    const title: rl.Rectangle = .{ .x = px + 20 * u, .y = py + 8 * u, .width = 340 * u, .height = head_h };
+    const tabs: rl.Rectangle = .{ .x = px + 20 * u, .y = title.y + head_h + 14 * u, .width = inner, .height = @max(62 * u, least) };
+    const foot: f32 = if (v.touch) 0 else 72 * u;
+    const slots_h = @max(116 * u, least);
+    const slots_y = py + ph - foot - slots_h - 10 * u;
+    const done_w: f32 = if (v.touch) 200 * u else 0;
+    const slots: rl.Rectangle = .{ .x = px + 20 * u, .y = slots_y, .width = inner - (if (v.touch) done_w + 20 * u else 0), .height = slots_h };
+    const stage_y = tabs.y + tabs.height + 14 * u;
+    const stage: rl.Rectangle = .{ .x = px + 20 * u, .y = stage_y, .width = inner, .height = slots_y - 48 * u - stage_y };
 
     return .{
         .panel = .{ .x = px, .y = py, .width = pw, .height = ph },
-        .cards = .{ .x = px + 28 * u, .y = top, .width = pw - 56 * u, .height = slots_y - 40 * u - top },
-        .slots = .{ .x = px + 28 * u, .y = slots_y, .width = pw - 56 * u, .height = slots_h },
-        .back = .{ .x = px + pw - 28 * u - 150 * u, .y = py + ph - foot + 8 * u, .width = 150 * u, .height = 44 * u },
+        .title = title,
+        .tabs = tabs,
+        .stage = stage,
+        .cards = theme.grow(stage, -12 * u),
+        .slots = slots,
+        .back = if (v.touch)
+            .{ .x = px + pw - 20 * u - done_w, .y = slots_y, .width = done_w, .height = slots_h }
+        else
+            .{ .x = px + pw - 20 * u - 190 * u, .y = py + ph - foot + 6 * u, .width = 190 * u, .height = 56 * u },
+        .rarity_h = @max(44 * u, least),
+        .touch = v.touch,
     };
 }
 
 fn tabRect(lay: Layout, i: usize) rl.Rectangle {
-    const u = unit();
-    const x0 = lay.panel.x + 20 * u;
-    const tw = (lay.panel.width - 40 * u) / @as(f32, groups.len);
+    const tw = lay.tabs.width / @as(f32, groups.len);
 
-    return .{ .x = x0 + tw * @as(f32, @floatFromInt(i)), .y = lay.panel.y + 96 * u, .width = tw, .height = 50 * u };
+    return .{ .x = lay.tabs.x + tw * @as(f32, @floatFromInt(i)), .y = lay.tabs.y, .width = tw, .height = lay.tabs.height };
 }
 
 fn rarityRect(lay: Layout, i: usize) rl.Rectangle {
     const u = unit();
-    const cw = 108 * u;
-    const gap = 8 * u;
+    const cw = 124 * u;
+    const gap = 12 * u;
     const n: f32 = @floatFromInt(weapons.rarity_names.len);
-    const x0 = lay.panel.x + lay.panel.width - 28 * u - (cw * n + gap * (n - 1));
+    const x0 = lay.panel.x + lay.panel.width - 24 * u - (cw * n + gap * (n - 1));
 
-    return .{ .x = x0 + (cw + gap) * @as(f32, @floatFromInt(i)), .y = lay.panel.y + 28 * u, .width = cw, .height = 34 * u };
+    return .{ .x = x0 + (cw + gap) * @as(f32, @floatFromInt(i)), .y = lay.title.y + (lay.title.height - lay.rarity_h) / 2, .width = cw, .height = lay.rarity_h };
 }
 
 const Carousel = struct {
@@ -792,22 +781,26 @@ const Carousel = struct {
 fn carousel(lay: Layout) Carousel {
     const u = unit();
     const c = lay.cards;
-    const cw = c.width * 0.52;
-    const ch = c.height * 0.6;
-    const side_w = c.width * 0.2;
-    const side_h = ch * 0.6;
-    const mid_y = c.y + ch * 0.55;
     const eq_w = 300 * u;
-    const eq_h = 60 * u;
+    const eq_h = if (lay.touch) @max(104 * u, 9.2 * theme.view().mm) else 104 * u;
+    const row_y = c.y + c.height - eq_h;
+    const ch = c.height - eq_h - 16 * u;
+    const cw = c.width * 0.52;
+    const side_w = c.width * 0.18;
+    const side_h = ch * 0.5;
+    const mid_y = c.y + ch * 0.57;
+    const arrow_s = @max(72 * u, if (lay.touch) 9.2 * theme.view().mm else 0);
+    const stats_w = @min(820 * u, c.width - eq_w - 24 * u);
+    const row_x = c.x + (c.width - stats_w - eq_w - 24 * u) / 2;
 
     return .{
         .center = .{ .x = c.x + c.width / 2 - cw / 2, .y = c.y, .width = cw, .height = ch },
-        .left = .{ .x = c.x + 40 * u, .y = mid_y - side_h / 2, .width = side_w, .height = side_h },
-        .right = .{ .x = c.x + c.width - 40 * u - side_w, .y = mid_y - side_h / 2, .width = side_w, .height = side_h },
-        .arrow_l = .{ .x = c.x - 6 * u, .y = mid_y - 30 * u, .width = 40 * u, .height = 60 * u },
-        .arrow_r = .{ .x = c.x + c.width - 34 * u, .y = mid_y - 30 * u, .width = 40 * u, .height = 60 * u },
-        .stats = .{ .x = c.x + c.width / 2 - 360 * u, .y = c.y + ch + 6 * u, .width = 720 * u, .height = 90 * u },
-        .equip = .{ .x = c.x + c.width / 2 - eq_w / 2, .y = c.y + c.height - eq_h, .width = eq_w, .height = eq_h },
+        .left = .{ .x = c.x + arrow_s + 24 * u, .y = mid_y - side_h / 2, .width = side_w, .height = side_h },
+        .right = .{ .x = c.x + c.width - arrow_s - 24 * u - side_w, .y = mid_y - side_h / 2, .width = side_w, .height = side_h },
+        .arrow_l = .{ .x = c.x + 6 * u, .y = mid_y - arrow_s / 2, .width = arrow_s, .height = arrow_s },
+        .arrow_r = .{ .x = c.x + c.width - arrow_s - 6 * u, .y = mid_y - arrow_s / 2, .width = arrow_s, .height = arrow_s },
+        .stats = .{ .x = row_x, .y = row_y + (eq_h - 94 * u) / 2, .width = stats_w, .height = 94 * u },
+        .equip = .{ .x = row_x + stats_w + 24 * u, .y = row_y, .width = eq_w, .height = eq_h - 8 * u },
     };
 }
 
@@ -815,7 +808,7 @@ fn carouselShift(c: Carousel, dy: f32) Carousel {
     return .{ .center = shift(c.center, dy), .left = shift(c.left, dy), .right = shift(c.right, dy), .arrow_l = shift(c.arrow_l, dy), .arrow_r = shift(c.arrow_r, dy), .stats = shift(c.stats, dy), .equip = shift(c.equip, dy) };
 }
 
-fn neighbour(font: rl.Font, icons: *const icons_mod.Icons, r: rl.Rectangle, w: u8, rarity: u8, e: f32) void {
+fn neighbour(icons: *const icons_mod.Icons, r: rl.Rectangle, w: u8, rarity: u8, e: f32) void {
     const u = unit();
     const tex = icons.tex[w].texture;
     const src = rl.Rectangle{ .x = 0, .y = 0, .width = @floatFromInt(tex.width), .height = -@as(f32, @floatFromInt(tex.height)) };
@@ -826,43 +819,21 @@ fn neighbour(font: rl.Font, icons: *const icons_mod.Icons, r: rl.Rectangle, w: u
     var name_buf: [64:0]u8 = @splat(0);
     const nm = std.ascii.upperString(name_buf[0..@min(s.name.len, 63)], s.name[0..@min(s.name.len, 63)]);
     const name: [:0]const u8 = name_buf[0..nm.len :0];
-    const ns = 20 * u;
-    var pbuf: [16:0]u8 = @splat(0);
-    const ptxt = std.fmt.bufPrintSentinel(&pbuf, "{d}", .{icons_mod.power(s, rarity)}, 0) catch "";
+    var pbuf: [32:0]u8 = @splat(0);
+    const ptxt = std.fmt.bufPrintSentinel(&pbuf, "POWER {d}", .{icons_mod.power(s, rarity)}, 0) catch "";
+    const cx = r.x + r.width / 2;
 
-    rl.DrawTexturePro(tex, src, dst, v2(0, 0), 0, ui.fade(ui.white, (if (hot) @as(f32, 0.85) else 0.55) * e));
-    ui.text(font, name, r.x + r.width / 2 - ui.width(font, name, ns) / 2, r.y - ns, ns, ui.fade(ui.white, 0.7 * e));
-    ui.text(font, "POWER", r.x + r.width / 2 - ui.width(font, "POWER", 12 * u) / 2, r.y + r.height + 4 * u, 12 * u, ui.fade(ui.white, 0.5 * e));
-    ui.text(font, ptxt, r.x + r.width / 2 - ui.width(font, ptxt, 28 * u) / 2, r.y + r.height + 20 * u, 28 * u, ui.fade(ui.white, 0.8 * e));
+    rl.DrawTexturePro(tex, src, dst, v2(0, 0), 0, ui.fade(ui.white, (if (hot) @as(f32, 0.9) else 0.6) * e));
+    theme.center(theme.heavy, name, cx, dst.y - 12 * u, theme.fit(theme.heavy, name, 30 * u, r.width), theme.fade(theme.cream, 0.85 * e));
+    theme.center(theme.body, ptxt, cx, dst.y + dst.height + 16 * u, 24 * u, theme.fade(theme.cream, 0.65 * e));
 }
 
 fn arrow(r: rl.Rectangle, dir: f32, e: f32) void {
+    const u = unit();
     const hot = rl.CheckCollisionPointRec(rl.GetMousePosition(), r);
-    const cx = r.x + r.width / 2;
-    const cy = r.y + r.height / 2;
-    const k = r.width * 0.32;
-    const col = ui.fade(ui.white, (if (hot) @as(f32, 0.95) else 0.5) * e);
+    const face = theme.button(theme.tag("arrow", if (dir < 0) 0 else 1), r, 20 * u, theme.tones.cream_tone, hot, .{ .a = e }).face;
 
-    if (dir < 0) {
-        rl.DrawTriangle(v2(cx + k, cy - k * 1.4), v2(cx - k, cy), v2(cx + k, cy + k * 1.4), col);
-    } else {
-        rl.DrawTriangle(v2(cx - k, cy - k * 1.4), v2(cx - k, cy + k * 1.4), v2(cx + k, cy), col);
-    }
-}
-
-fn diamond(x: f32, y: f32, r: f32, col: rl.Color) void {
-    rl.DrawTriangle(v2(x, y - r), v2(x - r, y), v2(x + r, y), col);
-    rl.DrawTriangle(v2(x - r, y), v2(x, y + r), v2(x + r, y), col);
-}
-
-fn slanted(r: rl.Rectangle, k: f32, col: rl.Color) void {
-    const a = v2(r.x + k, r.y);
-    const b = v2(r.x + r.width, r.y);
-    const c = v2(r.x + r.width - k, r.y + r.height);
-    const d = v2(r.x, r.y + r.height);
-
-    rl.DrawTriangle(a, d, c, col);
-    rl.DrawTriangle(a, c, b, col);
+    theme.icon(if (dir < 0) .back else .chevron, face.x + face.width / 2, face.y + face.height / 2, face.width * 0.6, theme.fade(theme.navy, e));
 }
 
 fn slotRect(lay: Layout, i: usize) rl.Rectangle {
@@ -875,10 +846,5 @@ fn slotRect(lay: Layout, i: usize) rl.Rectangle {
 }
 
 pub fn buttonRect() rl.Rectangle {
-    const w: f32 = @floatFromInt(rl.GetScreenWidth());
-    const h: f32 = @floatFromInt(rl.GetScreenHeight());
-    const u = unit();
-    const bw = 250 * u;
-
-    return .{ .x = w / 2 - bw / 2, .y = h / 2 + 120 * u + 68 * u, .width = bw, .height = 54 * u };
+    return menu.pauseSlot(0);
 }

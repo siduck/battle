@@ -4,6 +4,7 @@ const shared = @import("shared");
 const gfx = @import("gfx.zig");
 const mesh = @import("mesh.zig");
 const ui = @import("ui.zig");
+const hud_touch = @import("touch.zig");
 const assets = @import("assets.zig");
 const game_mod = @import("game.zig");
 const driving = @import("driving.zig");
@@ -21,48 +22,31 @@ const Game = game_mod.Game;
 const Controls = game_mod.Controls;
 const View = game_mod.View;
 
-pub const Kind = enum { jet, heli };
-
 pub const Spec = struct {
     name: [:0]const u8,
     dir: [:0]const u8,
-    kind: Kind,
     hp: f32,
     top: f32,
-    stall: f32 = 0,
+    stall: f32,
     agility: f32,
-    missiles: u8 = 0,
-    rockets: u8 = 0,
+    missiles: u8,
     radius: f32,
     height: f32,
-    rotor: Vec3 = .{},
-    tail: ?Vec3 = null,
     gun: f32 = 0.06,
 };
 
 pub const specs = [_]Spec{
-    .{ .name = "Raptor", .dir = "raptor", .kind = .jet, .hp = 900, .top = 84, .stall = 27, .agility = 1.25, .missiles = 4, .radius = 8, .height = 4.6 },
-    .{ .name = "Viper", .dir = "su57", .kind = .jet, .hp = 900, .top = 87, .stall = 27, .agility = 1.3, .missiles = 4, .radius = 8.5, .height = 3.8 },
-    .{ .name = "Falcon", .dir = "mig29", .kind = .jet, .hp = 800, .top = 81, .stall = 26, .agility = 1.35, .missiles = 2, .radius = 7.5, .height = 3.9 },
-    .{ .name = "Tomcat", .dir = "f14", .kind = .jet, .hp = 950, .top = 81, .stall = 29, .agility = 1.1, .missiles = 4, .radius = 8.5, .height = 4.9 },
-    .{ .name = "Kestrel", .dir = "rafale", .kind = .jet, .hp = 850, .top = 84, .stall = 26, .agility = 1.3, .missiles = 3, .radius = 7.5, .height = 5.9 },
-    .{ .name = "Warthog", .dir = "a10", .kind = .jet, .hp = 1500, .top = 62, .stall = 22, .agility = 0.95, .missiles = 2, .rockets = 12, .radius = 8, .height = 4.7, .gun = 0.035 },
-    .{ .name = "Hopper", .dir = "harrier", .kind = .jet, .hp = 750, .top = 67, .stall = 17, .agility = 1.15, .missiles = 2, .rockets = 8, .radius = 6.5, .height = 4.1 },
-    .{ .name = "Shrike", .dir = "su47", .kind = .jet, .hp = 900, .top = 84, .stall = 27, .agility = 1.4, .missiles = 3, .radius = 9.5, .height = 5.5 },
-    .{ .name = "Wyvern", .dir = "wyvern", .kind = .jet, .hp = 850, .top = 90, .stall = 29, .agility = 1.3, .missiles = 4, .radius = 8, .height = 3.5 },
-    .{ .name = "Lancer", .dir = "b1", .kind = .jet, .hp = 2600, .top = 70, .stall = 30, .agility = 0.6, .rockets = 24, .radius = 14, .height = 6.3, .gun = 0.12 },
-    .{ .name = "Talon", .dir = "ka52", .kind = .heli, .hp = 1300, .top = 44, .agility = 1, .missiles = 2, .rockets = 16, .radius = 7, .height = 4.2, .rotor = .{ .y = 3.436, .z = 0.043 } },
-    .{ .name = "Mule", .dir = "uh60", .kind = .heli, .hp = 1600, .top = 38, .agility = 0.8, .rockets = 8, .radius = 8, .height = 5, .rotor = .{ .y = 3.216 } },
-    .{ .name = "Sparrow", .dir = "md500", .kind = .heli, .hp = 700, .top = 50, .agility = 1.4, .rockets = 6, .radius = 4.5, .height = 3.5, .rotor = .{ .y = 2.916, .z = 0.662 }, .tail = .{ .x = 0.146, .y = 2.021, .z = -3.994 } },
+    .{ .name = "Kestrel", .dir = "rafale", .hp = 850, .top = 84, .stall = 26, .agility = 1.3, .missiles = 3, .radius = 7.5, .height = 5.25 },
 };
 
 pub const count = specs.len;
 
 const wreck_time: f32 = 12;
 const airspace: f32 = 260;
+const flight_edge: f32 = 230;
 
 fn outside(p: Vec3) f32 {
-    return @max(@abs(p.x), @abs(p.z)) - terrain.play;
+    return @max(@abs(p.x), @abs(p.z)) - @max(terrain.play, flight_edge);
 }
 
 fn blocked(a: Craft) bool {
@@ -84,7 +68,9 @@ fn blocked(a: Craft) bool {
 fn hitsWorld(from: Vec3, dir: Vec3, len: f32) bool {
     const hit = movement.raycast(world.pieces, from, dir, len) orelse return false;
 
-    return outside(from.add(dir.scale(hit.t))) < -2.5;
+    const p = from.add(dir.scale(hit.t));
+
+    return @max(@abs(p.x), @abs(p.z)) < terrain.play - 2.5;
 }
 
 fn homeward(p: Vec3, want: f32) f32 {
@@ -120,13 +106,10 @@ pub const Craft = struct {
     home: Vec3 = .{},
     home_yaw: f32 = 0,
     grounded: bool = true,
-    rotor: f32 = 0,
     lift: f32 = 0,
     gun_cd: f32 = 0,
     missile_cd: f32 = 0,
-    rocket_cd: f32 = 0,
     missiles: u8 = 0,
-    rockets: u8 = 0,
     reload: f32 = 0,
     since_hurt: f32 = 99,
     respawn: f32 = 0,
@@ -169,12 +152,13 @@ const Target = union(enum) {
 
 const Art = struct {
     body: rl.Model,
-    rotor: ?rl.Model = null,
-    tail: ?rl.Model = null,
+    gear: ?rl.Model = null,
     span: f32 = 0,
     nose: f32 = 0,
     rear: f32 = 0,
 };
+
+const gear_height: f32 = 18;
 
 pub var crafts: [24]Craft = @splat(.{ .kind = 0 });
 pub var seat: ?usize = null;
@@ -188,7 +172,6 @@ var cam_pos: Vec3 = .{};
 var cam_focus: Vec3 = .{};
 var cam_ready = false;
 var last_aim = false;
-var last_fire_alt = false;
 
 pub fn flying() bool {
     return seat != null;
@@ -215,23 +198,6 @@ fn orient(yaw: f32, pitch: f32, roll: f32) Basis {
     return .{ .x = x0.scale(c).add(up0.scale(s)), .y = up0.scale(c).sub(x0.scale(s)), .z = f };
 }
 
-fn rotate(v: Vec3, axis: Vec3, angle: f32) Vec3 {
-    const c = @cos(angle);
-    const s = @sin(angle);
-
-    return v.scale(c).add(axis.cross(v).scale(s)).add(axis.scale(axis.dot(v) * (1 - c)));
-}
-
-fn spin(b: Basis, axis: Vec3, angle: f32) Basis {
-    return .{ .x = rotate(b.x, axis, angle), .y = rotate(b.y, axis, angle), .z = rotate(b.z, axis, angle) };
-}
-
-fn local(c: Craft, b: Basis, p: Vec3) Vec3 {
-    _ = c;
-
-    return b.x.scale(p.x).add(b.y.scale(p.y)).add(b.z.scale(p.z));
-}
-
 pub fn load() void {
     for (specs, 0..) |s, i| {
         var buf: [512]u8 = undefined;
@@ -251,15 +217,16 @@ pub fn load() void {
 
         mesh.smoothModel(a.body, 38);
 
-        var rb: [512]u8 = undefined;
-        const rotor_path = assets.file(&rb, std.fmt.bufPrint(rb[256..], "air/{s}/rotor.glb", .{s.dir}) catch "");
+        const gear_path = assets.file(&buf, std.fmt.bufPrint(buf[256..], "air/{s}/gear.glb", .{s.dir}) catch continue);
 
-        if (s.kind == .heli and assets.exists(rotor_path)) a.rotor = rl.LoadModel(rotor_path.ptr);
+        if (assets.exists(gear_path)) {
+            const gear = rl.LoadModel(gear_path.ptr);
 
-        var tb: [512]u8 = undefined;
-        const tail_path = assets.file(&tb, std.fmt.bufPrint(tb[256..], "air/{s}/tail.glb", .{s.dir}) catch "");
-
-        if (s.tail != null and assets.exists(tail_path)) a.tail = rl.LoadModel(tail_path.ptr);
+            if (gear.meshCount > 0) {
+                mesh.smoothModel(gear, 38);
+                a.gear = gear;
+            }
+        }
 
         art[i] = a;
     }
@@ -279,9 +246,7 @@ pub fn dropUnused() void {
 
         rl.UnloadModel(a.body);
 
-        if (a.rotor) |m| rl.UnloadModel(m);
-
-        if (a.tail) |m| rl.UnloadModel(m);
+        if (a.gear) |gear| rl.UnloadModel(gear);
 
         slot.* = null;
     }
@@ -299,7 +264,6 @@ fn place(slot: usize, kind: u8, pos: Vec3, yaw: f32) void {
         .home = pos,
         .home_yaw = yaw,
         .missiles = s.missiles,
-        .rockets = s.rockets,
         .active = true,
     };
 }
@@ -397,52 +361,22 @@ pub fn park(g: *Game) void {
 
     const r = terrain.runway;
     const level = groundAt(r[0], r[1]);
-    var slot: usize = 0;
     const inward: f32 = if (r[0] > 0) -1 else 1;
-    var spare: f32 = r[0] + inward * (r[2] - 6);
+    const face = -inward * std.math.pi * 0.5;
 
-    for (terrain.helipads, 0..) |p, i| {
-        const kind: u8 = @intCast(10 + i);
+    for (0..count) |i| {
+        const k: u8 = @intCast(i);
+        const end = r[0] + inward * (r[2] - 3) - inward * noseLen(k) * 0.2 - inward * rearLen(k);
+        var x = end;
+        var step: usize = 0;
 
-        place(slot, kind, vec(p[0], rest(kind, p[0], p[1], std.math.pi * 0.5), p[1]), std.math.pi * 0.5);
-        slot += 1;
-    }
+        while (step < 20 and (overlaps(i, k, x, r[1]) or !spotFree(k, x, r[1], face, level))) : (step += 1) x -= inward * 3;
 
-    var k: u8 = 0;
+        if (step == 20) x = end;
 
-    while (k < 10) : (k += 1) {
-        var done = false;
+        place(i, k, vec(x, rest(k, x, r[1], face), r[1]), face);
 
-        for ([_]f32{ 0, 1, 2 }) |row| {
-            for ([_]f32{ -1, 1 }) |sd| {
-                if (done) break;
-
-                const yaw: f32 = if (sd < 0) 0 else std.math.pi;
-                const z = r[1] + sd * (r[3] + 4 + noseLen(k) + row * 26);
-                var x = r[0] - r[2] + halfSpan(k) + 2;
-
-                while (x < r[0] + r[2] - halfSpan(k)) : (x += 3) {
-                    if (overlaps(slot, k, x, z)) continue;
-
-                    if (!spotFree(k, x, z, yaw, level)) continue;
-
-                    place(slot, k, vec(x, rest(k, x, z, yaw), z), yaw);
-                    slot += 1;
-                    done = true;
-
-                    break;
-                }
-            }
-        }
-
-        if (done) continue;
-
-        const face = -inward * std.math.pi * 0.5;
-        const x = spare - inward * rearLen(k);
-
-        place(slot, k, vec(x, rest(k, x, r[1], face), r[1]), face);
-        slot += 1;
-        spare = x - inward * (noseLen(k) + 6);
+        if (std.c.getenv("DF_PARKLOG") != null) std.debug.print("park {s} at {d:.1} {d:.1} {d:.1} yaw {d:.2} clear {}\n", .{ specs[k].name, x, crafts[i].pos.y, r[1], face, step < 20 });
     }
 }
 
@@ -459,7 +393,7 @@ pub fn start(g: *Game, kind: usize) void {
 
     const c = &crafts[index];
 
-    if (c.spec().kind == .jet and std.c.getenv("DF_TAKEOFF") != null) {
+    if (std.c.getenv("DF_TAKEOFF") != null) {
         const r = terrain.runway;
         const west = r[0] > 0;
         const x = if (west) r[0] + r[2] - noseLen(c.kind) - 4 else r[0] - r[2] + noseLen(c.kind) + 4;
@@ -467,7 +401,7 @@ pub fn start(g: *Game, kind: usize) void {
         c.yaw = if (west) -std.math.pi * 0.5 else std.math.pi * 0.5;
         c.pos = vec(x, rest(c.kind, x, r[1], c.yaw), r[1]);
         g.yaw = c.yaw;
-    } else if (c.spec().kind == .jet) {
+    } else {
         c.pos = c.pos.add(.{ .y = 120 });
         c.speed = c.spec().top * 0.7;
         c.throttle = 0.7;
@@ -526,10 +460,8 @@ pub fn update(g: *Game, dt: f32, c: Controls) bool {
         }
 
         a.since_hurt += dt;
-        a.rotor += dt * (if (a.spec().kind == .heli) 4 + a.lift * 26 else 0);
         a.gun_cd = @max(0, a.gun_cd - dt);
         a.missile_cd = @max(0, a.missile_cd - dt);
-        a.rocket_cd = @max(0, a.rocket_cd - dt);
 
         if (a.since_hurt > 6) a.hp = @min(a.spec().hp, a.hp + a.spec().hp * 0.04 * dt);
     }
@@ -589,9 +521,8 @@ pub fn tick(g: *Game, c: Controls) void {
         a.prev = a.pos;
 
         const mine = seat == i;
-        const s = a.spec();
 
-        if (s.kind == .jet) jetStep(g, a, if (mine) c else .{}, mine, dt) else heliStep(g, a, if (mine) c else .{}, mine, dt);
+        jetStep(g, a, if (mine) c else .{}, mine, dt);
 
         if (a.alive()) collideWorld(g, a, i);
     }
@@ -693,71 +624,11 @@ fn jetStep(g: *Game, a: *Craft, c: Controls, mine: bool, dt: f32) void {
     if (a.grounded) a.pos.y = rest(a.kind, a.pos.x, a.pos.z, a.yaw);
 }
 
-fn heliStep(g: *Game, a: *Craft, c: Controls, mine: bool, dt: f32) void {
-    const s = a.spec();
-    const b0 = orient(a.yaw, 0, 0);
-    var climb: f32 = 0;
-    var fwd_in: f32 = 0;
-    var side_in: f32 = 0;
-
-    if (mine) {
-        climb = (if (c.jump) @as(f32, 1) else 0) - (if (c.boost) @as(f32, 1) else 0) + c.gas - c.brake_pedal;
-        fwd_in = c.forward;
-        side_in = c.right;
-
-        var want_yaw = homeward(a.pos, g.yaw);
-
-        if (autofly) {
-            const alt = a.pos.y - groundAt(a.pos.x, a.pos.z);
-
-            climb = if (alt < 110) 1 else 0;
-            fwd_in = if (alt > 70) 0.8 else 0;
-            want_yaw = std.math.atan2(-a.pos.x, -a.pos.z) + 0.4;
-        }
-
-        const dyaw = std.math.atan2(@sin(want_yaw - a.yaw), @cos(want_yaw - a.yaw));
-
-        a.yaw += std.math.clamp(dyaw, -1.6 * s.agility * dt, 1.6 * s.agility * dt);
-        a.lift = math.approach(a.lift, 1, dt * 0.8);
-    } else {
-        a.lift = math.approach(a.lift, if (a.grounded) 0 else 0.2, dt * 0.3);
-    }
-
-    climb = std.math.clamp(climb, -1, 1);
-
-    const powered = a.lift > 0.6;
-    const want = b0.z.scale(fwd_in * s.top).add(b0.x.scale(-side_in * s.top * 0.6)).add(.{ .y = if (powered) climb * 14 else -12 });
-    const k = @min(1, dt * 1.2 * s.agility);
-
-    a.vel = a.vel.add(want.sub(a.vel).scale(k));
-
-    if (!powered) a.vel.y -= 9 * dt;
-
-    a.pos = a.pos.add(a.vel.scale(dt));
-
-    const local_fwd = a.vel.dot(b0.z) / s.top;
-    const local_side = a.vel.dot(b0.x) / s.top;
-
-    a.pitch = math.approach(a.pitch, -local_fwd * 0.35, dt * 1.5);
-    a.roll = math.approach(a.roll, std.math.clamp(local_side * 0.5, -0.32, 0.32), dt * 1.5);
-    a.speed = a.vel.length();
-
-    const floor = groundAt(a.pos.x, a.pos.z);
-
-    if (a.pos.y <= floor) {
-        a.pos.y = floor;
-        a.vel = .{ .x = a.vel.x * 0.5, .z = a.vel.z * 0.5 };
-        a.grounded = true;
-    } else if (a.pos.y > floor + 0.3) {
-        a.grounded = false;
-    }
-}
-
 fn collideWorld(g: *Game, a: *Craft, i: usize) void {
     const s = a.spec();
     const floor = groundAt(a.pos.x, a.pos.z);
 
-    if (s.kind == .jet and !a.grounded and a.vel.y <= 0.5 and a.pos.y <= floor + 0.2) {
+    if (!a.grounded and a.vel.y <= 0.5 and a.pos.y <= floor + 0.2) {
         const gentle = a.pitch > -0.3 and @abs(a.roll) < 0.5 and a.vel.y > -10;
 
         if (gentle) {
@@ -772,13 +643,7 @@ fn collideWorld(g: *Game, a: *Craft, i: usize) void {
         }
     }
 
-    if (s.kind == .jet and !a.grounded and a.pos.y < floor - 0.6) {
-        destroy(g, i);
-
-        return;
-    }
-
-    if (s.kind == .heli and a.vel.y < -14 and a.pos.y <= floor + 0.3) {
+    if (!a.grounded and a.pos.y < floor - 0.6) {
         destroy(g, i);
 
         return;
@@ -789,7 +654,7 @@ fn collideWorld(g: *Game, a: *Craft, i: usize) void {
 
     if (len > 0.01) {
         if (hitsWorld(a.prev.add(.{ .y = s.height * 0.5 }), step.scale(1 / len), len + s.radius * 0.3)) {
-            if (a.speed > (if (s.kind == .heli) @as(f32, 20) else 12)) {
+            if (a.speed > 12) {
                 destroy(g, i);
 
                 return;
@@ -880,12 +745,6 @@ fn muzzle(a: Craft) Vec3 {
     return a.center().add(b.z.scale(a.spec().radius * 0.7));
 }
 
-fn aimDir(g: *Game, a: Craft) Vec3 {
-    if (a.spec().kind == .jet) return a.forward();
-
-    return math.lookDir(g.yaw, g.pitch);
-}
-
 fn weapons(g: *Game, i: usize, c: Controls, dt: f32) void {
     _ = dt;
 
@@ -897,57 +756,27 @@ fn weapons(g: *Game, i: usize, c: Controls, dt: f32) void {
         cannon(g, i);
     }
 
-    const alt = c.aim;
-
-    if (alt and !last_aim) {
-        if (a.missiles > 0 and locked() and a.missile_cd <= 0) {
-            launchMissile(g, a.*, lock.?);
-            a.missiles -= 1;
-            a.missile_cd = 0.6;
-        } else if (a.rockets > 0 and a.rocket_cd <= 0) {
-            rocketSalvo(g, a);
-        }
-    } else if (alt and a.rockets > 0 and a.rocket_cd <= 0 and lock == null) {
-        rocketSalvo(g, a);
+    if (c.aim and !last_aim and a.missiles > 0 and locked() and a.missile_cd <= 0) {
+        launchMissile(g, a.*, lock.?);
+        a.missiles -= 1;
+        a.missile_cd = 0.6;
     }
 
-    last_aim = alt;
+    last_aim = c.aim;
 
-    if (a.missiles < s.missiles or a.rockets < s.rockets) {
+    if (a.missiles < s.missiles) {
         a.reload += movement.dt;
 
         if (a.reload > 8) {
             a.reload = 0;
             a.missiles = s.missiles;
-            a.rockets = s.rockets;
         }
     }
 }
 
-fn rocketSalvo(g: *Game, a: *Craft) void {
-    const dir = aimDir(g, a.*);
-    const b = a.basis();
-    const side: f32 = if (a.rockets % 2 == 0) 1 else -1;
-    const from = muzzle(a.*).add(b.x.scale(side * 1.4)).sub(b.y.scale(0.4));
-
-    g.launch(.{
-        .kind = .rocket,
-        .pos = from,
-        .vel = dir.scale(140).add(a.vel),
-        .life = 5,
-        .damage = 150,
-        .splash = 5,
-        .knockback = 10,
-        .heading = dir,
-    });
-
-    a.rockets -= 1;
-    a.rocket_cd = 0.14;
-}
-
 fn cannon(g: *Game, i: usize) void {
     const a = crafts[i];
-    const dir = aimDir(g, a).add(.{ .x = (g.rand() - 0.5) * 0.012, .y = (g.rand() - 0.5) * 0.012, .z = (g.rand() - 0.5) * 0.012 }).normalize();
+    const dir = a.forward().add(.{ .x = (g.rand() - 0.5) * 0.012, .y = (g.rand() - 0.5) * 0.012, .z = (g.rand() - 0.5) * 0.012 }).normalize();
     const from = muzzle(a);
     const range: f32 = 600;
     var t = range;
@@ -1012,13 +841,7 @@ fn targetPos(g: *Game, t: Target) ?Vec3 {
 fn updateLock(g: *Game, i: usize, dt: f32) void {
     const a = crafts[i];
 
-    if (a.spec().missiles == 0) {
-        lock = null;
-
-        return;
-    }
-
-    const fwd = aimDir(g, a);
+    const fwd = a.forward();
     const from = a.center();
     var best: ?Target = null;
     var best_score: f32 = 0;
@@ -1176,6 +999,10 @@ pub fn smooth(raw: View, dt: f32) View {
     return out;
 }
 
+fn gearDown(a: Craft) bool {
+    return a.grounded or (a.pos.y - groundAt(a.pos.x, a.pos.z) < gear_height and a.speed < a.spec().stall * 1.6);
+}
+
 pub fn draw(r: *gfx.Renderer, models: *const models_mod.Models, alpha: f32) void {
     for (crafts) |a| {
         if (!a.active) continue;
@@ -1188,18 +1015,12 @@ pub fn draw(r: *gfx.Renderer, models: *const models_mod.Models, alpha: f32) void
 
         if (a.wreck > 0) b = orient(a.yaw, -0.15, 0.6);
 
-        r.drawModelLit(ar.body, mesh.transform(pos, b, 1));
+        const at = mesh.transform(pos, b, 1);
 
-        if (ar.rotor) |m| {
-            const hub = pos.add(local(a, b, a.spec().rotor));
+        r.drawModelLit(ar.body, at);
 
-            r.drawModelLit(m, mesh.transform(hub, spin(b, b.y, a.rotor), 1));
-        }
-
-        if (ar.tail) |m| {
-            const hub = pos.add(local(a, b, a.spec().tail.?));
-
-            r.drawModelLit(m, mesh.transform(hub, spin(b, b.x, a.rotor * 2.5), 1));
+        if (ar.gear) |gear| {
+            if (gearDown(a)) r.drawModelLit(gear, at);
         }
     }
 
@@ -1214,12 +1035,6 @@ pub fn engineLevel() f32 {
     const a = current() orelse return 0;
 
     return math.clamp01(a.speed / a.spec().top);
-}
-
-pub fn isHeli() bool {
-    const a = current() orelse return false;
-
-    return a.spec().kind == .heli;
 }
 
 pub fn prompt(g: Game) ?[:0]const u8 {
@@ -1243,7 +1058,8 @@ pub fn hud(g: Game, font: rl.Font, cam: rl.Camera3D) void {
     var buf: [96]u8 = undefined;
 
     if (prompt(g)) |name| {
-        const msg = std.fmt.bufPrintSentinel(&buf, "F / Y  Fly {s}", .{name}, 0) catch return;
+        const keys: []const u8 = if (hud_touch.shown) "" else "F / Y  ";
+        const msg = std.fmt.bufPrintSentinel(&buf, "{s}Fly {s}", .{ keys, name }, 0) catch return;
         const size = 22 * u;
 
         ui.text(font, msg, (w - ui.width(font, msg, size)) / 2, h * 0.62, size, ui.white);
@@ -1251,10 +1067,12 @@ pub fn hud(g: Game, font: rl.Font, cam: rl.Camera3D) void {
 
     const a = current() orelse return;
     const s = a.spec();
-    const x = 40 * u;
-    const base = h - 150 * u;
+    const x = if (hud_touch.shown) w / 2 - 195 * u else 40 * u;
+    const base = if (hud_touch.shown) @import("hud.zig").dockBase(w, h, u) - 112 * u else h - 150 * u;
     const kmh = std.fmt.bufPrintSentinel(&buf, "{d}", .{@as(u32, @intFromFloat(a.speed * 3.6))}, 0) catch return;
     const size = 40 * u;
+
+    if (hud_touch.shown) ui.card(x - 14 * u, base - 60 * u, 418 * u, 114 * u, 0.85);
 
     ui.text(font, kmh, x, base - size, size, ui.white);
     ui.text(font, "KM/H", x, base + 2 * u, 13 * u, ui.fade(ui.white, 0.6));
@@ -1269,16 +1087,14 @@ pub fn hud(g: Game, font: rl.Font, cam: rl.Camera3D) void {
 
     ui.bar(x, base + 22 * u, bar_w, 8 * u, math01(a.hp / s.hp), if (a.hp / s.hp < 0.3) ui.red else ui.rgba(255, 196, 90, 255));
 
-    if (s.kind == .jet) {
-        ui.text(font, "THROTTLE", x, base + 36 * u, 12 * u, ui.fade(ui.white, 0.6));
-        ui.bar(x + 80 * u, base + 38 * u, bar_w - 80 * u, 6 * u, a.throttle, ui.blue);
+    ui.text(font, "THROTTLE", x, base + 36 * u, 12 * u, ui.fade(ui.white, 0.6));
+    ui.bar(x + 80 * u, base + 38 * u, bar_w - 80 * u, 6 * u, a.throttle, ui.blue);
 
-        if (!a.grounded and a.speed < s.stall * 1.1) {
-            const warn: [:0]const u8 = "STALL";
-            const ws = 30 * u;
+    if (!a.grounded and a.speed < s.stall * 1.1) {
+        const warn: [:0]const u8 = "STALL";
+        const ws = 30 * u;
 
-            ui.text(font, warn, (w - ui.width(font, warn, ws)) / 2, h * 0.3, ws, ui.red);
-        }
+        ui.text(font, warn, (w - ui.width(font, warn, ws)) / 2, h * 0.3, ws, ui.red);
     }
 
     if (outside(a.pos) > 0) {
@@ -1289,11 +1105,14 @@ pub fn hud(g: Game, font: rl.Font, cam: rl.Camera3D) void {
     }
 
     var wbuf: [64]u8 = undefined;
-    const arms = std.fmt.bufPrintSentinel(&wbuf, "GUN   MSL {d}   RKT {d}", .{ a.missiles, a.rockets }, 0) catch return;
+    const arms = std.fmt.bufPrintSentinel(&wbuf, "GUN   MSL {d}", .{a.missiles}, 0) catch return;
 
-    ui.text(font, arms, w - 40 * u - ui.width(font, arms, 20 * u), h - 150 * u, 20 * u, ui.white);
+    const arms_x = if (hud_touch.shown) x + 240 * u else w - 40 * u - ui.width(font, arms, 20 * u);
+    const arms_y = if (hud_touch.shown) base + 16 * u else h - 150 * u;
 
-    const fwd = if (s.kind == .jet) a.forward() else math.lookDir(g.yaw, g.pitch);
+    ui.text(font, arms, arms_x, arms_y, 20 * u, ui.white);
+
+    const fwd = a.forward();
     const aim = rl.GetWorldToScreen(.{ .x = a.center().x + fwd.x * 300, .y = a.center().y + fwd.y * 300, .z = a.center().z + fwd.z * 300 }, cam);
 
     rl.DrawCircleLinesV(aim, 14 * u, ui.fade(ui.white, 0.85));

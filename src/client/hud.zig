@@ -3,6 +3,8 @@ const rl = @import("raylib");
 const shared = @import("shared");
 const ui = @import("ui.zig");
 const touch = @import("touch.zig");
+const theme = @import("theme.zig");
+const menu = @import("menu.zig");
 const settings = @import("settings.zig");
 const game_mod = @import("game.zig");
 const icons_mod = @import("icons.zig");
@@ -32,15 +34,18 @@ pub fn draw(g: Game, font: rl.Font, icons: *const icons_mod.Icons, playing: bool
 
     font_ref = font;
 
-    if (g.scoped()) scope(g, w, h, u);
-
     const in_air = @import("air.zig").flying();
 
     if (!in_air) crosshair(g, cx, cy, u);
 
-    vitals(g, font, u, h, &buf);
+    if (!playing) {} else if (touch.shown) {
+        dock(g, font, icons, u, w, h, &buf);
+    } else {
+        vitals(g, font, u, 36 * u, h - 36 * u, &buf);
 
-    if (!in_air) inventory(g, font, icons, u, w, h, &buf);
+        if (!in_air) inventory(g, font, icons, u, w, h, &buf);
+    }
+
     if (!game_mod.online) topBar(g, font, u, w, &buf);
     feed(g, font, u, w, &buf);
     banner(g, font, u, cx, h, &buf);
@@ -51,8 +56,9 @@ pub fn draw(g: Game, font: rl.Font, icons: *const icons_mod.Icons, playing: bool
         const fps = print(&buf, "{d} FPS", .{n});
         const size = 15 * u;
         const tw = ui.capsWidth(font, fps, size);
-        const px = if (touch.active()) 84 * u else 20 * u;
-        const py = 20 * u;
+        const anchor = touch.besidePause(w, h);
+        const px = if (touch.shown) anchor.x else 20 * u;
+        const py = if (touch.shown) anchor.y - 15 * u else 20 * u;
         const dot: rl.Color = if (n >= 55) ui.rgba(96, 214, 120, 255) else if (n >= 30) ui.rgba(255, 196, 90, 255) else ui.red;
 
         rl.DrawRectangleRounded(.{ .x = px, .y = py, .width = tw + 40 * u, .height = 30 * u }, 1, 12, ui.fade(ui.ink, 0.72));
@@ -60,7 +66,7 @@ pub fn draw(g: Game, font: rl.Font, icons: *const icons_mod.Icons, playing: bool
         ui.caps(font, fps, px + 27 * u, py + 15 * u - size / 2, size, ui.white);
     }
 
-    if (!playing) pause(font, u, w, h, cx, cy, pad);
+    if (!playing) pause(pad);
 }
 
 fn hurt(g: Game, w: f32, h: f32, u: f32, cx: f32, cy: f32) void {
@@ -81,84 +87,73 @@ fn hurt(g: Game, w: f32, h: f32, u: f32, cx: f32, cy: f32) void {
     rl.DrawRing(v2(cx, cy), 78 * u, 90 * u, ang - 24, ang + 24, 24, ui.fade(ui.red, a));
 }
 
-fn scope(g: Game, w: f32, h: f32, u: f32) void {
-    const cx = w / 2;
-    const cy = h / 2;
-    const settle = std.math.clamp((g.ads - 0.85) / 0.15, 0, 1);
-    const r = h * (0.62 - 0.17 * settle);
-    const c = v2(cx, cy);
-    const black = ui.rgba(6, 7, 10, 255);
-    const ink = ui.rgba(10, 10, 12, 235);
-    var k: f32 = 0;
+fn sightReticle(g: Game, cx: f32, cy: f32, u: f32, h: f32, k: f32) void {
+    const zoom = if (g.hasScope()) g.currentZoom() else 2;
+    const red = ui.fade(ui.rgba(255, 52, 40, 255), k);
+    const ink = ui.fade(ui.rgba(10, 11, 13, 255), 0.9 * k);
 
-    rl.DrawRing(c, r * 1.07, w, 0, 360, 128, ui.fade(black, 0.86));
-    rl.DrawRing(c, r, r * 1.07, 0, 360, 128, ui.rgba(34, 36, 40, 255));
-    rl.DrawRing(c, r * 1.055, r * 1.07, 0, 360, 128, ui.rgba(70, 74, 80, 255));
-
-    while (k < 14) : (k += 1) {
-        const t = k / 14;
-
-        rl.DrawRing(c, r * (0.78 + 0.22 * t), r * (0.78 + 0.22 * (t + 1.0 / 14.0)) + 1, 0, 360, 128, ui.fade(black, t * t * 0.9));
-    }
-
-    rl.DrawCircleV(c, r, ui.rgba(40, 90, 80, 10));
-    rl.DrawRing(c, r * 0.9, r * 0.93, 200, 245, 40, ui.rgba(255, 255, 255, 28));
-
-    if (g.currentZoom() < 2.5) {
-        const ink2 = ui.rgba(14, 14, 16, 230);
-
-        rl.DrawLineEx(v2(cx - r, cy), v2(cx - 10 * u, cy), 2 * u, ink2);
-        rl.DrawLineEx(v2(cx + 10 * u, cy), v2(cx + r, cy), 2 * u, ink2);
-        rl.DrawLineEx(v2(cx, cy + 10 * u), v2(cx, cy + r), 2 * u, ink2);
-        rl.DrawCircleV(c, 2.6 * u, ui.rgba(255, 50, 40, 255));
-        rl.DrawCircleV(c, 5 * u, ui.rgba(255, 50, 40, 60));
-        ui.text(font_ref, "2x", cx + r * 0.55, cy + r * 0.62, 26 * u, ui.fade(ui.white, 0.85));
+    if (zoom < 3) {
+        rl.DrawRing(v2(cx, cy), 7 * u, 11.5 * u, 0, 360, 48, ui.fade(ui.ink, 0.35 * k));
+        rl.DrawRing(v2(cx, cy), 8.3 * u, 10.2 * u, 0, 360, 48, ui.fade(ui.rgba(150, 255, 214, 255), k));
+        rl.DrawCircleV(v2(cx, cy), 1.4 * u, red);
 
         return;
     }
 
-    const post = 5 * u;
-    const thin = 1.6 * u;
-    const inner = r * 0.36;
+    const far = zoom >= 5;
+    const lens = h * @as(f32, if (far) 0.265 else 0.178);
+    const thin = @max(1, 1.4 * u);
+    const gap = 9 * u;
 
-    rl.DrawRectangleRec(.{ .x = cx - r, .y = cy - post / 2, .width = r - inner, .height = post }, ink);
-    rl.DrawRectangleRec(.{ .x = cx + inner, .y = cy - post / 2, .width = r - inner, .height = post }, ink);
-    rl.DrawRectangleRec(.{ .x = cx - post / 2, .y = cy + inner, .width = post, .height = r - inner }, ink);
-    rl.DrawRectangleRec(.{ .x = cx - post / 2, .y = cy - r, .width = post, .height = r - inner }, ink);
-    rl.DrawLineEx(v2(cx - inner, cy), v2(cx + inner, cy), thin, ink);
-    rl.DrawLineEx(v2(cx, cy - inner), v2(cx, cy + inner), thin, ink);
+    rl.DrawRing(v2(cx, cy), lens * 0.93, lens * 1.01, 0, 360, 72, ui.fade(ink, 0.22));
+    rl.DrawLineEx(v2(cx - lens, cy), v2(cx - gap, cy), thin, ink);
+    rl.DrawLineEx(v2(cx + gap, cy), v2(cx + lens, cy), thin, ink);
+    rl.DrawLineEx(v2(cx, cy + gap), v2(cx, cy + lens), thin, ink);
 
-    var m: f32 = 1;
+    if (!far) {
+        rl.DrawLineEx(v2(cx, cy - lens), v2(cx, cy - gap), thin, ink);
+        rl.DrawLineEx(v2(cx - 8 * u, cy + 9 * u), v2(cx, cy), 2.6 * u, red);
+        rl.DrawLineEx(v2(cx + 8 * u, cy + 9 * u), v2(cx, cy), 2.6 * u, red);
+    } else {
+        rl.DrawLineEx(v2(cx, cy - lens), v2(cx, cy - gap), thin, ink);
+        rl.DrawLineEx(v2(cx - gap, cy), v2(cx + gap, cy), @max(1, 0.8 * u), ink);
+        rl.DrawLineEx(v2(cx, cy - gap), v2(cx, cy + gap), @max(1, 0.8 * u), ink);
+        rl.DrawCircleV(v2(cx, cy), 1.9 * u, red);
+        rl.DrawRectangleRec(.{ .x = cx - lens, .y = cy - 2 * u, .width = lens * 0.42, .height = 4 * u }, ink);
+        rl.DrawRectangleRec(.{ .x = cx + lens * 0.58, .y = cy - 2 * u, .width = lens * 0.42, .height = 4 * u }, ink);
+        rl.DrawRectangleRec(.{ .x = cx - 2 * u, .y = cy + lens * 0.62, .width = 4 * u, .height = lens * 0.38 }, ink);
 
-    while (m <= 4) : (m += 1) {
-        const off = inner * m / 5;
+        var i: f32 = 1;
 
-        rl.DrawCircleV(v2(cx + off, cy), 2.4 * u, ink);
-        rl.DrawCircleV(v2(cx - off, cy), 2.4 * u, ink);
-        rl.DrawCircleV(v2(cx, cy + off), 2.4 * u, ink);
-        rl.DrawLineEx(v2(cx - 6 * u, cy + off), v2(cx + 6 * u, cy + off), 1.2 * u, ink);
+        while (i <= 4) : (i += 1) {
+            const step = lens * 0.12 * i;
+            const wide = (13 - i * 2) * u;
+
+            rl.DrawLineEx(v2(cx - wide, cy + step), v2(cx + wide, cy + step), thin, ink);
+            rl.DrawLineEx(v2(cx - step, cy - 4 * u), v2(cx - step, cy + 4 * u), thin, ink);
+            rl.DrawLineEx(v2(cx + step, cy - 4 * u), v2(cx + step, cy + 4 * u), thin, ink);
+        }
     }
 
-    rl.DrawCircleV(c, 2.6 * u, ui.rgba(255, 40, 40, 255));
-    rl.DrawCircleV(c, 5 * u, ui.rgba(255, 40, 40, 60));
+    var low: [24]u8 = undefined;
+    const level = print(&low, "{d:.0}x", .{zoom});
 
-    var buf: [24]u8 = undefined;
-    const level = print(&buf, "{d:.0}x", .{g.currentZoom()});
+    ui.outlined(font_ref, level, cx + lens * 0.45, cy + lens * 0.5, 22 * u, ui.fade(ui.white, 0.85 * k));
 
-    ui.text(font_ref, level, cx + r * 0.55, cy + r * 0.62, 26 * u, ui.fade(ui.white, 0.85));
+    if (!g.scoped()) return;
 
-    const breath_w = 160 * u;
+    const breath_w = 150 * u;
     const bx = cx - breath_w / 2;
-    const by = cy + r + 16 * u;
+    const by = @min(cy + lens + 14 * u, h - 150 * u);
 
-    if (by < h - 20 * u) {
-        rl.DrawRectangleRec(.{ .x = bx, .y = by, .width = breath_w, .height = 4 * u }, ui.fade(ui.white, 0.2));
-        rl.DrawRectangleRec(.{ .x = bx, .y = by, .width = breath_w * g.breath / 4, .height = 4 * u }, if (g.steadying) ui.yellow else ui.fade(ui.white, 0.7));
-    }
+    rl.DrawRectangleRec(.{ .x = bx, .y = by, .width = breath_w, .height = 4 * u }, ui.fade(ui.white, 0.25));
+    rl.DrawRectangleRec(.{ .x = bx, .y = by, .width = breath_w * g.breath / 4, .height = 4 * u }, if (g.steadying) ui.yellow else ui.fade(ui.white, 0.8));
+
+    if (touch.shown) return;
 
     const hint: [:0]const u8 = "Wheel zoom    Shift hold breath";
 
-    ui.text(font_ref, hint, cx - ui.width(font_ref, hint, 16 * u) / 2, cy - r - 28 * u, 16 * u, ui.fade(ui.white, 0.5));
+    ui.outlined(font_ref, hint, cx - ui.width(font_ref, hint, 15 * u) / 2, by + 12 * u, 15 * u, ui.fade(ui.white, 0.7));
 }
 
 var font_ref: rl.Font = undefined;
@@ -209,19 +204,17 @@ fn meleeReticle(g: Game, cx: f32, cy: f32, u: f32) void {
 }
 
 fn crosshair(g: Game, cx: f32, cy: f32, u: f32) void {
-    if (g.dead > 0 or g.scoped()) return;
+    if (g.dead > 0) return;
 
     const a = g.arsenal;
     const spec = a.spec();
-    const moving = @min(1, g.player.vel.flatLength() / 7);
-    const spread = spec.spread + (spec.ads_spread - spec.spread) * g.ads + moving * 0.015 * (1 - g.ads);
-    const gap = (6 + spread * 500) * u;
+    const gap = (6 + g.aimSpread() * 500) * u;
     const len = 9 * u;
     const t = 2.5 * u;
 
     if (spec.class == .melee) {
         meleeReticle(g, cx, cy, u);
-    } else if (spec.class == .shotgun and spec.pellets > 1) {
+    } else if (spec.class == .shotgun and spec.pellets > 1 and g.ads < 0.6) {
         rl.DrawRing(v2(cx, cy), gap + 2 * u, gap + 5.5 * u, 0, 360, 48, ui.fade(ui.ink, 0.6));
         rl.DrawRing(v2(cx, cy), gap + 2.8 * u, gap + 4.7 * u, 0, 360, 48, ui.white);
         rl.DrawCircleV(v2(cx, cy), 2 * u, ui.white);
@@ -253,20 +246,14 @@ fn crosshair(g: Game, cx: f32, cy: f32, u: f32) void {
     } else {
         const glow = ui.rgba(255, 60, 50, 255);
         const k = std.math.clamp((g.ads - 0.6) / 0.4, 0, 1);
+        const h: f32 = @floatFromInt(rl.GetScreenHeight());
 
         switch (spec.look.optic) {
             .holo => {
                 rl.DrawRing(v2(cx, cy), 13 * u, 14.6 * u, 0, 360, 48, ui.fade(glow, 0.85 * k));
                 rl.DrawCircleV(v2(cx, cy), 2 * u, ui.fade(glow, k));
             },
-            .scope2 => {
-                const ink = ui.fade(ui.rgba(12, 12, 14, 255), 0.85 * k);
-
-                rl.DrawLineEx(v2(cx - 34 * u, cy), v2(cx - 6 * u, cy), 1.6 * u, ink);
-                rl.DrawLineEx(v2(cx + 6 * u, cy), v2(cx + 34 * u, cy), 1.6 * u, ink);
-                rl.DrawLineEx(v2(cx, cy + 6 * u), v2(cx, cy + 34 * u), 1.6 * u, ink);
-                rl.DrawCircleV(v2(cx, cy), 2 * u, ui.fade(glow, k));
-            },
+            .scope2, .scope4, .scope8 => sightReticle(g, cx, cy, u, h, k),
             else => {
                 rl.DrawCircleV(v2(cx, cy), 4.5 * u, ui.fade(glow, 0.25 * k));
                 rl.DrawCircleV(v2(cx, cy), 2.3 * u, ui.fade(glow, k));
@@ -285,7 +272,7 @@ fn crosshair(g: Game, cx: f32, cy: f32, u: f32) void {
     }
 
     if (a.reloading > 0) {
-        const total = spec.reload * weapons.rarity_reload[@intFromEnum(a.current().rarity)];
+        const total = spec.reload * weapons.rarity_reload[@backingInt(a.current().rarity)];
         const f = 1 - a.reloading / total;
 
         rl.DrawRing(v2(cx, cy), 30 * u, 35 * u, 0, 360, 48, ui.fade(ui.ink, 0.45));
@@ -304,9 +291,33 @@ fn crosshair(g: Game, cx: f32, cy: f32, u: f32) void {
     }
 }
 
-fn vitals(g: Game, font: rl.Font, u: f32, h: f32, buf: []u8) void {
-    const x = 36 * u;
-    const base = h - 36 * u;
+pub fn dockBase(w: f32, h: f32, u: f32) f32 {
+    const l = touch.layout(w, h);
+
+    return l.dock - 1.2 * l.unit - 10 * u;
+}
+
+fn dock(g: Game, font: rl.Font, icons: *const icons_mod.Icons, u: f32, w: f32, h: f32, buf: []u8) void {
+    const l = touch.layout(w, h);
+    const hp = print(buf, "{d}", .{@as(u32, @intFromFloat(@ceil(g.hp)))});
+    const health = ui.width(font, hp, 44 * u) + 222 * u;
+    const ammo_w = if (l.armed) compactWidth(g, font, u, buf) + 28 * u else 0;
+    const space = if (l.armed) 8 * u else 0;
+    const left = w / 2 - (health + space + ammo_w) / 2;
+    const base = dockBase(w, h, u);
+
+    vitals(g, font, u, left + 14 * u, base, buf);
+
+    if (l.armed) ammoCompact(g, font, u, left + health + space + ammo_w - 14 * u, base, buf);
+
+    if (l.bar == null) return;
+
+    var i: u8 = 0;
+
+    while (i < touch.slots) : (i += 1) slotCard(g, icons, u, i, l.slot(i));
+}
+
+fn vitals(g: Game, font: rl.Font, u: f32, x: f32, base: f32, buf: []u8) void {
     const frac = math01(g.hp / game_mod.max_hp);
     const low = frac < 0.3;
     const hp = print(buf, "{d}", .{@as(u32, @intFromFloat(@ceil(g.hp)))});
@@ -365,7 +376,6 @@ fn math01(v: f32) f32 {
 }
 
 fn inventory(g: Game, font: rl.Font, icons: *const icons_mod.Icons, u: f32, w: f32, h: f32, buf: []u8) void {
-    const a = g.arsenal;
     const right = w - 36 * u;
     const slot_w = 84 * u;
     const slot_h = 42 * u;
@@ -376,43 +386,97 @@ fn inventory(g: Game, font: rl.Font, icons: *const icons_mod.Icons, u: f32, w: f
 
     while (i <= game_mod.knife_slot) : (i += 1) {
         const x = row_x + @as(f32, @floatFromInt(i)) * (slot_w + gap);
-        const maybe: ?game_mod.Held = if (i == game_mod.knife_slot) a.blade else a.slots[i];
-        const active = i == a.active;
         const key = print(buf, "{d}", .{i + 1});
-        const rect: rl.Rectangle = .{ .x = x, .y = row_y, .width = slot_w, .height = slot_h };
 
-        rl.DrawRectangleRounded(rect, 0.18, 6, ui.fade(ui.panel, if (active) @as(f32, 0.95) else @as(f32, 0.55)));
-        rl.DrawRectangleRoundedLinesEx(rect, 0.18, 6, 1, if (active) ui.fade(ui.white, 0.55) else ui.edge);
-        ui.caps(font, key, x + 6 * u, row_y + 3 * u, 11 * u, ui.fade(ui.white, if (active) @as(f32, 0.85) else @as(f32, 0.4)));
-
-        const held = maybe orelse continue;
-        const tex = icons.tex[held.weapon].texture;
-        const pad = 6 * u;
-        const dst: rl.Rectangle = .{ .x = x + pad, .y = row_y + pad, .width = slot_w - pad * 2, .height = slot_h - pad * 2 };
-        const src: rl.Rectangle = .{ .x = 0, .y = 0, .width = @floatFromInt(tex.width), .height = -@as(f32, @floatFromInt(tex.height)) };
-
-        rl.DrawTexturePro(tex, src, dst, v2(0, 0), 0, ui.fade(ui.white, if (active) @as(f32, 1) else @as(f32, 0.45)));
-
-        if (active) rl.DrawRectangleRec(.{ .x = x + 8 * u, .y = row_y + slot_h - 3 * u, .width = slot_w - 16 * u, .height = 2 * u }, ui.accent);
+        slotCard(g, icons, u, i, .{ .x = x, .y = row_y, .width = slot_w, .height = slot_h });
+        ui.caps(font, key, x + 6 * u, row_y + 3 * u, 11 * u, ui.fade(ui.white, if (i == g.arsenal.active) @as(f32, 0.85) else @as(f32, 0.4)));
     }
 
-    const cur = a.current();
+    ammo(g, font, u, right, row_y - 10 * u, buf);
+}
+
+fn slotCard(g: Game, icons: *const icons_mod.Icons, u: f32, i: u8, rect: rl.Rectangle) void {
+    const a = g.arsenal;
+    const maybe: ?game_mod.Held = if (i == game_mod.knife_slot) a.blade else a.slots[i];
+    const active = i == a.active;
+
+    rl.DrawRectangleRounded(rect, 0.18, 6, ui.fade(ui.panel, if (active) @as(f32, 0.95) else @as(f32, 0.55)));
+    rl.DrawRectangleRoundedLinesEx(rect, 0.18, 6, 1, if (active) ui.fade(ui.white, 0.55) else ui.edge);
+
+    const held = maybe orelse return;
+    const tex = icons.tex[held.weapon].texture;
+    const pad = 6 * u;
+    const fit_w = @min(rect.width - pad * 2, (rect.height - pad * 2) * 2.4);
+    const fit_h = fit_w / 2.4;
+    const dst: rl.Rectangle = .{ .x = rect.x + (rect.width - fit_w) / 2, .y = rect.y + (rect.height - fit_h) / 2, .width = fit_w, .height = fit_h };
+    const src: rl.Rectangle = .{ .x = 0, .y = 0, .width = @floatFromInt(tex.width), .height = -@as(f32, @floatFromInt(tex.height)) };
+
+    rl.DrawTexturePro(tex, src, dst, v2(0, 0), 0, ui.fade(ui.white, if (active) @as(f32, 1) else @as(f32, 0.45)));
+
+    if (active) rl.DrawRectangleRec(.{ .x = rect.x + 8 * u, .y = rect.y + rect.height - 3 * u, .width = rect.width - 16 * u, .height = 2 * u }, ui.accent);
+}
+
+fn compactWidth(g: Game, font: rl.Font, u: f32, buf: []u8) f32 {
+    const cur = g.arsenal.current();
     const spec = cur.spec();
-    const base = row_y - 10 * u;
 
-    const card_w: f32 = blk: {
-        const nm = print(buf, "{s}", .{spec.name});
-        const name_w = ui.capsWidth(font, nm, 14 * u) + 12 * u;
+    if (spec.mag == 0) return ui.capsWidth(font, print(buf, "{s}", .{spec.name}), 14 * u) + 12 * u;
 
-        if (spec.mag == 0) break :blk name_w;
+    const reserve = ui.width(font, print(buf, "{d}", .{cur.reserve}), 22 * u);
+    const mag = ui.width(font, print(buf, "{d}", .{cur.mag}), 48 * u);
 
-        const rv = print(buf, "{d}", .{cur.reserve});
-        const rvw = ui.width(font, rv, 22 * u);
-        const mg = print(buf, "{d}", .{cur.mag});
-        const mgw = ui.width(font, mg, 48 * u);
+    return reserve + mag + 20 * u;
+}
 
-        break :blk @max(name_w, rvw + mgw + 20 * u);
-    };
+fn ammoCompact(g: Game, font: rl.Font, u: f32, right: f32, base: f32, buf: []u8) void {
+    const cur = g.arsenal.current();
+    const spec = cur.spec();
+    const card_w = compactWidth(g, font, u, buf);
+    const middle = base - 21 * u;
+
+    ui.card(right - card_w - 14 * u, base - 52 * u, card_w + 28 * u, 62 * u, 0.85);
+
+    if (spec.mag == 0) {
+        ui.caps(font, print(buf, "{s}", .{spec.name}), right - card_w + 6 * u, middle - 7 * u, 14 * u, ui.fade(ui.white, 0.8));
+
+        return;
+    }
+
+    const reserve = print(buf, "{d}", .{cur.reserve});
+    const rw = ui.width(font, reserve, 22 * u);
+
+    ui.text(font, reserve, right - rw, middle - 6 * u, 22 * u, ui.fade(ui.white, 0.55));
+
+    const sep_x = right - rw - 10 * u;
+
+    rl.DrawRectangleRec(.{ .x = sep_x, .y = middle - 13 * u, .width = 1.5 * u, .height = 26 * u }, ui.fade(ui.white, 0.3));
+
+    const mag = print(buf, "{d}", .{cur.mag});
+    const mw = ui.width(font, mag, 48 * u);
+
+    ui.text(font, mag, sep_x - 10 * u - mw, middle - 25 * u, 48 * u, if (cur.mag == 0) ui.red else ui.white);
+}
+
+fn ammoWidth(g: Game, font: rl.Font, u: f32, buf: []u8) f32 {
+    const cur = g.arsenal.current();
+    const spec = cur.spec();
+    const nm = print(buf, "{s}", .{spec.name});
+    const name_w = ui.capsWidth(font, nm, 14 * u) + 12 * u;
+
+    if (spec.mag == 0) return name_w;
+
+    const rv = print(buf, "{d}", .{cur.reserve});
+    const rvw = ui.width(font, rv, 22 * u);
+    const mg = print(buf, "{d}", .{cur.mag});
+    const mgw = ui.width(font, mg, 48 * u);
+
+    return @max(name_w, rvw + mgw + 20 * u);
+}
+
+fn ammo(g: Game, font: rl.Font, u: f32, right: f32, base: f32, buf: []u8) void {
+    const cur = g.arsenal.current();
+    const spec = cur.spec();
+    const card_w = ammoWidth(g, font, u, buf);
     const card_h: f32 = if (spec.mag > 0) 78 * u else 30 * u;
 
     ui.card(right - card_w - 14 * u, base - 84 * u, card_w + 28 * u, card_h, 0.85);
@@ -438,7 +502,7 @@ fn inventory(g: Game, font: rl.Font, icons: *const icons_mod.Icons, u: f32, w: f
     const name = print(buf, "{s}", .{spec.name});
     const nsize = 14 * u;
     const nw = ui.capsWidth(font, name, nsize);
-    const rc = ui.rarity[@intFromEnum(cur.rarity)];
+    const rc = ui.rarity[@backingInt(cur.rarity)];
 
     ui.caps(font, name, right - nw, base - 74 * u, nsize, ui.fade(ui.white, 0.8));
     rl.DrawCircleV(v2(right - nw - 9 * u, base - 74 * u + nsize * 0.55), 3.5 * u, rc);
@@ -492,11 +556,11 @@ fn feed(g: Game, font: rl.Font, u: f32, w: f32, buf: []u8) void {
             .wave_clear => print(buf, "Wave cleared  +{d}", .{f.value}),
             .ammo => print(buf, "Ammo restocked", .{}),
             .health => print(buf, "Healed  +{d}", .{f.value}),
-            .weapon => print(buf, "{s} {s}", .{ weapons.rarity_names[@intFromEnum(f.rarity)], weapons.specs[f.weapon].name }),
+            .weapon => print(buf, "{s} {s}", .{ weapons.rarity_names[@backingInt(f.rarity)], weapons.specs[f.weapon].name }),
         };
         const size = 16 * u;
         const color = switch (f.kind) {
-            .weapon => ui.rarity[@intFromEnum(f.rarity)],
+            .weapon => ui.rarity[@backingInt(f.rarity)],
             .bot_down, .wave_clear => ui.accent,
             .ammo, .health => ui.green,
         };
@@ -505,7 +569,8 @@ fn feed(g: Game, font: rl.Font, u: f32, w: f32, buf: []u8) void {
         const slide = (1 - math01(f.life * 4)) * 0;
         const y = 76 * u + row * 34 * u;
         const bw = tw + 30 * u;
-        const bx = w - 36 * u - bw + slide;
+        const clear = if (touch.shown) touch.feedRight(w, @floatFromInt(rl.GetScreenHeight())) else null;
+        const bx = (clear orelse w - 36 * u) - bw + slide;
 
         ui.card(bx, y, bw, 28 * u, alpha);
         rl.DrawRectangleRec(.{ .x = bx, .y = y + 6 * u, .width = 2 * u, .height = 16 * u }, ui.fade(color, alpha));
@@ -563,7 +628,7 @@ fn prompt(g: Game, font: rl.Font, u: f32, cx: f32, cy: f32, pad: bool, buf: []u8
     if (!d.active or g.dead > 0) return;
 
     const spec = d.held.spec();
-    const color = ui.rarity[@intFromEnum(d.held.rarity)];
+    const color = ui.rarity[@backingInt(d.held.rarity)];
     const key: [:0]const u8 = if (pad) "X" else "E";
     const verb: [:0]const u8 = if (pad) "HOLD" else "PICK UP";
 
@@ -571,10 +636,11 @@ fn prompt(g: Game, font: rl.Font, u: f32, cx: f32, cy: f32, pad: bool, buf: []u8
 }
 
 pub fn interact(font: rl.Font, u: f32, cx: f32, y: f32, key: [:0]const u8, verb: [:0]const u8, name: [:0]const u8, color: rl.Color) void {
+    const label: [:0]const u8 = if (touch.shown) "TAP" else key;
     const ks = 14 * u;
     const vs = 12 * u;
     const ns = 18 * u;
-    const kw = @max(ks * 1.4, ui.width(font, key, ks) + ks * 0.8);
+    const kw = @max(ks * 1.4, ui.width(font, label, ks) + ks * 0.8);
     const vw = ui.capsWidth(font, verb, vs);
     const nw = ui.width(font, name, ns);
     const pw = 14 * u + kw + 12 * u + vw + 10 * u + nw + 18 * u;
@@ -582,59 +648,93 @@ pub fn interact(font: rl.Font, u: f32, cx: f32, y: f32, key: [:0]const u8, verb:
     const x = cx - pw / 2;
 
     ui.card(x, y, pw, ph, 1);
-    _ = ui.keycap(font, key, x + 14 * u, y + (ph - ks * 1.4) / 2, ks, 1);
+    _ = ui.keycap(font, label, x + 14 * u, y + (ph - ks * 1.4) / 2, ks, 1);
     ui.caps(font, verb, x + 14 * u + kw + 12 * u, y + (ph - vs) / 2 - 1 * u, vs, ui.fade(ui.white, 0.6));
     ui.text(font, name, x + 14 * u + kw + 12 * u + vw + 10 * u, y + (ph - ns) / 2 - 1 * u, ns, ui.white);
     rl.DrawRectangleRec(.{ .x = x + 12 * u, .y = y + ph - 2 * u, .width = pw - 24 * u, .height = 2 * u }, color);
 }
 
-fn pause(font: rl.Font, u: f32, w: f32, h: f32, cx: f32, cy: f32, pad: bool) void {
-    rl.DrawRectangle(0, 0, @intFromFloat(w), @intFromFloat(h), ui.fade(ui.ink, 0.62));
+fn pause(pad: bool) void {
+    const v = theme.view();
+    const u = v.u;
+    const buttons = menu.pauseSlot(0);
+    const touching = v.touch and !pad;
+    const top = v.top;
+    const bottom = buttons.y - 24 * u;
 
-    const title: [:0]const u8 = if (pad) "PRESS START TO PLAY" else "CLICK TO PLAY";
-    const size = 40 * u;
-    const tw = ui.capsWidth(font, title, size);
-    const top = cy - 230 * u;
-
-    ui.caps(font, "PAUSED", cx - ui.capsWidth(font, "PAUSED", 13 * u) / 2, top, 13 * u, ui.accent);
-    ui.caps(font, title, cx - tw / 2, top + 22 * u, size, ui.white);
+    theme.scrim(0.66);
 
     const Bind = struct { k: [:0]const u8, a: [:0]const u8 };
     const keyboard = [_]Bind{
-        .{ .k = "WASD", .a = "Move" },        .{ .k = "Space", .a = "Jump" },
-        .{ .k = "LMB", .a = "Shoot" },        .{ .k = "RMB", .a = "Aim" },
-        .{ .k = "1-4", .a = "Guns" },         .{ .k = "5", .a = "Knife" },
-        .{ .k = "R", .a = "Reload" },         .{ .k = "G", .a = "Grenade" },
-        .{ .k = "E", .a = "Pick up" },        .{ .k = "T", .a = "Throw gun" },
-        .{ .k = "F", .a = "Enter vehicle" },  .{ .k = "Esc", .a = "Free mouse" },
+        .{ .k = "WASD", .a = "Move" },       .{ .k = "Space", .a = "Jump" },
+        .{ .k = "LMB", .a = "Shoot" },       .{ .k = "RMB", .a = "Aim" },
+        .{ .k = "1-4", .a = "Guns" },        .{ .k = "5", .a = "Knife" },
+        .{ .k = "R", .a = "Reload" },        .{ .k = "G", .a = "Grenade" },
+        .{ .k = "E", .a = "Pick up" },       .{ .k = "T", .a = "Throw gun" },
+        .{ .k = "F", .a = "Enter vehicle" }, .{ .k = "Esc", .a = "Free mouse" },
     };
     const controller = [_]Bind{
-        .{ .k = "LS", .a = "Move" },          .{ .k = "RS", .a = "Look" },
-        .{ .k = "RT", .a = "Shoot" },         .{ .k = "LT", .a = "Aim" },
-        .{ .k = "A", .a = "Jump" },           .{ .k = "X", .a = "Reload" },
-        .{ .k = "RB", .a = "Grenade" },       .{ .k = "Y", .a = "Switch / vehicle" },
-        .{ .k = "LB", .a = "Last weapon" },   .{ .k = "B", .a = "Knife" },
-        .{ .k = "Hold X", .a = "Pick up" },   .{ .k = "Start", .a = "Pause" },
+        .{ .k = "LS", .a = "Move" },        .{ .k = "RS", .a = "Look" },
+        .{ .k = "RT", .a = "Shoot" },       .{ .k = "LT", .a = "Aim" },
+        .{ .k = "A", .a = "Jump" },         .{ .k = "X", .a = "Reload" },
+        .{ .k = "RB", .a = "Grenade" },     .{ .k = "Y", .a = "Switch / vehicle" },
+        .{ .k = "LB", .a = "Last weapon" }, .{ .k = "B", .a = "Knife" },
+        .{ .k = "Hold X", .a = "Pick up" }, .{ .k = "Start", .a = "Pause" },
     };
     const binds: []const Bind = if (pad) &controller else &keyboard;
-    const col_w = 210 * u;
-    const row_h = 30 * u;
-    const pw = col_w * 2 + 40 * u;
-    const rows: f32 = @floatFromInt((binds.len + 1) / 2);
-    const ph = rows * row_h + 30 * u;
-    const px = cx - pw / 2;
-    const py = top + 82 * u;
+    const cols: usize = 3;
+    const rows: f32 = @floatFromInt((binds.len + cols - 1) / cols);
+    const row_h = 46 * u;
+    const col_w = 290 * u;
+    const title_h = 170 * u;
+    const resume_h = v.tap(100);
+    const card_h = if (touching) 0 else rows * row_h + 40 * u;
+    const gap = 34 * u;
+    const total = title_h + resume_h + (if (touching) 0 else card_h + gap);
+    const y = top + @max(0, (bottom - top - total) * 0.55);
+    const title_y = y + 58 * u;
+    const size = 130 * u;
 
-    ui.card(px, py, pw, ph, 1);
+    theme.extruded(theme.heavy, "PAUSED", v.cx() - theme.measure(theme.heavy, "PAUSED", size) / 2, title_y, size, theme.cream, 1);
+
+    const how: [:0]const u8 = if (pad) "Press Start to play" else if (touching) "Tap anywhere to play" else "Click anywhere to play";
+
+    theme.center(theme.body, how, v.cx(), title_y + 82 * u, 30 * u, theme.fade(theme.cream, 0.82));
+
+    var at = y + title_h;
+    const bw = @min(460 * u, v.width());
+    const play: rl.Rectangle = .{ .x = v.cx() - bw / 2, .y = at, .width = bw, .height = resume_h - 8 * u };
+    const face = theme.button(theme.tag("resume", 0), play, 26 * u, theme.tones.coral_tone, rl.CheckCollisionPointRec(rl.GetMousePosition(), play), .{}).face;
+    const label_size = 58 * u;
+    const label_w = theme.measure(theme.heavy, "RESUME", label_size);
+    const mid = face.y + face.height / 2;
+    const x = face.x + face.width / 2 - (label_w + 68 * u) / 2;
+
+    theme.icon(.play, x + 26 * u, mid, 54 * u, theme.cream);
+    theme.write(theme.heavy, "RESUME", x + 68 * u, mid, label_size, theme.cream);
+
+    if (touching) return;
+
+    at += resume_h + gap;
+
+    const pw = @min(col_w * @as(f32, @floatFromInt(cols)) + 40 * u, v.width());
+    const cw = (pw - 40 * u) / @as(f32, @floatFromInt(cols));
+    const card: rl.Rectangle = .{ .x = v.cx() - pw / 2, .y = at, .width = pw, .height = card_h };
+
+    theme.panel(card, 28 * u, theme.cream, 1);
 
     for (binds, 0..) |b, i| {
-        const col: f32 = @floatFromInt(i % 2);
-        const row: f32 = @floatFromInt(i / 2);
-        const x = px + 20 * u + col * col_w;
-        const y = py + 15 * u + row * row_h;
-        const kw = ui.keycap(font, b.k, x, y + 2 * u, 13 * u, 1);
+        const col: f32 = @floatFromInt(i % cols);
+        const row: f32 = @floatFromInt(i / cols);
+        const bx = card.x + 32 * u + col * cw;
+        const by = card.y + 20 * u + row * row_h + row_h / 2;
+        const ks = 23 * u;
+        const kw = @max(36 * u, theme.measure(theme.heavy, b.k, ks) + 20 * u);
 
-        ui.text(font, b.a, x + kw + 10 * u, y + 3 * u, 16 * u, ui.fade(ui.white, 0.8));
+        theme.round(.{ .x = bx, .y = by - 17 * u + 3 * u, .width = kw, .height = 34 * u }, 9 * u, theme.night);
+        theme.round(.{ .x = bx, .y = by - 17 * u, .width = kw, .height = 34 * u }, 9 * u, theme.navy);
+        theme.center(theme.heavy, b.k, bx + kw / 2, by, ks, theme.cream);
+        theme.write(theme.body, b.a, bx + kw + 14 * u, by, theme.fit(theme.body, b.a, 27 * u, cw - kw - 30 * u), theme.navy);
     }
 }
 
@@ -670,8 +770,8 @@ pub fn vehicleStatus(g: Game, font: rl.Font) void {
 
     if (driving.current(&g)) |v| {
         const s = v.spec();
-        const x = 40 * u;
-        const base = h - 118 * u;
+        const x = if (touch.shown) w / 2 - 160 * u else 40 * u;
+        const base = if (touch.shown) dockBase(w, h, u) - 74 * u else h - 118 * u;
         const kmh = print(&buf, "{d}", .{@as(u32, @intFromFloat(@abs(v.speed) * 3.6))});
         const size = 40 * u;
         const nw = ui.width(font, kmh, size);
@@ -685,6 +785,8 @@ pub fn vehicleStatus(g: Game, font: rl.Font) void {
         const gap = 3 * u;
         const seg_w = (bar_w - gap * (segs - 1)) / segs;
         var i: f32 = 0;
+
+        if (touch.shown) ui.card(x - 14 * u, base - 44 * u, @max(nw, 60 * u) + bar_w + 82 * u, 68 * u, 0.85);
 
         ui.text(font, kmh, x, base - size, size, ui.white);
         ui.text(font, "KM/H", x, base + 2 * u, 13 * u, ui.fade(ui.white, 0.6));
@@ -700,29 +802,20 @@ pub fn vehicleStatus(g: Game, font: rl.Font) void {
 
         ui.text(font, s.name, bar_x, bar_y - 22 * u, 15 * u, ui.fade(ui.white, 0.6));
 
-        if (v.hasNitro()) {
-            const ny = bar_y + 13 * u;
-            const nh = 6 * u;
-            const glow = if (v.boosting) 0.5 + 0.5 * @sin(@as(f32, @floatCast(rl.GetTime())) * 30) else 0;
-            const blue = ui.rgba(90, 190, 255, 255);
+        const ny = bar_y + 13 * u;
+        const nh = 6 * u;
+        const glow = if (v.boosting) 0.5 + 0.5 * @sin(@as(f32, @floatCast(rl.GetTime())) * 30) else 0;
+        const blue = ui.rgba(90, 190, 255, 255);
 
-            rl.DrawRectangleRounded(.{ .x = bar_x, .y = ny, .width = bar_w, .height = nh }, 1, 6, ui.fade(ui.ink, 0.45));
+        rl.DrawRectangleRounded(.{ .x = bar_x, .y = ny, .width = bar_w, .height = nh }, 1, 6, ui.fade(ui.ink, 0.45));
 
-            if (v.nitro > 0.01) rl.DrawRectangleRounded(.{ .x = bar_x, .y = ny, .width = bar_w * math01(v.nitro), .height = nh }, 1, 6, if (v.nitro >= 0.999) ui.rgba(150, 220, 255, 255) else blue);
+        if (v.nitro > 0.01) rl.DrawRectangleRounded(.{ .x = bar_x, .y = ny, .width = bar_w * math01(v.nitro), .height = nh }, 1, 6, if (v.nitro >= 0.999) ui.rgba(150, 220, 255, 255) else blue);
 
-            if (v.boosting) rl.DrawRectangleRounded(.{ .x = bar_x - 2 * u, .y = ny - 2 * u, .width = bar_w * math01(v.nitro) + 4 * u, .height = nh + 4 * u }, 1, 6, ui.fade(blue, 0.25 * glow));
+        if (v.boosting) rl.DrawRectangleRounded(.{ .x = bar_x - 2 * u, .y = ny - 2 * u, .width = bar_w * math01(v.nitro) + 4 * u, .height = nh + 4 * u }, 1, 6, ui.fade(blue, 0.25 * glow));
 
-            ui.text(font, "NITRO", bar_x + bar_w + 8 * u, ny - 3 * u, 12 * u, ui.fade(blue, if (v.nitro >= 0.999) 1 else 0.7));
+        ui.text(font, "NITRO", bar_x + bar_w + 8 * u, ny - 3 * u, 12 * u, ui.fade(blue, if (v.nitro >= 0.999) 1 else 0.7));
 
-            if (v.boosting) speedLines(w, h, u, @abs(v.speed) / @max(s.top_speed, 1));
-        }
-
-        if (s.class == .tank) {
-            const ready = v.reload <= 0;
-            const line = if (ready) "CANNON READY" else print(&buf, "RELOADING {d:.1}", .{v.reload});
-
-            ui.text(font, line, bar_x, bar_y + 14 * u, 14 * u, if (ready) ui.rgba(255, 196, 90, 255) else ui.fade(ui.white, 0.6));
-        }
+        if (v.boosting) speedLines(w, h, u, @abs(v.speed) / @max(s.top_speed, 1));
 
         return;
     }

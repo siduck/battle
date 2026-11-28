@@ -18,8 +18,8 @@ pub const def: api.Def = .{
     .note = "Pine woods, lake camp and river",
     .tint = .{ 96, 160, 88 },
     .ready = true,
-    .half = 268,
-    .play = 214,
+    .half = api.arena_half + api.arena_rim,
+    .play = api.arena_half,
     .facet = 2.5,
     .height = height,
     .ground = ground,
@@ -41,12 +41,12 @@ pub const def: api.Def = .{
     .backdrop = .{ 52, 104, 110 },
     .floor_y = water,
     .grip = 0.84,
-    .tufts = 0.9,
 };
 
 const cell: f32 = 2;
-const grid_n = 280;
-const grid_half: f32 = 280;
+const grid_half: f32 = api.arena_half + api.arena_rim;
+const grid_n: comptime_int = @intFromFloat(grid_half * 2 / cell);
+const reach: f32 = api.arena_half + 12;
 
 var shade_grid: [grid_n * grid_n]f32 = @splat(0);
 
@@ -124,7 +124,7 @@ fn segDist(px: f32, pz: f32, s: [4]f32) f32 {
     return @sqrt(qx * qx + qz * qz);
 }
 
-const lake = [3]f32{ 74, 52, 40 };
+const lake = [3]f32{ 36, 38, 20 };
 
 fn lakeEdge(x: f32, z: f32) f32 {
     const a = std.math.atan2(z - lake[1], x - lake[0]);
@@ -139,9 +139,9 @@ fn lakeDist(x: f32, z: f32) f32 {
     return d - lakeEdge(x, z);
 }
 
-const river = [_][2]f32{ .{ 50, 22 }, .{ 22, -18 }, .{ -14, -40 }, .{ -46, -76 }, .{ -58, -118 }, .{ -48, -160 }, .{ -76, -206 }, .{ -100, -262 } };
+const river = [_][2]f32{ .{ 38, 30 }, .{ 30, 4 }, .{ 6, -28 }, .{ -14, -42 }, .{ -46, -76 }, .{ -58, -110 } };
 
-const crossings = [_][2]f32{ .{ 6, -30 }, .{ -52, -96 }, .{ -54, -150 } };
+const crossings = [_][2]f32{ .{ 31, 8 }, .{ 6, -28 }, .{ -31, -60 } };
 
 fn riverDist(x: f32, z: f32) f32 {
     const wx = x + @sin(z * 0.05) * 3;
@@ -168,28 +168,20 @@ fn riverHalf(x: f32, z: f32) f32 {
 }
 
 const trails = [_][4]f32{
-    .{ -40, 10, 6, -30 },
-    .{ 6, -30, 40, -80 },
-    .{ 40, -80, 44, -140 },
-    .{ -40, 10, -52, -96 },
-    .{ -52, -96, -110, -96 },
-    .{ -52, -96, -54, -150 },
-    .{ -54, -150, 0, -176 },
-    .{ 0, -176, 44, -140 },
-    .{ -40, 10, -96, 60 },
-    .{ -96, 60, -128, 116 },
-    .{ -40, 10, 0, 70 },
-    .{ 0, 70, 24, 96 },
-    .{ 24, 96, 76, 106 },
-    .{ 76, 106, 130, 140 },
-    .{ 130, 140, 150, 60 },
-    .{ 150, 60, 124, 2 },
-    .{ 124, 2, 40, -80 },
-    .{ -96, 60, -150, -20 },
-    .{ -150, -20, -110, -96 },
-    .{ 0, 70, -40, 150 },
-    .{ -40, 150, 40, 170 },
-    .{ 40, 170, 76, 106 },
+    .{ -40, 10, 6, -28 },
+    .{ 6, -28, 42, -42 },
+    .{ -40, 10, -52, -46 },
+    .{ -52, -46, -31, -60 },
+    .{ -31, -60, 8, -48 },
+    .{ 8, -48, 42, -42 },
+    .{ 42, -42, 56, -2 },
+    .{ 56, -2, 31, 8 },
+    .{ 31, 8, -4, 40 },
+    .{ -40, 10, -4, 40 },
+    .{ -4, 40, -2, 56 },
+    .{ -2, 56, -24, 64 },
+    .{ -40, 10, -54, 56 },
+    .{ -54, 56, -24, 64 },
 };
 
 fn trailDist(x: f32, z: f32) f32 {
@@ -203,13 +195,12 @@ fn trailDist(x: f32, z: f32) f32 {
 }
 
 const clearings = [_][3]f32{
-    .{ -40, 10, 30 },
-    .{ 40, -140, 26 },
-    .{ -112, -96, 22 },
-    .{ 130, 140, 22 },
-    .{ 18, 82, 16 },
-    .{ -128, 118, 16 },
-    .{ -150, -20, 14 },
+    .{ -40, 10, 24 },
+    .{ 42, -42, 16 },
+    .{ -52, -46, 16 },
+    .{ 56, -2, 12 },
+    .{ -54, 56, 12 },
+    .{ 8, -48, 10 },
 };
 
 fn clearingMask(x: f32, z: f32) f32 {
@@ -239,8 +230,8 @@ fn height(x: f32, z: f32) f32 {
     const n2 = t.fbm(x * 0.07, z * 0.07);
     var h = (n1 - 0.4) * 9 + (n2 - 0.45) * 1.6;
 
-    h += hillAt(x, z, -130, 118, 60, 16);
-    h += hillAt(x, z, -160, -30, 50, 9) + hillAt(x, z, 150, 70, 55, 8) + hillAt(x, z, 10, 150, 50, 7);
+    h += hillAt(x, z, -54, 56, 26, 9);
+    h += hillAt(x, z, 62, -6, 20, 5) + hillAt(x, z, 8, -50, 16, 3);
 
     const cm = clearingMask(x, z);
 
@@ -251,7 +242,7 @@ fn height(x: f32, z: f32) f32 {
     const m = t.smooth(def.play - 14, def.half - 6, e);
     const ridged = 1 - @abs(2 * t.fbm(x * 0.012 + 9, z * 0.012 + 2) - 1);
 
-    h += m * m * (26 + 44 * ridged + 8 * n2);
+    h += m * m * (16 + 24 * ridged + 6 * n2);
 
     const ld = lakeDist(x, z);
     const shore = t.smooth(10, -6, ld);
@@ -259,7 +250,7 @@ fn height(x: f32, z: f32) f32 {
     h = std.math.lerp(h, water - 2.2, shore);
 
     const rd = riverDist(x, z) - riverHalf(x, z);
-    const bank = t.smooth(5, -2, rd) * (1 - t.smooth(def.play - 30, def.play + 10, e));
+    const bank = t.smooth(5, -2, rd) * (1 - t.smooth(def.play - 6, def.play + 14, api.arenaEdge(x, z)));
 
     h = std.math.lerp(h, water - 1.0, bank);
 
@@ -273,18 +264,18 @@ fn ground(x: f32, z: f32) api.Rgb {
     const vary = 0.94 + t.fbm(x * 0.11, z * 0.11) * 0.12;
     const p1 = t.fbm(x * 0.03 + 11, z * 0.03 - 4);
     const p2 = t.fbm(x * 0.09 - 3, z * 0.09 + 8);
-    var c = mix3(.{ 82, 134, 52 }, .{ 112, 158, 58 }, t.smooth(0.3, 0.6, p1));
+    var c = mix3(.{ 103, 117, 72 }, .{ 132, 140, 87 }, t.smooth(0.3, 0.6, p1));
 
-    c = mix3(c, .{ 146, 168, 70 }, t.smooth(0.6, 0.78, p2) * 0.7);
-    c = mix3(c, .{ 70, 118, 50 }, t.smooth(0.55, 0.7, t.fbm(x * 0.2, z * 0.2)) * 0.4);
+    c = mix3(c, .{ 152, 151, 98 }, t.smooth(0.6, 0.78, p2) * 0.7);
+    c = mix3(c, .{ 92, 108, 69 }, t.smooth(0.55, 0.7, t.fbm(x * 0.2, z * 0.2)) * 0.4);
 
     const under = shadeAt(x, z);
 
-    c = mix3(c, mix3(.{ 74, 92, 44 }, .{ 108, 90, 58 }, t.smooth(0.4, 0.7, p2)), t.smooth(0.15, 0.6, under));
+    c = mix3(c, mix3(.{ 84, 96, 59 }, .{ 108, 90, 58 }, t.smooth(0.4, 0.7, p2)), t.smooth(0.15, 0.6, under));
 
     const td = trailDist(x, z);
 
-    c = mix3(c, .{ 132, 120, 74 }, 1 - t.smooth(2.6, 5, td));
+    c = mix3(c, .{ 139, 122, 88 }, 1 - t.smooth(2.6, 5, td));
     c = mix3(c, .{ 156, 122, 82 }, 1 - t.smooth(1.4, 3, td));
 
     const cm = clearingMask(x, z);
@@ -302,9 +293,9 @@ fn ground(x: f32, z: f32) api.Rgb {
 
     const rim = t.smooth(def.play - 14, def.half - 30, rimEdge(x, z));
 
-    c = mix3(c, mix3(c, .{ 96, 124, 62 }, 0.6), t.smooth(0.2, 0.32, slope));
+    c = mix3(c, mix3(c, .{ 105, 118, 76 }, 0.6), t.smooth(0.2, 0.32, slope));
     c = mix3(c, rock, t.smooth(0.38 + rim * 0.14, 0.54 + rim * 0.16, slope + (t.fbm(x * 0.06, z * 0.06) - 0.45) * 0.3 * rim));
-    c = mix3(c, .{ 178, 168, 92 }, t.smooth(0.66, 0.8, t.fbm(x * 0.018 + 30, z * 0.018)) * 0.45 * (1 - under));
+    c = mix3(c, .{ 168, 151, 102 }, t.smooth(0.66, 0.8, t.fbm(x * 0.018 + 30, z * 0.018)) * 0.45 * (1 - under));
 
     const ao = 1 - 0.4 * under;
 
@@ -444,9 +435,6 @@ fn camp(b: *Builder) void {
     }
 
     for ([_][2]f32{ .{ -36, 56 }, .{ -46, -14 }, .{ -24, -16 }, .{ -70, 36 }, .{ -14, 4 } }) |p| put(b, .lantern, p[0], p[1], 0, 1);
-
-    row(b, .fence, -78, -24, -78, 40, 2.6, 1);
-    put(b, .gate, -78, 8, hp, 1);
 }
 
 fn lakeshore(b: *Builder) void {
@@ -461,10 +449,16 @@ fn lakeshore(b: *Builder) void {
         if (!open(x, z, 1)) continue;
 
         if (roll < 0.35) {
-            put(b, .reeds, x, z, a + hp, b.rng.range(0.9, 1.3));
+            _ = b.rng.range(0.9, 1.3);
         } else if (roll < 0.6) {
-            put(b, .cattail, x + jit(b, 1), z + jit(b, 1), b.rng.range(0, 6), b.rng.range(0.9, 1.4));
-            put(b, .cattail, x + jit(b, 1.5), z + jit(b, 1.5), b.rng.range(0, 6), b.rng.range(0.9, 1.4));
+            _ = jit(b, 1);
+            _ = jit(b, 1);
+            _ = b.rng.range(0, 6);
+            _ = b.rng.range(0.9, 1.4);
+            _ = jit(b, 1.5);
+            _ = jit(b, 1.5);
+            _ = b.rng.range(0, 6);
+            _ = b.rng.range(0.9, 1.4);
         } else if (roll < 0.72) {
             sink(b, .rock, x, z, b.rng.range(0, 6), b.rng.range(1, 1.6), 0.3);
         }
@@ -476,7 +470,7 @@ fn lakeshore(b: *Builder) void {
         }
     }
 
-    const dock_a: f32 = 2.5;
+    const dock_a: f32 = 2.6;
     const dr = lakeEdge(lake[0] + @cos(dock_a) * 30, lake[1] + @sin(dock_a) * 30);
     var i: usize = 0;
 
@@ -500,45 +494,48 @@ fn lakeshore(b: *Builder) void {
     put(b, .barrel, shore_x - 4.8, shore_z + 3, 0, 1);
     claim(shore_x, shore_z, 6);
 
-    house(b, .washhouse, 18, 82, 0);
-    around(b, 18, 82, 0, 4.8, 2.4);
-    house(b, .aframe, 112, 98, -2.4);
-    house(b, .porch, 128, 16, -hp);
-    around(b, 128, 16, -hp, 5, 5);
-    put(b, .woodshed, 116, 30, 0.6, 1);
-    put(b, .dome, 104, 18, 0.3, 1);
-    put(b, .dome, 100, 26, -0.6, 1);
-    put(b, .firepit, 108, 28, 0, 1);
-    put(b, .bench, 108, 32, std.math.pi, 1);
-    put(b, .tent, 30, 104, 0.5, 1);
-    put(b, .tent, 36, 98, 1.2, 1);
-    put(b, .table, 26, 96, 0.2, 1);
+    house(b, .washhouse, -2, 56, 0);
+    around(b, -2, 56, 0, 4.8, 2.4);
+    house(b, .aframe, -26, 66, std.math.pi);
+    house(b, .porch, 62, -4, -hp);
+    around(b, 62, -4, -hp, 5, 5);
+    put(b, .woodshed, 66, 12, 0.6, 1);
+    put(b, .dome, 48, -10, 0.3, 1);
+    put(b, .dome, 46, 0, -0.6, 1);
+    put(b, .firepit, 54, -4, 0, 1);
+    put(b, .bench, 54, 0, std.math.pi, 1);
 }
 
 fn logging(b: *Builder) void {
-    house(b, .woodshed, 40, -126, 0);
-    house(b, .hiproof, 56, -148, -hp);
-    around(b, 56, -148, -hp, 4.8, 2.4);
-    put(b, .cordwood, 30, -150, 0.5, 1);
-    put(b, .firewood, 44, -158, 1, 1);
+    const cx: f32 = 42;
+    const cz: f32 = -42;
+
+    house(b, .woodshed, cx, cz + 14, 0);
+    house(b, .hiproof, cx + 16, cz - 8, -hp);
+    around(b, cx + 16, cz - 8, -hp, 4.8, 2.4);
+    put(b, .cordwood, cx - 10, cz - 10, 0.5, 1);
+    put(b, .firewood, cx + 4, cz - 18, 1, 1);
 
     var i: usize = 0;
 
     while (i < 7) : (i += 1) {
         const fi = @as(f32, @floatFromInt(i));
 
-        put(b, .cordwood, 22 + fi * 2.7, -134, 0, 1);
-        put(b, .fallen, 26 + fi * 1.2, -142 - fi * 1.8, 0.1 + fi * 0.2, 1.1);
+        put(b, .cordwood, cx - 18 + fi * 2.7, cz + 6, 0, 1);
+        put(b, .fallen, cx - 14 + fi * 1.2, cz - 2 - fi * 1.8, 0.1 + fi * 0.2, 1.1);
     }
 
-    scatterIn(b, &.{ .stump, .stump, .roots, .firewood }, 30, 40, -140, 26, 0.8, 1.2);
+    scatterIn(b, &.{ .stump, .stump, .roots, .firewood }, 20, cx, cz, 18, 0.8, 1.2);
 }
 
 fn campground(b: *Builder) void {
-    const pitches = [_][3]f32{ .{ -100, -84, 0.3 }, .{ -114, -82, -0.2 }, .{ -124, -92, 1.4 }, .{ -120, -106, 2.1 }, .{ -104, -110, 2.8 }, .{ -96, -100, -1.2 } };
+    const cx: f32 = -52;
+    const cz: f32 = -46;
+    const pitches = [_][3]f32{ .{ 8.5, 10.2, 0.3 }, .{ -3.4, 11.9, -0.2 }, .{ -11.9, 3.4, 1.4 }, .{ -8.5, -8.5, 2.1 }, .{ 5.1, -11.9, 2.8 }, .{ 11.9, -3.4, -1.2 } };
 
-    for (pitches, 0..) |p, i| {
+    for (pitches, 0..) |q, i| {
         const e: K = if (i % 3 == 0) .walltent else if (i % 3 == 1) .tent else .dome;
+        const p = [3]f32{ cx + q[0], cz + q[1], q[2] };
 
         put(b, e, p[0], p[1], p[2], 1);
         claim(p[0], p[1], 3);
@@ -546,36 +543,25 @@ fn campground(b: *Builder) void {
         put(b, .cooler, p[0] - 2.5 * @cos(p[2]), p[1] + 2.5 * @sin(p[2]), 0.4, 1);
     }
 
-    put(b, .firepit, -110, -96, 0, 1);
-    put(b, .tripod, -110, -96, 0.2, 1);
-    claim(-110, -96, 3);
-    house(b, .outhouse, -132, -110, hp);
-    put(b, .kiosk, -98, -92, 0.8, 1);
-    put(b, .firewood, -132, -78, 0.9, 1);
-    put(b, .woodshed, -90, -118, 2.4, 1);
-    put(b, .lights, -110, -88, 0, 1);
+    put(b, .firepit, cx, cz, 0, 1);
+    put(b, .tripod, cx, cz, 0.2, 1);
+    claim(cx, cz, 3);
+    house(b, .outhouse, cx - 18, cz - 12, hp);
+    put(b, .kiosk, cx + 10, cz + 4, 0.8, 1);
+    put(b, .firewood, cx - 18, cz + 14, 0.9, 1);
+    put(b, .woodshed, cx - 6, cz - 22, 2.4, 1);
+    put(b, .lights, cx, cz + 7, 0, 1);
 }
 
 fn outposts(b: *Builder) void {
-    house(b, .lookout, -128, 118, 0.3);
-    around(b, -128, 118, 0.3, 3.4, 3.4);
-    scatterIn(b, &.{ .spire, .boulder, .rock }, 16, -128, 118, 22, 0.9, 1.4);
+    house(b, .lookout, -54, 56, 0.3);
+    around(b, -54, 56, 0.3, 3.4, 3.4);
+    scatterIn(b, &.{ .spire, .boulder, .rock }, 10, -54, 56, 14, 0.9, 1.4);
 
-    house(b, .logcabin, 128, 146, std.math.pi);
-    house(b, .porch, 146, 130, -hp);
-    house(b, .woodshed, 114, 136, hp);
-    around(b, 128, 146, std.math.pi, 4.2, 4.9);
-    around(b, 146, 130, -hp, 5, 5);
-    put(b, .cordwood, 134, 124, 1.2, 1);
-    put(b, .well, 122, 128, 0, 1);
-
-    house(b, .leanto, -150, -20, hp);
-    scatterIn(b, &.{ .spire, .boulder, .rock, .spire }, 26, -160, -30, 34, 0.9, 1.6);
-    put(b, .firepit, -144, -22, 0, 1);
-
-    house(b, .hiproof, -40, 150, 0);
-    around(b, -40, 150, 0, 4.8, 2.4);
-    house(b, .aframe, 40, 170, std.math.pi);
+    house(b, .leanto, 12, -56, hp);
+    put(b, .firepit, 6, -54, 0, 1);
+    claim(6, -54, 2);
+    scatterIn(b, &.{ .spire, .boulder, .rock, .spire }, 12, 10, -56, 12, 0.9, 1.6);
 
     for (crossings) |c| {
         const seg = blk: {
@@ -609,7 +595,7 @@ fn outposts(b: *Builder) void {
 fn forestDensity(x: f32, z: f32) f32 {
     const e = rimEdge(x, z);
 
-    if (e > def.half - 12) return 0;
+    if (api.arenaEdge(x, z) > reach - 4) return 0;
 
     if (1 - t.normal(x, z).y > 0.55) return 0.15;
 
@@ -621,7 +607,7 @@ fn forestDensity(x: f32, z: f32) f32 {
     const patch = t.smooth(0.3, 0.55, t.fbm(x * 0.022 + 11, z * 0.022 + 4));
     const glade = 1 - t.smooth(0.62, 0.7, t.fbm(x * 0.05 - 3, z * 0.05 + 7)) * 0.8;
 
-    return (0.12 + 0.88 * patch * patch) * (1 - cm) * glade + t.smooth(def.play - 20, def.play + 10, e) * 0.7;
+    return (0.08 + 0.55 * patch * patch) * (1 - cm) * glade + t.smooth(def.play - 2, def.play + 10, e) * 0.7;
 }
 
 fn treeKind(b: *Builder, x: f32, z: f32) K {
@@ -639,12 +625,12 @@ fn treeKind(b: *Builder, x: f32, z: f32) K {
 
 fn forest(b: *Builder) void {
     const step: f32 = 6.5;
-    var z: f32 = -def.half + 8;
+    var z: f32 = -reach + 5;
 
-    while (z < def.half - 8) : (z += step) {
-        var x: f32 = -def.half + 8;
+    while (z < reach - 5) : (z += step) {
+        var x: f32 = -reach + 5;
 
-        while (x < def.half - 8) : (x += step) {
+        while (x < reach - 5) : (x += step) {
             const px = x + b.rng.range(-2.6, 2.6);
             const pz = z + b.rng.range(-2.6, 2.6);
             const d = forestDensity(px, pz);
@@ -689,21 +675,23 @@ fn forest(b: *Builder) void {
 }
 
 fn meadow(b: *Builder) void {
+    const edge = def.play - 2;
+    const area = 4 * edge * edge;
+    const decor: usize = @intFromFloat(area / 140);
+    const covers: usize = @intFromFloat(area / 800);
     var i: usize = 0;
 
-    while (i < 2600) : (i += 1) {
-        const x = b.rng.range(-def.play, def.play);
-        const z = b.rng.range(-def.play, def.play);
+    while (i < decor) : (i += 1) {
+        const x = b.rng.range(-edge, edge);
+        const z = b.rng.range(-edge, edge);
 
         if (!dry(x, z, 0.5) or trailDist(x, z) < 1.6 or !open(x, z, 0.3)) continue;
 
         const roll = b.rng.next();
 
-        if (roll < 0.5) {
-            put(b, .tuft, x, z, b.rng.range(0, 6), b.rng.range(0.8, 1.4));
-        } else if (roll < 0.8) {
+        if (roll < 0.6) {
             put(b, .flower, x, z, b.rng.range(0, 6), b.rng.range(0.8, 1.3));
-        } else if (roll < 0.93) {
+        } else if (roll < 0.86) {
             put(b, .fern, x, z, b.rng.range(0, 6), b.rng.range(0.8, 1.3));
         } else {
             put(b, .stone, x, z, b.rng.range(0, 6), b.rng.range(0.7, 1.2));
@@ -712,9 +700,9 @@ fn meadow(b: *Builder) void {
 
     i = 0;
 
-    while (i < 160) : (i += 1) {
-        const x = b.rng.range(-def.play + 6, def.play - 6);
-        const z = b.rng.range(-def.play + 6, def.play - 6);
+    while (i < covers) : (i += 1) {
+        const x = b.rng.range(-edge + 6, edge - 6);
+        const z = b.rng.range(-edge + 6, edge - 6);
 
         if (!dry(x, z, 2) or trailDist(x, z) < 3.5 or !open(x, z, 2.5)) continue;
 
@@ -735,6 +723,39 @@ fn meadow(b: *Builder) void {
         }
 
         claim(x, z, 2);
+    }
+}
+
+fn mouths(b: *Builder) void {
+    var i: usize = 0;
+    var was = api.arenaEdge(river[0][0], river[0][1]) >= def.play + 1;
+
+    while (i + 1 < river.len) : (i += 1) {
+        const dx = river[i + 1][0] - river[i][0];
+        const dz = river[i + 1][1] - river[i][1];
+        const len = @sqrt(dx * dx + dz * dz);
+        var d: f32 = 0;
+
+        while (d < len) : (d += 1) {
+            const x = river[i][0] + dx * d / len;
+            const z = river[i][1] + dz * d / len;
+            const out = api.arenaEdge(x, z) >= def.play + 1;
+
+            if (out == was) continue;
+
+            was = out;
+
+            const nx = dz / len;
+            const nz = -dx / len;
+            var o: f32 = -10;
+
+            while (o <= 10) : (o += 2.5) {
+                const px = x + nx * o + b.rng.range(-0.8, 0.8);
+                const pz = z + nz * o + b.rng.range(-0.8, 0.8);
+
+                sink(b, .boulder, px, pz, b.rng.range(0, 6), b.rng.range(1.4, 1.9), 1.1);
+            }
+        }
     }
 }
 
@@ -795,6 +816,7 @@ fn build(b: *Builder) void {
     logging(b);
     campground(b);
     outposts(b);
+    mouths(b);
     trailside(b);
     meadow(b);
     forest(b);

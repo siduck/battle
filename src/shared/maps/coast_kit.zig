@@ -136,7 +136,7 @@ pub const table = [_]api.Info{
     .{ .file = "coast/rail.glb", .scale = 1.00, .collide = .none, .group = .street, .foliage = false, .min = .{ -2.000, 0.000, -0.060 }, .max = .{ 2.000, 1.150, 0.060 } },
     .{ .file = "coast/kerb.glb", .scale = 1.00, .collide = .none, .group = .road, .foliage = false, .min = .{ -2.000, -0.600, -0.220 }, .max = .{ 2.000, 0.200, 0.220 } },
     .{ .file = "coast/line.glb", .scale = 1.00, .collide = .none, .group = .road, .foliage = false, .min = .{ -1.200, 0.000, -0.080 }, .max = .{ 1.200, 0.020, 0.080 } },
-    .{ .file = "coast/foam.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -3.500, 0.000, -1.083 }, .max = .{ 3.550, 0.035, 0.578 } },
+    .{ .file = "coast/foam.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -3.500, 0.000, -0.690 }, .max = .{ 3.500, 0.035, 0.590 } },
     .{ .file = "coast/ripple.glb", .scale = 1.00, .collide = .none, .group = .ground, .foliage = false, .min = .{ -4.500, 0.000, -0.496 }, .max = .{ 4.320, 0.020, 0.520 } },
 };
 

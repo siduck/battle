@@ -22,7 +22,6 @@ const Set = struct {
 };
 
 var ready = false;
-var tufts: [2]Set = .{ .{}, .{} };
 var pebbles: Set = .{};
 var stones: Set = .{};
 var flowers: [2]Set = .{ .{}, .{} };
@@ -70,34 +69,6 @@ fn scaled(c: palette.Rgb, k: f32) palette.Rgb {
         @intFromFloat(@min(255, @as(f32, @floatFromInt(c[1])) * k)),
         @intFromFloat(@min(255, @as(f32, @floatFromInt(c[2])) * k)),
     };
-}
-
-fn tuftModel(base: palette.Rgb, k: f32, seed: u32) rl.Model {
-    var b: mesh.Builder = .{};
-    const blades: u32 = 9;
-
-    for (0..blades) |i| {
-        const fi: f32 = @floatFromInt(i);
-        const ang = fi * 2.39996 + @as(f32, @floatFromInt(seed));
-        const rad = 0.03 + hash(@intCast(i), 3, seed) * 0.07;
-        const ox = @cos(ang) * rad;
-        const oz = @sin(ang) * rad;
-        const h = 0.16 + hash(@intCast(i), 7, seed) * 0.2;
-        const lean = 0.05 + hash(@intCast(i), 11, seed) * 0.08;
-        const w: f32 = 0.034;
-        const side: Vec3 = .{ .x = -@sin(ang) * w, .z = @cos(ang) * w };
-        const p0: Vec3 = .{ .x = ox - side.x, .z = oz - side.z };
-        const p1: Vec3 = .{ .x = ox + side.x, .z = oz + side.z };
-        const tip: Vec3 = .{ .x = ox + @cos(ang) * lean, .y = h, .z = oz + @sin(ang) * lean };
-        const tone = k * (0.9 + hash(@intCast(i), 13, seed) * 0.22);
-
-        const up: Vec3 = .{ .y = 1 };
-
-        b.style = .{ .color = scaled(base, tone) };
-        b.tri(p0, p1, tip, up, up, up, up);
-    }
-
-    return rl.LoadModelFromMesh(b.finish());
 }
 
 fn pebbleModel(base: palette.Rgb) rl.Model {
@@ -286,8 +257,6 @@ fn init() void {
 
     if (terrain.current == .facility) conf.enabled = false;
 
-    tufts[0].model = tuftModel(grass, 1.0, 1);
-    tufts[1].model = tuftModel(grass, 1.18, 2);
     pebbles.model = pebbleModel(.{ 196, 172, 130 });
     stones.model = pebbleModel(.{ 150, 148, 142 });
     flowers[0].model = flowerModel(conf.flower_colors[0], scaled(grass, 0.8), 3);
@@ -296,15 +265,153 @@ fn init() void {
     buildMask();
 }
 
+const Item = struct {
+    m: rl.Matrix,
+    x: f32,
+    z: f32,
+    set: u8,
+};
+
+const bucket: f32 = 8;
+var items: []Item = &.{};
+var starts: []u32 = &.{};
+var buckets_n: usize = 0;
+var baked = false;
+
+fn sets(k: u8) *Set {
+    return switch (k) {
+        0 => &flowers[0],
+        1 => &flowers[1],
+        2 => &pebbles,
+        3 => &stones,
+        else => &litter,
+    };
+}
+
+fn cell(ix: i32, iz: i32) ?Item {
+    const x = (@as(f32, @floatFromInt(ix)) + hash(ix, iz, 1)) * step;
+    const z = (@as(f32, @floatFromInt(iz)) + hash(ix, iz, 2)) * step;
+
+    if (@abs(x) > terrain.play or @abs(z) > terrain.play) return null;
+
+    if (blocked(x, z)) return null;
+
+    const roll = hash(ix, iz, 3);
+    const cls = classify(groundRgb(x, z));
+
+    if (cls == .none) return null;
+
+    if (terrain.villageMask(x, z) > 0.05) return null;
+
+    if (terrain.current == .valley and terrain.roadDistance(x, z) < terrain.road_half + 0.6) return null;
+
+    const nrm = terrain.normal(x, z);
+
+    if (nrm.y < 0.82) return null;
+
+    const y = terrain.height(x, z);
+
+    if (terrain.current == .islands and y < terrain.void_floor + 1) return null;
+
+    const edge = edgeAt(x, z, cls);
+    const prop = nearProp(x, z);
+    const patch = terrain.fbm(x * 0.09 + 5.3, z * 0.09 - 2.1);
+    const yaw = hash(ix, iz, 4) * 6.283;
+    const s = 0.8 + hash(ix, iz, 5) * 0.6;
+    const m = mesh.transform(.{ .x = x, .y = y - 0.02, .z = z }, mesh.Basis.yawed(yaw), s);
+    const pick = hash(ix, iz, 6);
+    var set: ?u8 = null;
+
+    switch (cls) {
+        .grass => {
+            const flower_rate = conf.flowers * 0.16 * terrain.smooth(0.55, 0.75, patch);
+            const litter_rate = conf.litter * (if (prop) @as(f32, 0.3) else 0.02);
+
+            if (roll < flower_rate) {
+                set = if (pick > 0.5) 1 else 0;
+            } else if (roll < flower_rate + litter_rate) {
+                set = 4;
+            }
+        },
+        .sand => {
+            if (roll < conf.pebbles * (if (edge or prop) @as(f32, 0.14) else 0.04)) set = 2;
+        },
+        .dirt => {
+            const rate = conf.pebbles * (if (edge) @as(f32, 0.3) else if (prop) @as(f32, 0.2) else 0.07);
+
+            if (roll < rate) {
+                set = 2;
+            } else if (prop and roll < rate + conf.litter * 0.12) {
+                set = 4;
+            }
+        },
+        .grey => {
+            if (roll < conf.pebbles * (if (edge or prop) @as(f32, 0.22) else 0.06)) set = 3;
+        },
+        .none => {},
+    }
+
+    const k = set orelse return null;
+
+    return .{ .m = m, .x = x, .z = z, .set = k };
+}
+
+fn bucketOf(v: f32) usize {
+    const half = @as(f32, @floatFromInt(buckets_n)) * bucket / 2;
+
+    return @intFromFloat(std.math.clamp(@floor((v + half) / bucket), 0, @as(f32, @floatFromInt(buckets_n - 1))));
+}
+
+fn bake() void {
+    baked = true;
+
+    const gpa = std.heap.page_allocator;
+    const reach = terrain.play + step;
+    const lim: i32 = @intFromFloat(@ceil(reach / step));
+
+    buckets_n = @intFromFloat(@ceil(2 * reach / bucket));
+
+    var list: std.ArrayList(Item) = .empty;
+    var iz = -lim;
+
+    while (iz <= lim) : (iz += 1) {
+        var ix = -lim;
+
+        while (ix <= lim) : (ix += 1) {
+            if (cell(ix, iz)) |it| list.append(gpa, it) catch return;
+        }
+    }
+
+    const all = list.toOwnedSlice(gpa) catch return;
+    const counts = gpa.alloc(u32, buckets_n * buckets_n + 1) catch return;
+
+    @memset(counts, 0);
+
+    for (all) |it| counts[bucketOf(it.z) * buckets_n + bucketOf(it.x) + 1] += 1;
+
+    for (1..counts.len) |b| counts[b] += counts[b - 1];
+
+    const sorted = gpa.alloc(Item, all.len) catch return;
+    const fill = gpa.alloc(u32, buckets_n * buckets_n) catch return;
+
+    @memcpy(fill, counts[0 .. counts.len - 1]);
+
+    for (all) |it| {
+        const b = bucketOf(it.z) * buckets_n + bucketOf(it.x);
+
+        sorted[fill[b]] = it;
+        fill[b] += 1;
+    }
+
+    gpa.free(fill);
+    gpa.free(all);
+    items = sorted;
+    starts = counts;
+}
+
 fn rebuild(eye: Vec3) void {
     const radius: f32 = if (assets.mobile) 18 else 30;
-    const lo: i32 = @intFromFloat(@floor((eye.x - radius) / step));
-    const hi: i32 = @intFromFloat(@floor((eye.x + radius) / step));
-    const zlo: i32 = @intFromFloat(@floor((eye.z - radius) / step));
-    const zhi: i32 = @intFromFloat(@floor((eye.z + radius) / step));
 
-    tufts[0].n = 0;
-    tufts[1].n = 0;
     pebbles.n = 0;
     stones.n = 0;
     flowers[0].n = 0;
@@ -313,87 +420,29 @@ fn rebuild(eye: Vec3) void {
 
     if (!conf.enabled) return;
 
-    const tuft_rate = if (shared.maps.current()) |d| d.tufts else @as(f32, 0.85);
-    var iz = zlo;
+    if (!baked) bake();
 
-    while (iz <= zhi) : (iz += 1) {
-        var ix = lo;
+    if (buckets_n == 0 or starts.len == 0) return;
 
-        while (ix <= hi) : (ix += 1) {
-            const x = (@as(f32, @floatFromInt(ix)) + hash(ix, iz, 1)) * step;
-            const z = (@as(f32, @floatFromInt(iz)) + hash(ix, iz, 2)) * step;
-            const dx = x - eye.x;
-            const dz = z - eye.z;
+    const bx0 = bucketOf(eye.x - radius);
+    const bx1 = bucketOf(eye.x + radius);
+    const bz0 = bucketOf(eye.z - radius);
+    const bz1 = bucketOf(eye.z + radius);
 
-            if (dx * dx + dz * dz > radius * radius) continue;
+    for (bz0..bz1 + 1) |bz| {
+        for (bx0..bx1 + 1) |bx| {
+            const b = bz * buckets_n + bx;
 
-            if (@abs(x) > terrain.play or @abs(z) > terrain.play) continue;
+            for (items[starts[b]..starts[b + 1]]) |it| {
+                const dx = it.x - eye.x;
+                const dz = it.z - eye.z;
 
-            if (blocked(x, z)) continue;
+                if (dx * dx + dz * dz > radius * radius) continue;
 
-            const roll = hash(ix, iz, 3);
-            const cls = classify(groundRgb(x, z));
+                const st = sets(it.set);
 
-            if (cls == .none) continue;
-
-            if (terrain.villageMask(x, z) > 0.05) continue;
-
-            if (terrain.current == .valley and terrain.roadDistance(x, z) < terrain.road_half + 0.6) continue;
-
-            const nrm = terrain.normal(x, z);
-
-            if (nrm.y < 0.82) continue;
-
-            const y = terrain.height(x, z);
-
-            if (terrain.current == .islands and y < terrain.void_floor + 1) continue;
-
-            const edge = edgeAt(x, z, cls);
-            const prop = nearProp(x, z);
-            const patch = terrain.fbm(x * 0.09 + 5.3, z * 0.09 - 2.1);
-            const yaw = hash(ix, iz, 4) * 6.283;
-            const s = 0.8 + hash(ix, iz, 5) * 0.6;
-            const m = mesh.transform(.{ .x = x, .y = y - 0.02, .z = z }, mesh.Basis.yawed(yaw), s);
-            const pick = hash(ix, iz, 6);
-            var set: ?*Set = null;
-
-            switch (cls) {
-                .grass => {
-                    const flower_rate = conf.flowers * 0.16 * terrain.smooth(0.55, 0.75, patch);
-                    const litter_rate = conf.litter * (if (prop) @as(f32, 0.3) else 0.02);
-                    const clump_rate = tuft_rate * conf.clumps * (if (edge or prop) @as(f32, 1.25) else 1.0);
-
-                    if (roll < flower_rate) {
-                        set = &flowers[if (pick > 0.5) 1 else 0];
-                    } else if (roll < flower_rate + litter_rate) {
-                        set = &litter;
-                    } else if (roll < flower_rate + litter_rate + clump_rate) {
-                        set = &tufts[if (pick > 0.5) 1 else 0];
-                    }
-                },
-                .sand => {
-                    if (roll < conf.pebbles * (if (edge or prop) @as(f32, 0.14) else 0.04)) set = &pebbles;
-                },
-                .dirt => {
-                    const rate = conf.pebbles * (if (edge) @as(f32, 0.3) else if (prop) @as(f32, 0.2) else 0.07);
-
-                    if (roll < rate) {
-                        set = &pebbles;
-                    } else if (edge and roll < rate + conf.clumps * 0.25) {
-                        set = &tufts[if (pick > 0.5) 1 else 0];
-                    } else if (prop and roll < rate + conf.litter * 0.12) {
-                        set = &litter;
-                    }
-                },
-                .grey => {
-                    if (roll < conf.pebbles * (if (edge or prop) @as(f32, 0.22) else 0.06)) set = &stones;
-                },
-                .none => {},
-            }
-
-            if (set) |st| {
                 if (st.n < max_items) {
-                    st.items[st.n] = m;
+                    st.items[st.n] = it.m;
                     st.n += 1;
                 }
             }
@@ -413,12 +462,6 @@ pub fn draw(r: *gfx.Renderer, eye: Vec3) void {
     if (d.x * d.x + d.z * d.z > 16) {
         centre = eye;
         rebuild(eye);
-    }
-
-    r.setSway(6);
-
-    for (&tufts) |*t| {
-        if (t.model) |m| r.drawInstanced(m, t.items[0..t.n], true);
     }
 
     r.setSway(4);

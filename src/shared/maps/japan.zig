@@ -11,28 +11,27 @@ const Builder = api.Builder;
 const pi = std.math.pi;
 const hp = api.half_pi;
 
-const edge: f32 = 146;
+const edge: f32 = api.arena_half - 4;
+const side_at: f32 = @round(api.arena_half * 0.51);
+const alley_at: f32 = @round(api.arena_half * 0.56);
+const bridge_at = [_]f32{ -@round(api.arena_half * 0.4), @round(api.arena_half * 0.2) };
 
 const Line = struct { at: f32, hw: f32, kind: Street };
 const Street = enum { edge, alley, secondary, main };
 
 const xs = [_]Line{
     .{ .at = -edge, .hw = 0, .kind = .edge },
-    .{ .at = -100, .hw = 4.5, .kind = .secondary },
-    .{ .at = -50, .hw = 2.5, .kind = .alley },
+    .{ .at = -side_at, .hw = 4.5, .kind = .secondary },
     .{ .at = 0, .hw = 7, .kind = .main },
-    .{ .at = 50, .hw = 2.5, .kind = .alley },
-    .{ .at = 100, .hw = 4.5, .kind = .secondary },
+    .{ .at = side_at, .hw = 4.5, .kind = .secondary },
     .{ .at = edge, .hw = 0, .kind = .edge },
 };
 
 const zs = [_]Line{
     .{ .at = -edge, .hw = 0, .kind = .edge },
-    .{ .at = -100, .hw = 4.5, .kind = .secondary },
-    .{ .at = -50, .hw = 2.5, .kind = .alley },
+    .{ .at = -alley_at, .hw = 2.5, .kind = .alley },
     .{ .at = 0, .hw = 13, .kind = .main },
-    .{ .at = 50, .hw = 2.5, .kind = .alley },
-    .{ .at = 100, .hw = 4.5, .kind = .secondary },
+    .{ .at = alley_at, .hw = 2.5, .kind = .alley },
     .{ .at = edge, .hw = 0, .kind = .edge },
 };
 
@@ -40,11 +39,8 @@ const Use = enum { row, park, parking, lot };
 
 fn blockUse(i: usize, j: usize) Use {
     if (i == 1 and j == 1) return .park;
-    if (i == 4 and j == 4) return .park;
-    if (i == 4 and j == 1) return .parking;
-    if (i == 1 and j == 4) return .parking;
-    if (i == 2 and j == 5) return .lot;
-    if (i == 5 and j == 2) return .lot;
+    if (i == 2 and j == 2) return .parking;
+    if (i == 3 and j == 0) return .lot;
 
     return .row;
 }
@@ -54,8 +50,8 @@ pub const def: api.Def = .{
     .note = "Shop streets, trams and alleys",
     .tint = .{ 226, 150, 170 },
     .ready = true,
-    .half = 172,
-    .play = 150,
+    .half = api.arena_half + api.arena_rim,
+    .play = api.arena_half,
     .facet = 2,
     .height = height,
     .ground = ground,
@@ -76,7 +72,6 @@ pub const def: api.Def = .{
     },
     .backdrop = .{ 170, 168, 176 },
     .grip = 0.86,
-    .tufts = 0.5,
 };
 
 fn hash(x: f32, z: f32) f32 {
@@ -85,7 +80,7 @@ fn hash(x: f32, z: f32) f32 {
 
 fn height(x: f32, z: f32) f32 {
     const e = @max(@abs(x), @abs(z));
-    const rim = t.smooth(edge + 6, t.half, e);
+    const rim = t.smooth(t.play + 3, t.half, e);
 
     return rim * (6 + t.fbm(x * 0.03, z * 0.03) * 10);
 }
@@ -241,6 +236,16 @@ fn pick(b: *Builder, kind: Street, room: f32) K {
     return if (b.rng.next() < 0.5) .shop2 else .shop3;
 }
 
+fn underBridge(x: f32, z: f32) bool {
+    if (@abs(z) > 14) return false;
+
+    for (bridge_at) |bx| {
+        if (x > bx - 2 and x < bx + 15) return true;
+    }
+
+    return false;
+}
+
 fn frontage(b: *Builder, s: Side, e: K, along: f32) void {
     const w = width(e);
     const front: f32 = 0.0;
@@ -248,7 +253,7 @@ fn frontage(b: *Builder, s: Side, e: K, along: f32) void {
     const p = local(s, along, front + 0.9);
     const yaw = s.yaw;
 
-    if (@abs(p[1]) < 14 and @abs(@abs(p[0]) - 69) < 9) return;
+    if (underBridge(p[0], p[1])) return;
 
     if (e == .barhut) {
         const lp = local(s, along - 1.2, front + 0.1);
@@ -270,7 +275,7 @@ fn frontage(b: *Builder, s: Side, e: K, along: f32) void {
         putY(b, .awning, a[0], 2.3, a[1], yaw);
     }
 
-    if (r < 0.2) {
+    if (r < 0.1) {
         put(b, .vending, p[0], p[1], yaw);
 
         if (w >= 8) {
@@ -278,20 +283,20 @@ fn frontage(b: *Builder, s: Side, e: K, along: f32) void {
 
             put(b, .vending, q[0], q[1], yaw);
         }
-    } else if (r < 0.34) {
+    } else if (r < 0.17) {
         put(b, .bikerack, p[0], p[1], yaw + hp);
-    } else if (r < 0.44) {
+    } else if (r < 0.22) {
         put(b, .potted, p[0], p[1], 0);
         put(b, .planter, local(s, along + 1.4, front + 0.6)[0], local(s, along + 1.4, front + 0.6)[1], yaw);
-    } else if (r < 0.52) {
+    } else if (r < 0.26) {
         put(b, .board, p[0], p[1], yaw);
-    } else if (r < 0.6) {
+    } else if (r < 0.3) {
         put(b, .bin, p[0], p[1], yaw);
-    } else if (r < 0.68) {
+    } else if (r < 0.42) {
         const sh = local(s, along, front + 0.3);
 
         put(b, .shutter, sh[0], sh[1], yaw);
-    } else if (r < 0.74) {
+    } else if (r < 0.45) {
         put(b, .crate, p[0], p[1], b.rng.range(0, 3));
         putY(b, .crate, p[0], 0.36, p[1], b.rng.range(0, 3));
         put(b, .crate, local(s, along + 0.5, front + 0.9)[0], local(s, along + 0.5, front + 0.9)[1], 0.2);
@@ -305,7 +310,7 @@ fn frontage(b: *Builder, s: Side, e: K, along: f32) void {
         }
     }
 
-    if (b.rng.next() < 0.35) {
+    if (b.rng.next() < 0.2) {
         const ap = local(s, along - w / 2 + 0.8, front + 0.2);
 
         putY(b, .ac, ap[0], if (b.rng.next() < 0.5) 0 else 3.4, ap[1], yaw);
@@ -331,7 +336,7 @@ fn rooftop(b: *Builder, e: K, x: f32, z: f32, yaw: f32) void {
 
     const w = width(e);
 
-    const n: usize = @intFromFloat(@max(1, w / 3));
+    const n: usize = @intFromFloat(@max(1, w / 6));
     var i: usize = 0;
 
     while (i < n) : (i += 1) {
@@ -398,7 +403,7 @@ fn gapDress(b: *Builder, s: Side, along: f32) void {
         const p = local(s, along + sd * 2.15, -1.5);
         const yaw = s.yaw + sd * hp;
 
-        if (chance(b, 0.7)) b.putAt(kit.of(.ac), vec(p[0], 2.8 + @round(b.rng.range(0, 2)) * 2.6, p[1]), yaw, 1);
+        if (chance(b, 0.35)) b.putAt(kit.of(.ac), vec(p[0], 2.8 + @round(b.rng.range(0, 2)) * 2.6, p[1]), yaw, 1);
         if (chance(b, 0.5)) put(b, .meter, local(s, along + sd * 2.2, -0.8)[0], local(s, along + sd * 2.2, -0.8)[1], yaw);
     }
 
@@ -443,8 +448,14 @@ fn lineSide(b: *Builder, s: Side, gap: bool) void {
 fn wallSide(b: *Builder, s: Side) void {
     var a: f32 = 2;
 
+    var panel: usize = 0;
+
     while (a < s.len - 1) : (a += 4) {
         const c = local(s, a, -0.3);
+
+        panel += 1;
+
+        if (panel % 3 == 0) continue;
 
         put(b, if (s.kind == .edge) .stonefence else .blockwall, c[0], c[1], s.yaw);
     }
@@ -470,20 +481,14 @@ fn rank(s: Street) u8 {
 
 fn rowBlock(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, kw: Street, ke: Street, ks: Street, kn: Street) void {
     const ss = sides(x0, z0, x1, z1, kw, ke, ks, kn);
-    var gaps: usize = 0;
-
-    for (ss, 0..) |s, si| {
+    for (ss) |s| {
         if (s.kind == .edge) {
             wallSide(b, s);
 
             continue;
         }
 
-        const gap = (si % 2 == 0 and gaps < 2) or (s.kind == .alley and chance(b, 0.5));
-
-        if (gap) gaps += 1;
-
-        lineSide(b, s, gap);
+        lineSide(b, s, true);
     }
 
     const corners = [_][4]f32{ .{ x0 + 2, z0 + 2, 2, 0 }, .{ x1 - 2, z0 + 2, 3, 0 }, .{ x0 + 2, z1 - 2, 2, 1 }, .{ x1 - 2, z1 - 2, 3, 1 } };
@@ -530,7 +535,7 @@ fn wallLine(b: *Builder, e: K, ax: f32, az: f32, bx: f32, bz: f32, gap: f32) voi
     while (i < n) : (i += 1) {
         const u = (@as(f32, @floatFromInt(i)) + 0.5) * step;
 
-        if (gap >= 0 and @abs(u - gap) < step * 0.5) continue;
+        if (gap >= 0 and @abs(u - gap) < @max(step * 0.5, 2.1)) continue;
 
         put(b, e, ax + dx / len * u, az + dz / len * u, yaw);
     }
@@ -564,10 +569,11 @@ fn quarter(b: *Builder) f32 {
 }
 
 fn scatterPlot(b: *Builder, p: Plot, kinds: []const K, n: usize, pad: f32) void {
+    const want = (n + 1) / 2;
     var i: usize = 0;
     var tries: usize = 0;
 
-    while (i < n and tries < n * 8) : (tries += 1) {
+    while (i < want and tries < n * 8) : (tries += 1) {
         const q = spot(b, p, 0.9);
 
         if (wd.covered(b, q[0], q[1], pad)) continue;
@@ -731,63 +737,64 @@ fn backyard(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
 
     const cx = (x0 + x1) / 2 + jitter(b, 2);
     const cz = (z0 + z1) / 2 + jitter(b, 2);
-    const lane: f32 = 1.3;
+    const lane: f32 = 2;
     const quads = [_]Plot{
         .{ .x0 = x0, .z0 = z0, .x1 = cx - lane, .z1 = cz - lane },
         .{ .x0 = cx + lane, .z0 = z0, .x1 = x1, .z1 = cz - lane },
         .{ .x0 = x0, .z0 = cz + lane, .x1 = cx - lane, .z1 = z1 },
         .{ .x0 = cx + lane, .z0 = cz + lane, .x1 = x1, .z1 = z1 },
     };
+    const open: usize = @intFromFloat(@floor(b.rng.range(0, 3.99)));
+    const open2 = (open + 1 + @as(usize, @intFromFloat(@floor(b.rng.range(0, 2.99))))) % 4;
 
     b.deco(vec(cx - lane + 0.2, 0.004, z0), vec(cx + lane - 0.2, 0.03, z1), .concrete);
     b.deco(vec(x0, 0.004, cz - lane + 0.2), vec(x1, 0.03, cz + lane - 0.2), .concrete);
 
     for (quads, 0..) |q, qi| {
-        const w = q.x1 - q.x0;
+        if (qi == open or qi == open2) {
+            if (chance(b, 0.5)) put(b, if (chance(b, 0.5)) .maple else .cherry, (q.x0 + q.x1) / 2, (q.z0 + q.z1) / 2, b.rng.range(0, 6));
+
+            continue;
+        }
+
         const lane_z = if (qi < 2) q.z1 else q.z0;
         const lane_x = if (qi % 2 == 0) q.x1 else q.x0;
         const wall: K = if (chance(b, 0.5)) .blockwall else .bamboo;
-        const split_x = q.x0 + w / 2 + jitter(b, 1.5);
-
-        wallLine(b, wall, q.x0 + 0.2, lane_z, split_x, lane_z, (split_x - q.x0) * 0.5);
-        wallLine(b, wall, split_x, lane_z, q.x1 - 0.2, lane_z, (q.x1 - split_x) * 0.5);
-        wallLine(b, wall, lane_x, q.z0 + 0.2, lane_x, q.z1 - 0.2, -1);
-        wallLine(b, .fence, split_x, q.z0 + 0.4, split_x, q.z1 - 0.4, -1);
-
         const inset: f32 = 0.5;
 
-        fillPlot(b, .{ .x0 = q.x0 + inset, .z0 = q.z0 + inset, .x1 = split_x - inset, .z1 = q.z1 - inset });
-        fillPlot(b, .{ .x0 = split_x + inset, .z0 = q.z0 + inset, .x1 = q.x1 - inset, .z1 = q.z1 - inset });
+        wallLine(b, wall, q.x0 + 0.2, lane_z, q.x1 - 0.2, lane_z, (q.x1 - q.x0) * 0.5);
+        wallLine(b, wall, lane_x, q.z0 + 0.2, lane_x, q.z1 - 0.2, (q.z1 - q.z0) * 0.5);
+        fillPlot(b, .{ .x0 = q.x0 + inset, .z0 = q.z0 + inset, .x1 = q.x1 - inset, .z1 = q.z1 - inset });
     }
 
     for ([_][2]f32{ .{ cx, z0 + 1 }, .{ cx, z1 - 1 }, .{ x0 + 1, cz }, .{ x1 - 1, cz } }) |m| {
-        if (chance(b, 0.5)) put(b, .mirror, m[0] + 1.1, m[1], 0);
+        if (chance(b, 0.3)) put(b, .mirror, m[0] + 1.1, m[1], 0);
     }
 
     var a: f32 = x0 + 1;
 
-    while (a < x1 - 1) : (a += 3.2) {
-        if (chance(b, 0.4)) put(b, .ac, a, z0 + 0.35, 0);
-        if (chance(b, 0.4)) put(b, .ac, a, z1 - 0.35, pi);
+    while (a < x1 - 1) : (a += 6.4) {
+        if (chance(b, 0.2)) put(b, .ac, a, z0 + 0.35, 0);
+        if (chance(b, 0.2)) put(b, .ac, a, z1 - 0.35, pi);
         if (chance(b, 0.12)) put(b, .drum, a + 1, z0 + 0.6, 0);
         if (chance(b, 0.12)) put(b, .wheelie, a + 1, z1 - 0.6, pi);
     }
 
     var c: f32 = z0 + 1;
 
-    while (c < z1 - 1) : (c += 3.2) {
-        if (chance(b, 0.35)) put(b, .ac, x0 + 0.35, c, hp);
-        if (chance(b, 0.35)) put(b, .ac, x1 - 0.35, c, -hp);
+    while (c < z1 - 1) : (c += 6.4) {
+        if (chance(b, 0.15)) put(b, .ac, x0 + 0.35, c, hp);
+        if (chance(b, 0.15)) put(b, .ac, x1 - 0.35, c, -hp);
         if (chance(b, 0.15)) put(b, .meter, x0 + 0.3, c + 1, hp);
     }
 
     var n: usize = 0;
 
-    while (n < 14) : (n += 1) {
+    while (n < 5) : (n += 1) {
         const px = b.rng.range(x0 + 2, x1 - 2);
         const pz = b.rng.range(z0 + 2, z1 - 2);
 
-        if (wd.covered(b, px, pz, 1.6)) continue;
+        if (wd.covered(b, px, pz, 2.5)) continue;
 
         put(b, if (chance(b, 0.6)) .maple else if (chance(b, 0.5)) .cherry else .tree, px, pz, b.rng.range(0, 6));
     }
@@ -828,8 +835,7 @@ fn park(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32) void {
         const qx = cx + q[0] * (x1 - x0) * 0.27;
         const qz = cz + q[1] * (z1 - z0) * 0.27;
 
-        put(b, .cherry, qx + jitter(b, 2), qz + jitter(b, 2), b.rng.range(0, 6));
-        put(b, .cherry, qx + 6 + jitter(b, 2), qz - 4 + jitter(b, 2), b.rng.range(0, 6));
+        put(b, .cherry, qx + jitter(b, 1.5), qz + jitter(b, 1.5), b.rng.range(0, 6));
         put(b, .bench, qx - q[0] * 6, cz + q[1] * 3, if (q[1] < 0) 0 else pi);
         put(b, .rock, qx - 5, qz + 4, b.rng.range(0, 6));
         put(b, .bush, qx + 3, qz + 5, b.rng.range(0, 6));
@@ -899,6 +905,24 @@ fn streets(b: *Builder) void {
         put(b, .signal, -sd * 6.4, sd * 12, if (sd < 0) -hp else hp);
     }
 
+    for ([_]f32{ -1, 1 }) |sd| {
+        for ([_]f32{ -10, -6, -2, 2, 6, 10 }) |z| put(b, .guardrail, sd * (edge - 0.5), z, hp);
+
+        for (xs) |l| {
+            if (l.kind == .edge) continue;
+
+            var rx: f32 = l.at - l.hw + 2.3;
+
+            while (rx < l.at + l.hw - 1) : (rx += 4) put(b, .guardrail, rx, sd * (edge - 0.5), 0);
+        }
+
+        for (zs) |l| {
+            if (l.kind != .alley) continue;
+
+            put(b, .guardrail, sd * (edge - 0.5), l.at, hp);
+        }
+    }
+
     for (xs) |lx| {
         for (zs) |lz| {
             if (lx.kind != .alley and lz.kind != .alley) continue;
@@ -924,9 +948,11 @@ fn poles(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, along_z: bool) void {
     const len = if (along_z) z1 - z0 else x1 - x0;
     var a: f32 = 0;
 
-    while (a <= len) : (a += 8.19) {
+    while (a <= len) : (a += 16.38) {
         const x = if (along_z) x0 else x0 + a;
         const z = if (along_z) z0 + a else z0;
+
+        if (underBridge(x, z)) continue;
 
         if (near(if (along_z) z else x, if (along_z) &zs else &xs)) |s| {
             if (s.kind != .edge and s.kind != .alley) continue;
@@ -945,6 +971,8 @@ fn lamps(b: *Builder, x0: f32, z0: f32, x1: f32, z1: f32, along_z: bool) void {
         const z = if (along_z) z0 + a else z0;
 
         if (near(if (along_z) z else x, if (along_z) &zs else &xs) != null) continue;
+
+        if (underBridge(x, z)) continue;
 
         put(b, .lamp, x, z, if (along_z) -hp else pi);
     }
@@ -1001,48 +1029,43 @@ fn footbridge(b: *Builder, x: f32) void {
 }
 
 fn avenue(b: *Builder) void {
-    footbridge(b, -75);
-    footbridge(b, 75);
+    for (bridge_at) |bx| footbridge(b, bx);
 
-    for ([_]f32{ -38, -26 }) |sx| {
+    for ([_]f32{ -64, -56 }) |sx| {
         put(b, .bench, sx, 10.4, pi);
         put(b, .bin, sx + 2, 10.6, 0);
     }
 
-    put(b, .kanji, -32, 10.6, 0);
-    put(b, .guardrail, -60, -7, hp);
-    put(b, .guardrail, 96, 7.2, -hp);
-    put(b, .guardrail, -110, 7, -hp);
-    put(b, .guardrail, -3.5, -60, pi);
-    put(b, .guardrail, 3.5, 120, 0);
-    put(b, .ramen, 20, 11.5, pi);
-    put(b, .ramen, -96, -11.5, 0);
+    put(b, .kanji, -60, 10.6, 0);
+    put(b, .ramen, 50, 11.5, pi);
+    put(b, .ramen, -48, -11.5, 0);
     put(b, .postbox, 9, 12, 0);
     put(b, .postbox, -9, -12, 0);
-
-    for ([_]f32{ -140, -60, 40, 130 }) |cx| {
-        put(b, .cone, cx, -6, 0);
-        put(b, .cone, cx + 1.5, -6.4, 0);
-    }
 }
 
 fn perimeter(b: *Builder) void {
-    var a: f32 = -t.half + 3;
+    const near_ring = t.play + 1;
+    var a: f32 = -near_ring - 9;
 
-    while (a < t.half - 3) : (a += 4.2) {
+    while (a < near_ring + 9) : (a += 4.2) {
         for ([_]f32{ -1, 1 }) |s| {
-            const off = edge + 6 + b.rng.range(0, 18);
+            const off = near_ring + 2 + b.rng.range(0, 8);
 
-            if (b.rng.next() < 0.5) put(b, .bush, a + jitter(b, 2), s * (edge + 5 + b.rng.range(0, 14)), b.rng.range(0, 6));
-            if (b.rng.next() < 0.5) put(b, .bush, s * (edge + 5 + b.rng.range(0, 14)), a + jitter(b, 2), b.rng.range(0, 6));
+            if (b.rng.next() < 0.5) put(b, .bush, a + jitter(b, 2), s * (near_ring + b.rng.range(0, 6)), b.rng.range(0, 6));
+            if (b.rng.next() < 0.5) put(b, .bush, s * (near_ring + b.rng.range(0, 6)), a + jitter(b, 2), b.rng.range(0, 6));
 
             put(b, if (b.rng.next() < 0.5) .tree else .cherry, a + jitter(b, 2), s * off, b.rng.range(0, 6));
             put(b, if (b.rng.next() < 0.5) .tree else .maple, s * off, a + jitter(b, 2), b.rng.range(0, 6));
         }
     }
 
-    for ([_][3]f32{ .{ -120, 166, 0 }, .{ -40, 168, 0 }, .{ 60, 165, 0 }, .{ 140, 168, 0 }, .{ -166, -60, hp }, .{ -168, 80, hp }, .{ 166, -100, -hp }, .{ 168, 30, -hp }, .{ 20, -166, pi }, .{ -100, -168, pi }, .{ 110, -166, pi } }) |p| {
-        b.putAt(kit.of(.tower), vec(p[0], t.height(p[0], p[1]), p[1]), p[2], 1.2);
+    const far = t.play + 10;
+
+    for ([_][3]f32{ .{ -0.6, 1, 0 }, .{ 0.5, 1, 0 }, .{ -1, -0.3, hp }, .{ -1, 0.7, hp }, .{ 1, -0.6, -hp }, .{ 1, 0.4, -hp }, .{ 0.2, -1, pi }, .{ -0.7, -1, pi } }) |p| {
+        const x = p[0] * far;
+        const z = p[1] * far;
+
+        b.putAt(kit.of(.tower), vec(x, t.height(x, z), z), p[2], 1.2);
     }
 }
 

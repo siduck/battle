@@ -12,6 +12,7 @@ const world = shared.world;
 const terrain = shared.terrain;
 const vehicle = shared.vehicle;
 const driving = @import("driving.zig");
+const vehicleart = @import("vehicleart.zig");
 const air = @import("air.zig");
 
 var pieces: []const map.Piece = &.{};
@@ -86,6 +87,7 @@ fn bounds() f32 {
 }
 const pickup_reach: f32 = 2.2;
 const spot_respawn: f32 = 30;
+const step_threshold: f32 = 0.1;
 pub const gun_slots = 4;
 pub const knife_slot = gun_slots;
 
@@ -468,12 +470,17 @@ pub const Arsenal = struct {
     }
 };
 
+const scope_look: f32 = 0.79;
+const burst_gap: f32 = 0.07;
+
 pub const Game = struct {
     prng: std.Random.DefaultPrng,
     time: f32 = 0,
     player: movement.Player,
     prev_pos: Vec3,
     accumulator: f32 = 0,
+    step_offset: f32 = 0,
+    jump_latch: bool = false,
     yaw: f32,
     pitch: f32 = 0,
     recoil: f32 = 0,
@@ -571,14 +578,26 @@ pub const Game = struct {
         };
     }
 
+    pub fn magnified(g: Game) bool {
+        return weapons.magnified(g.arsenal.spec().look.optic);
+    }
+
+    fn scopeTrim(g: Game) f32 {
+        if (!g.magnified()) return 1;
+
+        return 1 + (scope_look - 1) * g.ads;
+    }
+
     pub fn currentZoom(g: Game) f32 {
+        if (!g.magnified()) return g.arsenal.spec().ads_zoom;
+
         return @min(2 + 2 * @as(f32, @floatFromInt(g.scope_level)), g.maxZoom());
     }
 
     pub fn scopeMultiplier(g: Game) f32 {
         if (!g.hasScope()) return 1;
 
-        return g.currentZoom() / 2;
+        return @max(1, g.currentZoom() / 2);
     }
 
     pub fn hasScope(g: Game) bool {
@@ -592,13 +611,23 @@ pub const Game = struct {
     }
 
     pub fn scoped(g: Game) bool {
-        return g.hasScope() and g.ads > 0.85;
+        return g.zooming() and g.currentZoom() >= 4;
+    }
+
+    pub fn zooming(g: Game) bool {
+        return g.hasScope() and g.magnified() and g.ads > 0.85;
+    }
+
+    pub fn aimSpread(g: Game) f32 {
+        const moving = math.clamp01(g.player.vel.flatLength() / movement.walk_speed);
+
+        return weapons.spreadFor(g.arsenal.spec(), g.ads, moving, g.player.grounded);
     }
 
     pub fn look(g: *Game, dx: f32, dy: f32, sensitivity: f32) void {
         if (g.dead > 0) return;
 
-        const s = sensitivity / g.zoom();
+        const s = sensitivity / g.zoom() * g.scopeTrim();
 
         g.yaw -= dx * s;
         g.pitch = std.math.clamp(g.pitch - dy * s, -1.5, 1.5);
@@ -607,13 +636,13 @@ pub const Game = struct {
     pub fn turn(g: *Game, dyaw: f32, dpitch: f32) void {
         if (g.dead > 0) return;
 
-        const z = g.zoom();
+        const s = g.scopeTrim() / g.zoom();
 
-        g.yaw += dyaw / z;
-        g.pitch = std.math.clamp(g.pitch + dpitch / z, -1.5, 1.5);
+        g.yaw += dyaw * s;
+        g.pitch = std.math.clamp(g.pitch + dpitch * s, -1.5, 1.5);
     }
 
-    pub fn aimAssist(g: *Game, dt: f32, look_input: f32, move_input: f32, aim_started: bool) f32 {
+    pub fn aimAssist(g: *Game, dt: f32, look_input: f32, move_input: f32, aim_started: bool, follow: f32) f32 {
         if (g.dead > 0 or g.arsenal.spec().fire == .melee) {
             g.assist.target = null;
 
@@ -673,8 +702,8 @@ pub const Game = struct {
         const same = if (g.assist.target) |t| t == index else false;
 
         if (same and (look_input > 0.05 or move_input > 0.1) and best_angle < best_cone * 1.8) {
-            g.yaw += wrapAngle(best_yaw - g.assist.last_yaw) * 0.45;
-            g.pitch += (best_pitch - g.assist.last_pitch) * 0.45;
+            g.yaw += wrapAngle(best_yaw - g.assist.last_yaw) * follow;
+            g.pitch += (best_pitch - g.assist.last_pitch) * follow;
         }
 
         g.assist.target = index;
@@ -689,10 +718,12 @@ pub const Game = struct {
     pub fn simulate(g: *Game, frame_dt: f32, c: Controls) void {
         const alive = g.dead <= 0;
         const guard: f32 = if (g.meleeBlocking()) 0.5 else 1;
-        const input: movement.Input = .{
+        g.jump_latch = alive and (g.jump_latch or c.jump);
+
+        var input: movement.Input = .{
             .forward = if (alive) c.forward * guard else 0,
             .right = if (alive) c.right * guard else 0,
-            .jump = alive and c.jump,
+            .jump = g.jump_latch,
             .aiming = g.ads > 0.5,
             .sprint = alive and c.sprint,
             .yaw = g.yaw,
@@ -703,7 +734,10 @@ pub const Game = struct {
         while (g.accumulator >= movement.dt) {
             g.prev_pos = g.player.pos;
 
-            if (air.flying()) air.tick(g, c) else if (driving.driving()) driving.tick(g, c) else movement.step(&g.player, input, pieces);
+            if (air.flying()) air.tick(g, c) else if (driving.driving()) driving.tick(g, c) else g.walk(input);
+
+            input.jump = alive and c.jump;
+            g.jump_latch = false;
 
             if (!air.flying()) air.tick(g, .{});
 
@@ -729,6 +763,22 @@ pub const Game = struct {
         if (g.player.pos.y < movement.kill_y) g.respawn();
     }
 
+    fn walk(g: *Game, input: movement.Input) void {
+        const was = g.player.grounded;
+        const from = g.player.pos.y;
+
+        movement.step(&g.player, input, pieces);
+
+        const rise = g.player.pos.y - from;
+
+        const run = g.player.vel.flatLength() * movement.dt;
+
+        if (was and g.player.grounded and @abs(rise) > @max(step_threshold, run * 1.3)) {
+            g.prev_pos.y += rise;
+            g.step_offset = std.math.clamp(g.step_offset + rise, -movement.step_height, movement.step_height);
+        }
+    }
+
     pub fn view(g: Game) View {
         if (air.view(g)) |v| return v;
 
@@ -741,7 +791,7 @@ pub const Game = struct {
         const forward = math.lookDir(g.yaw + g.recoil_yaw + g.sway_x + shake[0], pitch);
         const right = forward.cross(math.up).normalize();
         const up = right.cross(forward);
-        const eye = pos.add(.{ .y = movement.eye_height });
+        const eye = pos.add(.{ .y = movement.eye_height - g.step_offset });
         const side = 0.17 * (1 - g.ads);
         const reach = 0.32 + g.arsenal.spec().reach();
 
@@ -762,6 +812,7 @@ pub const Game = struct {
         g.since_hurt += dt;
         g.recoil *= @exp(-dt * 6);
         g.recoil_yaw *= @exp(-dt * 6);
+        g.step_offset *= @exp(-dt * 14);
 
         g.tracers.age(dt);
         g.impacts.age(dt);
@@ -794,7 +845,7 @@ pub const Game = struct {
 
             if (c.interact) g.pickUp();
 
-            if (air.flying()) {} else if (driving.inTank(g)) driving.tankFire(g, c) else g.updateArsenal(dt, c, v);
+            if (!air.flying()) g.updateArsenal(dt, c, v);
             g.updateFireball(dt, c, v);
         }
 
@@ -811,11 +862,11 @@ pub const Game = struct {
     fn updateScope(g: *Game, dt: f32, c: Controls) void {
         const scoped_in = g.scoped();
 
-        if (!g.hasScope()) g.scope_level = 0;
+        if (!g.hasScope() or !g.magnified()) g.scope_level = 0;
 
-        if (g.currentZoom() < 2 + 2 * @as(f32, @floatFromInt(g.scope_level))) g.scope_level = @intFromFloat((g.maxZoom() - 2) / 2);
+        if (g.magnified() and g.currentZoom() < 2 + 2 * @as(f32, @floatFromInt(g.scope_level))) g.scope_level = @intFromFloat((g.maxZoom() - 2) / 2);
 
-        if (scoped_in and c.zoom_step != 0) {
+        if (g.zooming() and c.zoom_step != 0) {
             const next = @as(i32, g.scope_level) + c.zoom_step;
 
             const levels: i32 = @intFromFloat((g.maxZoom() - 2) / 2);
@@ -918,7 +969,7 @@ pub const Game = struct {
     fn updateArsenal(g: *Game, dt: f32, c: Controls, v: View) void {
         const a = &g.arsenal;
 
-        a.cooldown = @max(0, a.cooldown - dt);
+        a.cooldown = weapons.cool(a.cooldown, dt);
         a.kick = @max(0, a.kick - dt * 8);
         a.swing = @max(0, a.swing - dt);
         a.flash = @max(0, a.flash - dt);
@@ -935,7 +986,7 @@ pub const Game = struct {
         const charging = spec.charge > 0 and a.charge > 0;
         const aim_target: f32 = if ((c.aim or (charging and spec.class == .bow)) and spec.fire != .melee and a.switching <= 0 and a.reloading <= 0) 1 else 0;
 
-        g.ads = math.approach(g.ads, aim_target, dt * (if (aim_target > 0) @as(f32, 6) else @as(f32, 9)));
+        g.ads = math.approach(g.ads, aim_target, dt * 9);
 
         if (a.switching > 0) {
             a.switching -= dt;
@@ -998,12 +1049,15 @@ pub const Game = struct {
         }
 
         if (a.burst_left > 0) {
-            a.burst_timer -= dt;
+            a.burst_timer = weapons.cool(a.burst_timer, dt);
 
             if (a.burst_timer <= 0 and held.mag > 0) {
+                const late = a.burst_timer;
+
                 g.shoot(v, spec, held, 1);
                 a.burst_left -= 1;
-                a.burst_timer = 0.07;
+                a.burst_timer = weapons.rearm(late, burst_gap);
+                a.cooldown = weapons.rearm(late, spec.interval);
             }
 
             if (held.mag == 0) a.burst_left = 0;
@@ -1066,11 +1120,13 @@ pub const Game = struct {
             return;
         }
 
+        const late = a.cooldown;
+
         g.shoot(v, spec, held, 1);
 
         if (spec.burst > 1) {
             a.burst_left = spec.burst - 1;
-            a.burst_timer = 0.07;
+            a.burst_timer = weapons.rearm(late, burst_gap);
         }
     }
 
@@ -1080,7 +1136,7 @@ pub const Game = struct {
 
         held.mag -= 1;
         g.shots +%= 1;
-        a.cooldown = spec.interval;
+        a.cooldown = weapons.rearm(a.cooldown, spec.interval);
         a.kick = 1;
         a.flash = if (spec.class == .bow or spec.class == .crossbow) 0 else 0.05;
         g.recoil += spec.recoil * (1 - 0.4 * g.ads);
@@ -1123,9 +1179,7 @@ pub const Game = struct {
     }
 
     fn fireHitscan(g: *Game, v: View, spec: weapons.Spec, damage: f32) void {
-        const moving = math.clamp01(g.player.vel.flatLength() / 7);
-        const airborne: f32 = if (g.player.grounded) 0 else 0.02;
-        const spread = spec.spread + (spec.ads_spread - spec.spread) * g.ads + (moving * 0.015 + airborne) * (1 - g.ads);
+        const spread = g.aimSpread();
         var pellet: u8 = 0;
 
         while (pellet < spec.pellets) : (pellet += 1) {
@@ -2505,12 +2559,61 @@ pub const Game = struct {
         const fwd = math.flatDir(g.yaw);
         const at = g.player.pos.add(fwd.scale(6.5));
 
+        if (index >= g.vehicles.len) return;
+
         g.wave_break = 1e9;
 
         for (&g.vehicles) |*v| v.pos = v.pos.add(.{ .y = -50 });
 
         g.vehicles[index] = vehicle.spawn(@intCast(index), .{ .x = at.x, .y = terrain.height(at.x, at.z), .z = at.z }, g.yaw + 2.3);
         vehicle.settle(&g.vehicles[index], world.pieces);
+    }
+
+    pub fn vehicleTest(g: *Game) void {
+        const fwd = math.flatDir(g.yaw);
+        const side = fwd.cross(math.up);
+
+        for ([_]f32{ 14, 18, 22, 26, 10, 30 }) |ahead| {
+            for ([_]f32{ 0, 6, -6, 12, -12 }) |shift| {
+                if (g.placeTestRow(g.player.pos.add(fwd.scale(ahead)).add(side.scale(shift)), side)) return;
+            }
+        }
+
+        _ = g.placeTestRow(g.player.pos.add(fwd.scale(14)), side);
+    }
+
+    fn placeTestRow(g: *Game, base: Vec3, side: Vec3) bool {
+        var clear = true;
+
+        for (&g.vehicles, 0..) |*v, kind| {
+            const fk: f32 = @floatFromInt(kind);
+            const at = base.add(side.scale((fk - 1) * 9));
+
+            v.* = vehicle.spawn(@intCast(kind), .{ .x = at.x, .y = terrain.height(at.x, at.z), .z = at.z }, g.yaw + std.math.pi * 0.5);
+            vehicle.settle(v, world.pieces);
+            v.home = v.pos;
+
+            if (!driving.clearOfProps(v.*) or @abs(v.pos.y - at.y) > 0.6) clear = false;
+        }
+
+        return clear;
+    }
+
+    pub fn vehicleCamera(g: *Game, kind: u8) void {
+        if (kind >= g.vehicles.len) return;
+
+        const v = g.vehicles[kind];
+        const b = vehicleart.bodyBasis(v);
+        const s = v.spec();
+        const target = v.pos.add(.{ .y = s.height * 0.45 });
+        const eye = v.pos.add(b.x.scale(6.8 * 0.5)).add(b.z.scale(8.8 * 0.5)).add(.{ .y = 4.3 * 0.5 });
+        const d = target.sub(eye);
+
+        g.player.pos = eye.sub(.{ .y = movement.eye_height });
+        g.prev_pos = g.player.pos;
+        g.yaw = std.math.atan2(d.x, d.z);
+        g.pitch = std.math.atan2(d.y, @sqrt(d.x * d.x + d.z * d.z));
+        g.wave_break = 1e9;
     }
 
     pub fn garage(g: *Game, start: usize) void {
@@ -2529,8 +2632,7 @@ pub const Game = struct {
             }
 
             const fi: f32 = @floatFromInt(i - start);
-            const gap: f32 = if (v.spec().class == .car) 5.4 else 3.2;
-            const at = base.add(side.scale((fi - 2) * gap));
+            const at = base.add(side.scale((fi - 1) * 5.4));
 
             v.* = vehicle.spawn(@intCast(i), .{ .x = at.x, .y = terrain.height(at.x, at.z), .z = at.z }, g.yaw + std.math.pi + 0.7);
             vehicle.settle(v, world.pieces);
@@ -2628,7 +2730,7 @@ pub const Game = struct {
             const z = std.math.clamp(g.player.pos.z + @cos(ang) * dist, -bounds(), bounds());
             const p: Vec3 = .{ .x = x, .y = terrain.height(x, z), .z = z };
 
-            if (movement.solidAt(pieces, p) or p.y < movement.kill_y + 6) continue;
+            if (movement.solidAt(pieces, p) or movement.adrift(pieces, p) or p.y < movement.kill_y + 6) continue;
 
             at = p;
 
@@ -2713,6 +2815,8 @@ pub const Game = struct {
 
         g.player = movement.Player.spawn(world.spawns[best]);
         g.prev_pos = g.player.pos;
+        g.step_offset = 0;
+        g.jump_latch = false;
         g.yaw = world.spawn_yaws[best];
         g.pitch = 0;
         g.recoil = 0;

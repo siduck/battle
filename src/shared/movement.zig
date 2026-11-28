@@ -2,6 +2,7 @@ const math = @import("math.zig");
 const geom = @import("geom.zig");
 const map = @import("map.zig");
 const terrain = @import("terrain.zig");
+const registry = @import("maps/registry.zig");
 const grid = @import("grid.zig");
 
 const Vec3 = math.Vec3;
@@ -14,16 +15,16 @@ pub const height: f32 = 1.7;
 pub const eye_height: f32 = 1.55;
 pub const step_height: f32 = 0.55;
 
-const walk_speed: f32 = 7;
-const ads_speed: f32 = 4.2;
-const sprint_speed: f32 = 10.5;
-const ground_accel: f32 = 75;
-const air_accel: f32 = 28;
+pub const walk_speed: f32 = 5.8;
+const sprint_speed: f32 = 8;
+const ground_accel: f32 = 120;
+const air_accel: f32 = 70;
 const air_drag: f32 = 0.35;
 const gravity: f32 = 22;
 const jump_speed: f32 = 8.2;
 const max_fall: f32 = 45;
-const snap_distance: f32 = 0.4;
+const snap_distance: f32 = step_height;
+const coyote_time: f32 = 0.1;
 const skin: f32 = 0.002;
 pub const kill_y: f32 = -20;
 
@@ -41,6 +42,7 @@ pub const Player = struct {
     pos: Vec3,
     vel: Vec3 = .{},
     grounded: bool = false,
+    coyote: f32 = 0,
 
     pub fn spawn(at: Vec3) Player {
         return .{ .pos = at };
@@ -95,6 +97,13 @@ fn groundUnder(pieces: []const map.Piece, pos: Vec3, max_top: f32) f32 {
     return best;
 }
 
+pub fn adrift(pieces: []const map.Piece, pos: Vec3) bool {
+    const def = registry.current() orelse return false;
+    const water = def.water orelse return false;
+
+    return water(pos.x, pos.z) and groundUnder(pieces, pos, pos.y + step_height) <= terrain.height(pos.x, pos.z) + 0.2;
+}
+
 fn ceilingAbove(pieces: []const map.Piece, pos: Vec3) f32 {
     var lowest: f32 = 1e9;
     const head = pos.y + height;
@@ -147,6 +156,8 @@ fn pushOut(p: *Player, piece: map.Piece, along_x: bool, delta: f32) void {
 fn moveHorizontal(p: *Player, pieces: []const map.Piece, along_x: bool, delta: f32) void {
     if (delta == 0) return;
 
+    const from = p.pos;
+
     if (along_x) p.pos.x += delta else p.pos.z += delta;
 
     var near = grid.rect(pieces, geom.Rect.around(p.pos, radius + 1));
@@ -157,6 +168,12 @@ fn moveHorizontal(p: *Player, pieces: []const map.Piece, along_x: bool, delta: f
 
         pushOut(p, piece, along_x, delta);
     }
+
+    if (!adrift(pieces, p.pos) or adrift(pieces, from)) return;
+
+    p.pos = from;
+
+    if (along_x) p.vel.x = 0 else p.vel.z = 0;
 }
 
 pub fn step(p: *Player, input: Input, pieces: []const map.Piece) void {
@@ -166,7 +183,7 @@ pub fn step(p: *Player, input: Input, pieces: []const map.Piece) void {
 
     if (wish.length() > 1) wish = wish.normalize();
 
-    const speed = if (input.aiming) ads_speed else if (input.sprint and input.forward > 0.3) sprint_speed else walk_speed;
+    const speed = if (!input.aiming and input.sprint and input.forward > 0.3) sprint_speed else walk_speed;
     const target = wish.scale(speed);
     const accel = if (p.grounded) ground_accel else air_accel;
     const was_grounded = p.grounded;
@@ -183,7 +200,12 @@ pub fn step(p: *Player, input: Input, pieces: []const map.Piece) void {
         p.vel.z = pushed.z * @min(1, keep);
     }
 
-    if (input.jump and p.grounded) p.vel.y = jump_speed;
+    const jumping = input.jump and (p.grounded or p.coyote > 0) and p.vel.y <= 0.001;
+
+    if (jumping) {
+        p.vel.y = jump_speed;
+        p.coyote = 0;
+    }
 
     p.vel.y = @max(p.vel.y - gravity * dt, -max_fall);
     p.grounded = false;
@@ -222,7 +244,7 @@ pub fn step(p: *Player, input: Input, pieces: []const map.Piece) void {
             p.pos.y = ground;
             p.vel.y = 0;
             p.grounded = true;
-        } else if (was_grounded and !input.jump and p.pos.y - ground <= snap_distance) {
+        } else if (was_grounded and !jumping and p.pos.y - ground <= snap_distance) {
             p.pos.y = ground;
             p.vel.y = 0;
             p.grounded = true;
@@ -230,12 +252,17 @@ pub fn step(p: *Player, input: Input, pieces: []const map.Piece) void {
             p.pos.y = next;
         }
     }
+
+    if (p.grounded) p.coyote = coyote_time else if (!jumping) p.coyote = @max(0, p.coyote - dt);
 }
 
 pub fn launch(p: *Player, impulse: Vec3) void {
     p.vel = p.vel.add(impulse);
 
-    if (impulse.y > 0) p.grounded = false;
+    if (impulse.y > 0) {
+        p.grounded = false;
+        p.coyote = 0;
+    }
 }
 
 pub fn raycast(pieces: []const map.Piece, origin: Vec3, dir: Vec3, max_t: f32) ?geom.Hit {

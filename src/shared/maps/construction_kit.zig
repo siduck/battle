@@ -73,7 +73,7 @@ pub const table = [_]api.Info{
     .{ .file = "construction/box_blue.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -3.030, 0.000, -1.220 }, .max = .{ 3.060, 2.590, 1.220 } },
     .{ .file = "construction/box_green.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -3.030, 0.000, -1.220 }, .max = .{ 3.060, 2.590, 1.220 } },
     .{ .file = "construction/box_office.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -3.030, 0.000, -1.260 }, .max = .{ 3.060, 2.590, 1.250 } },
-    .{ .file = "construction/pipes.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -2.000, -0.600, -3.615 }, .max = .{ 2.000, 1.680, 0.880 } },
+    .{ .file = "construction/pipes.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -1.820, 0.000, -1.200 }, .max = .{ 1.820, 2.190, 1.170 } },
     .{ .file = "construction/drums.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -1.100, 0.000, -1.100 }, .max = .{ 1.100, 1.020, 1.100 } },
     .{ .file = "construction/spool.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -0.700, 0.000, -0.850 }, .max = .{ 0.700, 1.700, 0.850 } },
     .{ .file = "construction/silo.glb", .scale = 1.00, .collide = .none, .group = .building, .foliage = false, .min = .{ -1.650, 0.000, -1.650 }, .max = .{ 1.650, 14.300, 1.750 } },

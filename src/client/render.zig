@@ -29,7 +29,7 @@ const Game = game_mod.Game;
 const View = game_mod.View;
 const Models = models_mod.Models;
 
-pub var base_fov: f32 = 74;
+pub var base_fov: f32 = 80;
 
 pub fn camera(g: Game, v: View) rl.Camera3D {
     return .{
@@ -117,7 +117,7 @@ fn mixPose(a: SwordPose, b: SwordPose, t: f32) SwordPose {
 
 fn swordPose(g: Game, v: View) Pose {
     const m = g.melee_state;
-    const moving = math.clamp01(g.player.vel.flatLength() / 7);
+    const moving = math.clamp01(g.player.vel.flatLength() / movement.walk_speed);
     var p = sword_idle;
     var reach: f32 = 0.42;
 
@@ -165,14 +165,14 @@ fn swordPose(g: Game, v: View) Pose {
 }
 
 fn gunPose(g: Game, v: View, top: ?f32) ?Pose {
-    if (g.scoped() or g.dead > 0) return null;
+    if (g.dead > 0) return null;
 
     if (g.arsenal.spec().class == .melee) return swordPose(g, v);
 
     const a = g.arsenal;
     const spec = a.spec();
     const ads = g.ads;
-    const moving = math.clamp01(g.player.vel.flatLength() / 7) * (1 - ads);
+    const moving = math.clamp01(g.player.vel.flatLength() / movement.walk_speed) * (1 - ads);
     const bob_x = @sin(g.bob) * 0.008 * moving;
     const bob_y = @abs(@cos(g.bob)) * 0.008 * moving;
     var down = -0.165 + (0.165 + adsDrop(spec, top)) * ads + bob_y;
@@ -263,6 +263,7 @@ pub var l_off: Vec3 = .{};
 pub var vm_reach: f32 = 0;
 pub var scope_eyepiece: ?f32 = null;
 var optic_see_through = false;
+var aim_optic: ?gunart.Mount = null;
 pub var scope_relief: f32 = 0.1;
 pub var vm_down: f32 = 0;
 pub var l_roll: f32 = 0;
@@ -282,7 +283,7 @@ const skin_colors = [_][3]rl.Color{
 };
 
 fn drawSkinned(r: *gfx.Renderer, model: rl.Model, transform: rl.Matrix, weapon: u8) void {
-    const tier = @intFromEnum(skin);
+    const tier = @backingInt(skin);
 
     if (tier < 9 or r.phase != .main) return r.drawModel(model, transform);
 
@@ -328,29 +329,6 @@ pub fn drawGun(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.co
     drawOptic(r, art, origin, basis, s);
 }
 
-fn adsGloves(r: *gfx.Renderer, models: *const Models, v: View, pose: Pose, pistol: bool) void {
-    const down = v.up.neg();
-    const gr = if (pistol)
-        v.eye.add(v.forward.scale(ads_r[0])).add(down.scale(ads_r[1] + 0.01)).add(v.right.scale(0.0))
-    else
-        v.eye.add(v.forward.scale(ads_r[0])).add(down.scale(ads_r[1])).add(v.right.scale(ads_r[2]));
-    const er = gr.add(down.scale(0.3)).add(v.forward.scale(-0.12)).add(v.right.scale(0.12));
-
-    limb(r, models.block_sleeve, gr.add(er.sub(gr).normalize().scale(0.03)), er, 0.04);
-    r.draw(models.block_glove, mesh.transform(gr, pose.basis, ads_r[3]), false);
-
-    if (pistol) return;
-
-    const gl = v.eye.add(v.forward.scale(ads_l[0])).add(down.scale(ads_l[1])).add(v.right.scale(ads_l[2]));
-    const el = gl.add(down.scale(0.4)).add(v.forward.scale(-0.1)).add(v.right.scale(-0.14));
-
-    limb(r, models.block_sleeve, gl.add(el.sub(gl).normalize().scale(0.03)), el, 0.042);
-    r.draw(models.block_glove, mesh.transform(gl, pose.basis, ads_l[3]), false);
-}
-
-pub var ads_r = [4]f32{ 0.22, 0.1, 0.04, 0.8 };
-pub var ads_l = [4]f32{ 0.32, 0.12, -0.085, 0.85 };
-
 fn scopeSetup(art: gunart.Art) void {
     scope_eyepiece = null;
 
@@ -363,7 +341,7 @@ fn scopeSetup(art: gunart.Art) void {
 }
 
 fn drawOptic(r: *gfx.Renderer, art: gunart.Art, origin: Vec3, basis: Basis, s: f32) void {
-    const o = art.optic orelse return;
+    const o = aim_optic orelse art.optic orelse return;
 
     if (o.kind == gunart.none) return;
 
@@ -519,12 +497,6 @@ fn arms(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.count]gun
 
         r.setSurface(.{ .roughness = 0.9 });
 
-        if (g.ads > 0.3 and spec.class != .melee and spec.class != .crossbow) {
-            adsGloves(r, models, v, pose, spec.class == .pistol);
-
-            return;
-        }
-
         limb(r, models.block_sleeve, gr.add(er.sub(gr).normalize().scale(0.05)), er, 0.06);
         r.draw(models.block_glove, mesh.transform(gr, pose.basis, kb * 1.2), false);
 
@@ -673,6 +645,32 @@ fn indoors(eye: Vec3) bool {
     return shared.terrain.current == .facility and @abs(eye.x) < 56 and @abs(eye.z) < 44 and eye.y < 17;
 }
 
+pub const Panorama = View;
+
+pub fn panorama(r: *gfx.Renderer, set: models_mod.Scenery, scenery: *propart.Props, v: View) void {
+    r.ambientBoost(1);
+    r.setDetailMode(0);
+    r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
+    r.setPropDetail(true);
+    scenery.draw(r, v.eye, v.forward);
+    r.setPropDetail(false);
+    r.setSurface(.{ .roughness = 1, .metallic = 0 });
+    r.draw(set.world, mesh.identity, true);
+
+    for (models_mod.extraMeshes()) |em| r.draw(em, mesh.identity, true);
+
+    drawChunks(r, v);
+    r.setDetailMode(0);
+    r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
+    r.setPropDetail(true);
+    scenery.drawFootings(r, v.eye, v.forward);
+    r.setPropDetail(false);
+    r.setSurface(.{ .roughness = 1, .metallic = 0 });
+    r.draw(set.backdrop, mesh.identity, false);
+    r.drawSky();
+    scenery.drawGlass(r, v.eye, v.forward);
+}
+
 pub var clean_shot = false;
 
 pub var part_ms: [7]f32 = @splat(0);
@@ -713,6 +711,15 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     for (models_mod.extraMeshes()) |em| r.draw(em, mesh.identity, true);
 
     if (shared.terrain.current != .courtyard and on(2)) drawChunks(r, v);
+
+    if (on(4)) {
+        r.setDetailMode(0);
+        r.setSurface(.{ .roughness = 0.9, .metallic = 0 });
+        r.setPropDetail(true);
+        scenery.drawFootings(r, v.eye, v.forward);
+        r.setPropDetail(false);
+    }
+
     mark(1);
     r.setDetailMode(0);
     r.setSurface(.{ .roughness = 0.5 });
@@ -732,7 +739,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
         drawGun(r, models, arts, d.held.weapon, d.pos.add(bob), Basis.yawed(d.phase), 1.6);
         skin = .common;
 
-        if (near) r.draw(models.beams[@intFromEnum(d.held.rarity)], mesh.transform(d.pos, Basis.world, 1), false);
+        if (near) r.draw(models.beams[@backingInt(d.held.rarity)], mesh.transform(d.pos, Basis.world, 1), false);
     }
 
     for (g.pickups.items) |p| {
@@ -753,6 +760,8 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     vehicleart.eye = v.eye;
 
     for (g.vehicles) |car| {
+        if (!on(1024)) break;
+
         const to = car.pos.sub(v.eye);
         const dist = to.length();
         const limit: f32 = if (r.phase == .shadow) 45 else 220;
@@ -768,30 +777,28 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     r.setSheen(0);
 
     if (driving.current(&g)) |car| {
-        if (car.spec().class != .tank) {
-            const alpha = g.accumulator / movement.dt;
-            const basis = vehicleart.bodyBasis(car);
-            const aiming = g.ads > 0.3 or g.arsenal.flash > 0 or driving.lean > 0.3;
-            const s = car.spec();
-            const drop: f32 = if (s.class == .car) 0.82 else 0.5;
-            var seat_at = vehicleart.seatPoint(car, alpha);
-            var body = basis;
+        const alpha = g.accumulator / movement.dt;
+        const basis = vehicleart.bodyBasis(car);
+        const aiming = g.ads > 0.3 or g.arsenal.flash > 0 or driving.lean > 0.3;
+        const s = car.spec();
+        const drop: f32 = 0.82;
+        var seat_at = vehicleart.seatPoint(car, alpha);
+        var body = basis;
 
-            if (s.class == .car and driving.lean > 0.01) {
-                const k = driving.lean;
-                const k2 = k * k * (3 - 2 * k);
-                const side: f32 = if (v.forward.dot(basis.x) < -0.15) -1 else 1;
-                const out = side * (s.width * 0.5 + 0.05) - 0.36;
-                const flat = Vec3{ .x = v.forward.x, .z = v.forward.z };
-                const turn = std.math.atan2(flat.dot(basis.x), flat.dot(basis.z));
+        if (driving.lean > 0.01) {
+            const k = driving.lean;
+            const k2 = k * k * (3 - 2 * k);
+            const side: f32 = if (v.forward.dot(basis.x) < -0.15) -1 else 1;
+            const out = side * (s.width * 0.5 + 0.05) - 0.36;
+            const flat = Vec3{ .x = v.forward.x, .z = v.forward.z };
+            const turn = std.math.atan2(flat.dot(basis.x), flat.dot(basis.z));
 
-                seat_at = seat_at.add(basis.x.scale(out * k2)).add(basis.y.scale(0.42 * k2));
-                body = rotateBasis(body, basis.z, -side * 0.55 * k2);
-                body = rotateBasis(body, basis.y, -turn * 0.7 * k2);
-            }
-
-            soldier.drawRider(r, rig, kit, models, arts, seat_at, body, drop, g.arsenal.current().weapon, if (aiming) v.forward else null, g.arsenal.flash / 0.05, dt);
+            seat_at = seat_at.add(basis.x.scale(out * k2)).add(basis.y.scale(0.42 * k2));
+            body = rotateBasis(body, basis.z, -side * 0.55 * k2);
+            body = rotateBasis(body, basis.y, -turn * 0.7 * k2);
         }
+
+        soldier.drawRider(r, rig, kit, models, arts, seat_at, body, drop, g.arsenal.current().weapon, if (aiming) v.forward else null, g.arsenal.flash / 0.05, dt);
     }
 
     for (g.bots.items) |b| {
@@ -802,13 +809,8 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
         if (k >= g.vehicles.len) continue;
 
         const car = g.vehicles[k];
-        const s = car.spec();
 
-        if (s.class == .tank) continue;
-
-        const drop: f32 = if (s.class == .car) 0.82 else 0.5;
-
-        soldier.drawRider(r, rig, kit, models, arts, vehicleart.seatPoint(car, 1), vehicleart.bodyBasis(car), drop, b.weapon, null, 0, 0);
+        soldier.drawRider(r, rig, kit, models, arts, vehicleart.seatPoint(car, 1), vehicleart.bodyBasis(car), 0.82, b.weapon, null, 0, 0);
     }
 
     r.setSurface(.{ .roughness = 0.7 });
@@ -853,9 +855,13 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
     r.setSurface(.{ .roughness = 0.5, .metallic = 0.08 });
 
     const held_art = arts[g.arsenal.current().weapon];
-    const sight_top: ?f32 = if (held_art.optic) |o| o.eye - sightHeight(g.arsenal.spec()) else if (held_art.body != null) held_art.top else null;
+    var aim_art = held_art;
 
-    scopeSetup(held_art);
+    if (held_art.optic) |o| aim_art.optic = gunart.aimed(o, g.currentZoom(), g.magnified());
+
+    const sight_top: ?f32 = if (aim_art.optic) |o| o.eye - sightHeight(g.arsenal.spec()) else if (held_art.body != null) held_art.top else null;
+
+    scopeSetup(aim_art);
     gfx.vm_near = if (scope_eyepiece != null) 0.02 + @max(0, scope_relief - 0.05) * math.clamp01((g.ads - 0.4) / 0.4) else 0.02;
     r.viewmodelProjection();
 
@@ -867,7 +873,9 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
         skin = held.rarity;
         r.setSheen(1);
         optic_see_through = g.ads > 0.5;
+        aim_optic = if (g.ads > 0.5) aim_art.optic else null;
         drawGun(r, models, arts, held.weapon, pose.origin, pose.basis, 1);
+        aim_optic = null;
         optic_see_through = false;
         skin = .common;
         r.setSurface(.{ .roughness = 0.85 });
@@ -881,7 +889,7 @@ pub fn scene(r: *gfx.Renderer, models: *const Models, arts: *const [weapons.coun
         if (spec.class != .melee and arts[held.weapon].body == null) {
             const band_at = pose.origin.add(pose.basis.x.scale(0.022)).add(pose.basis.y.scale(-0.004));
 
-            r.draw(models.bands[@intFromEnum(held.rarity)], mesh.transform(band_at, pose.basis, 1), false);
+            r.draw(models.bands[@backingInt(held.rarity)], mesh.transform(band_at, pose.basis, 1), false);
         }
 
         if ((spec.class == .bow or spec.class == .crossbow) and held.mag > 0 and a.reloading <= 0) {

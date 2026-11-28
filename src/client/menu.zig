@@ -1,10 +1,10 @@
 const std = @import("std");
 const rl = @import("raylib");
-const ui = @import("ui.zig");
+const theme = @import("theme.zig");
 const settings = @import("settings.zig");
 const assets = @import("assets.zig");
 
-const v2 = ui.v2;
+const v2 = @import("ui.zig").v2;
 
 const Fmt = enum { percent, times, degrees };
 
@@ -82,6 +82,8 @@ const touch = [_]Item{
     .{ .label = "Button size", .kind = .{ .slider = .{ .ptr = &settings.touch_size, .min = 0.7, .max = 1.4, .step = 0.05, .fmt = .times } } },
     .{ .label = "Button opacity", .kind = .{ .slider = .{ .ptr = &settings.touch_opacity, .min = 0.3, .max = 1, .step = 0.05, .fmt = .percent } } },
     .{ .label = "Look sensitivity", .kind = .{ .slider = .{ .ptr = &settings.touch_look, .min = 0.3, .max = 2.5, .step = 0.05, .fmt = .times } } },
+    .{ .label = "Aim sensitivity", .kind = .{ .slider = .{ .ptr = &settings.touch_ads, .min = 0.3, .max = 1.5, .step = 0.05, .fmt = .times } }, .note = "While aiming down sights" },
+    .{ .label = "Aim assist", .kind = .{ .slider = .{ .ptr = &settings.touch_assist, .min = 0, .max = 1, .step = 0.05, .fmt = .percent } } },
     .{ .label = "Reset touch layout", .kind = .reset_touch },
 };
 
@@ -247,8 +249,8 @@ pub const Menu = struct {
         const moved = mp.x != m.mouse_last.x or mp.y != m.mouse_last.y;
         const click = rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT);
         const down = rl.IsMouseButtonDown(rl.MOUSE_BUTTON_LEFT);
-        const l = layout();
         const tabs = tabsFor(m.touch_enabled);
+        const l = layout(tabs, m.tab);
 
         m.mouse_last = mp;
 
@@ -280,7 +282,9 @@ pub const Menu = struct {
         }
 
         for (items, 0..) |it, i| {
-            const row = rowRect(l, i);
+            var row = rowRect(l, i);
+
+            row.height = l.row_h;
 
             if (moved and m.drag == null and rl.CheckCollisionPointRec(mp, row)) m.sel = i;
 
@@ -312,106 +316,86 @@ pub const Menu = struct {
         }
     }
 
-    pub fn drawGear(m: *const Menu, font: rl.Font, pad: bool) void {
+    pub fn drawGear(m: *const Menu, pad: bool) void {
         if (m.t > 0.99) return;
 
-        const r = gearRect();
-        const u = unit();
-        const mp = rl.GetMousePosition();
-        const hot = rl.CheckCollisionPointRec(mp, r);
-        const a = 1 - m.t;
-        const label: [:0]const u8 = "SETTINGS";
-        const hint: [:0]const u8 = if (pad) "Y" else "TAB";
-        const size = 22 * u;
-
-        rl.DrawRectangleRounded(.{ .x = r.x + 3 * u, .y = r.y + 5 * u, .width = r.width, .height = r.height }, 0.5, 12, ui.fade(ui.ink, 0.35 * a));
-        rl.DrawRectangleRounded(r, 0.5, 12, ui.fade(if (hot) ui.white else ui.ink, (if (hot) @as(f32, 0.95) else 0.82) * a));
-        gearIcon(r.x + 34 * u, r.y + r.height / 2, 12 * u, ui.fade(if (hot) ui.ink else ui.yellow, a));
-        ui.text(font, label, r.x + 58 * u, r.y + r.height / 2 - size / 2, size, ui.fade(if (hot) ui.ink else ui.white, a));
-
-        const kx = r.x + r.width - 18 * u - ui.width(font, hint, 15 * u) - 14 * u;
-        const kw = ui.width(font, hint, 15 * u) + 14 * u;
-
-        rl.DrawRectangleRounded(.{ .x = kx, .y = r.y + r.height / 2 - 13 * u, .width = kw, .height = 26 * u }, 0.4, 8, ui.fade(if (hot) ui.ink else ui.white, 0.16 * a));
-        ui.text(font, hint, kx + 7 * u, r.y + r.height / 2 - 8 * u, 15 * u, ui.fade(if (hot) ui.ink else ui.white, 0.75 * a));
+        pauseButton(1, gearRect(), .gear, "SETTINGS", if (pad) "Y" else "TAB", theme.tones.cream_tone, m.t);
     }
 
-    pub fn draw(m: *const Menu, font: rl.Font, pad: bool) void {
+    pub fn draw(m: *const Menu, pad: bool) void {
         if (m.t <= 0.001) return;
 
-        const w: f32 = @floatFromInt(rl.GetScreenWidth());
-        const h: f32 = @floatFromInt(rl.GetScreenHeight());
-        const u = unit();
-        const e = ease(m.t);
-        const l = layout();
         const tabs = tabsFor(m.touch_enabled);
         const items = tabs[m.tab].items;
-        const lift = (1 - e) * 28 * u;
-        const p = rl.Rectangle{ .x = l.panel.x, .y = l.panel.y + lift, .width = l.panel.width, .height = l.panel.height };
-        const dy = lift;
+        const l = layout(tabs, m.tab);
+        const u = l.u;
+        const e = ease(m.t);
+        const lift = (1 - e) * 36 * u;
+        const p = shift(l.panel, lift);
 
-        rl.DrawRectangle(0, 0, @intFromFloat(w), @intFromFloat(h), ui.fade(ui.ink, 0.5 * e));
-        rl.DrawRectangleRounded(.{ .x = p.x + 6 * u, .y = p.y + 14 * u, .width = p.width, .height = p.height }, 0.06, 16, ui.fade(ui.rgba(6, 8, 16, 255), 0.45 * e));
-        rl.DrawRectangleRounded(p, 0.06, 16, ui.fade(ui.rgba(30, 35, 56, 255), e));
-        rl.DrawRectangleRounded(.{ .x = p.x, .y = p.y, .width = p.width, .height = 108 * u }, 0.35, 16, ui.fade(ui.rgba(40, 46, 72, 255), e));
-        rl.DrawRectangle(@intFromFloat(p.x), @intFromFloat(p.y + 70 * u), @intFromFloat(p.width), @intFromFloat(38 * u), ui.fade(ui.rgba(40, 46, 72, 255), e));
-        rl.DrawRectangle(@intFromFloat(p.x + 28 * u), @intFromFloat(p.y + 108 * u), @intFromFloat(p.width - 56 * u), @intFromFloat(@max(1, 1.5 * u)), ui.fade(ui.white, 0.08 * e));
+        theme.scrim(0.6 * e);
+        theme.panel(p, 36 * u, theme.cream, e);
 
-        gearIcon(p.x + 46 * u, p.y + 38 * u, 14 * u, ui.fade(ui.yellow, e));
-        ui.caps(font, "SETTINGS", p.x + 72 * u, p.y + 22 * u, 36 * u, ui.fade(ui.white, e));
+        const mid = shift(l.title, lift);
+        const size = 58 * u;
+
+        theme.dot(mid.x + 30 * u, mid.y + mid.height / 2, 30 * u, theme.fade(theme.coral, e));
+        theme.icon(.gear, mid.x + 30 * u, mid.y + mid.height / 2, 40 * u, theme.fade(theme.cream, e));
+        theme.write(theme.heavy, "SETTINGS", mid.x + 76 * u, mid.y + mid.height / 2, size, theme.fade(theme.navy, e));
+
+        const bar = shift(l.tabs, lift);
+
+        theme.round(bar, 22 * u, theme.fade(theme.navy, e));
+
+        const from = shift(tabRect(l, @intFromFloat(@floor(m.slide)), tabs.len), lift);
+        const to = shift(tabRect(l, @min(tabs.len - 1, @as(usize, @intFromFloat(@ceil(m.slide)))), tabs.len), lift);
+        const k = m.slide - @floor(m.slide);
+        const chip: rl.Rectangle = theme.grow(.{ .x = from.x + (to.x - from.x) * k, .y = from.y, .width = from.width + (to.width - from.width) * k, .height = from.height }, -7 * u);
+
+        theme.round(chip, 17 * u, theme.fade(theme.sun, e));
 
         for (tabs, 0..) |tab, i| {
-            const r = shift(tabRect(l, i, tabs.len), dy);
+            const r = shift(tabRect(l, i, tabs.len), lift);
             const active = i == m.tab;
-            const size = 19 * u;
-            const tw = ui.width(font, tab.name, size);
             const hot = m.using_mouse and rl.CheckCollisionPointRec(rl.GetMousePosition(), r);
+            const ts = theme.fit(theme.heavy, tab.name, 32 * u, r.width - 28 * u);
 
-            if (hot and !active) rl.DrawRectangleRounded(r, 0.5, 10, ui.fade(ui.white, 0.08 * e));
+            if (hot and !active) theme.round(theme.grow(r, -7 * u), 17 * u, theme.fade(theme.cream, 0.12 * e));
 
-            ui.text(font, tab.name, r.x + r.width / 2 - tw / 2, r.y + r.height / 2 - size / 2 - 2 * u, size, ui.fade(ui.white, (if (active) @as(f32, 1.0) else 0.55) * e));
+            theme.center(theme.heavy, tab.name, r.x + r.width / 2, r.y + r.height / 2, ts, theme.fade(if (active) theme.navy else theme.cream, (if (active or hot) @as(f32, 1) else 0.78) * e));
         }
 
-        const from = shift(tabRect(l, @intFromFloat(@floor(m.slide)), tabs.len), dy);
-        const to = shift(tabRect(l, @min(tabs.len - 1, @as(usize, @intFromFloat(@ceil(m.slide)))), tabs.len), dy);
-        const k = m.slide - @floor(m.slide);
-        const ux = from.x + (to.x - from.x) * k;
-        const uw = from.width + (to.width - from.width) * k;
+        for (items[0..@min(items.len, max_rows)], 0..) |it, i| m.drawRow(l, it, i, lift, e);
 
-        rl.DrawRectangleRounded(.{ .x = ux + 14 * u, .y = from.y + from.height - 5 * u, .width = uw - 28 * u, .height = 4 * u }, 1, 8, ui.fade(ui.yellow, e));
+        if (hasPreview(tabs[m.tab])) layoutPreview(l, @min(items.len, l.per), lift, e);
 
-        for (items[0..@min(items.len, max_rows)], 0..) |it, i| m.drawRow(font, l, it, i, dy, e);
-
-        if (std.mem.eql(u8, tabs[m.tab].name, "Controller")) layoutPreview(font, l, controller.len, dy, e);
-
-        footer(m, font, l, dy, e, pad);
+        footer(m, l, lift, e, pad);
     }
 
-    fn drawRow(m: *const Menu, font: rl.Font, l: Layout, it: Item, i: usize, dy: f32, e: f32) void {
-        const u = unit();
+    fn drawRow(m: *const Menu, l: Layout, it: Item, i: usize, dy: f32, e: f32) void {
+        const u = l.u;
         const row = shift(rowRect(l, i), dy);
         const g = m.glow[i];
-        const size = 21 * u;
+        const size = 34 * u;
         const cy = row.y + row.height / 2;
+        const c = shift(controlRect(l, i), dy);
+        const room = c.x - row.x - 40 * u;
 
-        if (g > 0.01) {
-            rl.DrawRectangleRounded(row, 0.3, 10, ui.fade(ui.white, 0.07 * g * e));
-            rl.DrawRectangleRounded(.{ .x = row.x, .y = row.y + 10 * u, .width = 4 * u, .height = row.height - 20 * u }, 1, 6, ui.fade(ui.yellow, g * e));
-        }
+        theme.round(row, 18 * u, theme.fade(theme.sand, (0.42 + 0.58 * g) * e));
+
+        if (g > 0.01) theme.round(.{ .x = row.x + 10 * u, .y = row.y + 12 * u, .width = 8 * u, .height = row.height - 24 * u }, 4 * u, theme.fade(theme.coral, g * e));
 
         if (it.note) |note| {
-            ui.text(font, it.label, row.x + 22 * u, cy - size + 1 * u, size, ui.fade(ui.white, e));
-            ui.text(font, note, row.x + 22 * u, cy + 3 * u, 14 * u, ui.fade(ui.white, 0.45 * e));
+            theme.write(theme.heavy, it.label, row.x + 32 * u, cy - 12 * u, theme.fit(theme.heavy, it.label, size, room), theme.fade(theme.navy, e));
+            theme.write(theme.body, note, row.x + 32 * u, cy + 19 * u, theme.fit(theme.body, note, 23 * u, room), theme.fade(theme.soft, e));
         } else {
-            ui.text(font, it.label, row.x + 22 * u, cy - size / 2 - 1 * u, size, ui.fade(ui.white, e));
+            theme.write(theme.heavy, it.label, row.x + 32 * u, cy, theme.fit(theme.heavy, it.label, size, room), theme.fade(theme.navy, e));
         }
-
-        const c = shift(controlRect(l, i), dy);
 
         switch (it.kind) {
             .slider => |s| {
                 const track = shift(sliderTrack(l, i), dy);
-                const f = (s.ptr.* - s.min) / (s.max - s.min);
+                const f = std.math.clamp((s.ptr.* - s.min) / (s.max - s.min), 0, 1);
                 const kx = track.x + track.width * f;
                 var buf: [24]u8 = undefined;
                 const label = switch (s.fmt) {
@@ -419,111 +403,94 @@ pub const Menu = struct {
                     .times => std.fmt.bufPrintSentinel(&buf, "{d:.2}x", .{s.ptr.*}, 0),
                     .degrees => std.fmt.bufPrintSentinel(&buf, "{d}", .{@as(i32, @intFromFloat(@round(s.ptr.*)))}, 0),
                 } catch "";
-                const vs = 18 * u;
+                const vs = 32 * u;
                 const active = m.drag != null and m.drag.? == i;
+                const knob = (if (active) @as(f32, 22.0) else 18.0) * u;
 
-                rl.DrawRectangleRounded(track, 1, 8, ui.fade(ui.white, 0.14 * e));
-                rl.DrawRectangleRounded(.{ .x = track.x, .y = track.y, .width = @max(track.height, track.width * f), .height = track.height }, 1, 8, ui.fade(ui.yellow, e));
-                rl.DrawCircleV(v2(kx + 1.5 * u, cy + 2.5 * u), (if (active) @as(f32, 13.0) else 11.0) * u, ui.fade(ui.ink, 0.4 * e));
-                rl.DrawCircleV(v2(kx, cy), (if (active) @as(f32, 13.0) else 11.0) * u, ui.fade(ui.white, e));
-                const deg: f32 = if (s.fmt == .degrees) 9 * u else 0;
-                const lx = c.x + c.width - ui.width(font, label, vs) - deg;
+                theme.round(track, track.height / 2, theme.fade(theme.dune, 0.75 * e));
+                theme.round(.{ .x = track.x, .y = track.y, .width = @max(track.height, track.width * f), .height = track.height }, track.height / 2, theme.fade(theme.coral, e));
+                theme.dot(kx, cy + 4 * u, knob, theme.fade(theme.night, 0.3 * e));
+                theme.dot(kx, cy, knob, theme.fade(theme.coral, e));
+                theme.dot(kx, cy, knob - 6 * u, theme.fade(theme.cream, e));
 
-                ui.text(font, label, lx, cy - vs / 2 - 1 * u, vs, ui.fade(ui.white, 0.85 * e));
+                const deg: f32 = if (s.fmt == .degrees) 14 * u else 0;
+                const lx = c.x + c.width - theme.measure(theme.heavy, label, vs) - deg;
 
-                if (deg > 0) rl.DrawRing(v2(lx + ui.width(font, label, vs) + 5 * u, cy - vs / 2 + 3 * u), 2 * u, 3.6 * u, 0, 360, 16, ui.fade(ui.white, 0.85 * e));
+                theme.write(theme.heavy, label, lx, cy, vs, theme.fade(theme.navy, e));
+
+                if (deg > 0) rl.DrawRing(v2(lx + theme.measure(theme.heavy, label, vs) + 8 * u, cy - 8 * u), 2.5 * u, 5.5 * u, 0, 360, 20, theme.fade(theme.navy, e));
             },
             .toggle => {
                 const kn = m.knob[i];
-                const tw = 66 * u;
-                const th = 34 * u;
+                const tw = 100 * u;
+                const th = 52 * u;
                 const tx = c.x + c.width - tw;
-                const on_col = ui.rgba(92, 214, 120, 255);
-                const off_col = ui.rgba(255, 255, 255, 46);
-                const col = rl.Color{
-                    .r = lerpU8(off_col.r, on_col.r, kn),
-                    .g = lerpU8(off_col.g, on_col.g, kn),
-                    .b = lerpU8(off_col.b, on_col.b, kn),
-                    .a = lerpU8(off_col.a, on_col.a, kn),
-                };
                 const kx = tx + th / 2 + (tw - th) * kn;
 
-                rl.DrawRectangleRounded(.{ .x = tx, .y = cy - th / 2, .width = tw, .height = th }, 1, 12, ui.fade(col, e));
-                rl.DrawCircleV(v2(kx + 1 * u, cy + 2 * u), th / 2 - 4 * u, ui.fade(ui.ink, 0.35 * e));
-                rl.DrawCircleV(v2(kx, cy), th / 2 - 4 * u, ui.fade(ui.white, e));
+                theme.round(.{ .x = tx, .y = cy - th / 2 + 4 * u, .width = tw, .height = th }, th / 2, theme.fade(theme.mix(theme.dune, theme.deep, kn), e));
+                theme.round(.{ .x = tx, .y = cy - th / 2, .width = tw, .height = th - 2 * u }, th / 2, theme.fade(theme.mix(.{ .r = 218, .g = 190, .b = 146, .a = 255 }, theme.teal, kn), e));
+                theme.dot(kx, cy + 2 * u, th / 2 - 5 * u, theme.fade(theme.night, 0.28 * e));
+                theme.dot(kx, cy - 1 * u, th / 2 - 6 * u, theme.fade(theme.cream, e));
+                theme.center(theme.heavy, if (kn > 0.5) "ON" else "OFF", tx - 40 * u, cy, 28 * u, theme.fade(if (kn > 0.5) theme.deep else theme.soft, e));
             },
-            .choice => |ch| choiceDraw(font, c, cy, ch.names[@min(ch.ptr.*, ch.names.len - 1)], if (ch.swatch) settings.crosshairColor() else null, e, ch.ptr.*, ch.names.len),
-            .preset => choiceDraw(font, c, cy, settings.preset_names[@intFromEnum(settings.preset)], null, e, @intFromEnum(settings.preset), 3),
+            .choice => |ch| choiceDraw(c, cy, ch.names[@min(ch.ptr.*, ch.names.len - 1)], if (ch.swatch) settings.crosshairColor() else null, e, ch.ptr.*, ch.names.len, true),
+            .preset => choiceDraw(c, cy, settings.preset_names[@backingInt(settings.preset)], null, e, @backingInt(settings.preset), 3, false),
             .reset_touch => {
-                const bw = 120 * u;
-                const r = rl.Rectangle{ .x = c.x + c.width - bw, .y = cy - 18 * u, .width = bw, .height = 36 * u };
-                const s2 = 17 * u;
+                const bw = 180 * u;
+                const r: rl.Rectangle = .{ .x = c.x + c.width - bw, .y = cy - row.height * 0.34, .width = bw, .height = row.height * 0.62 };
 
-                rl.DrawRectangleRounded(r, 0.5, 10, ui.fade(ui.white, 0.14 * e));
-                ui.text(font, "Reset", r.x + bw / 2 - ui.width(font, "Reset", s2) / 2, cy - s2 / 2 - 1 * u, s2, ui.fade(ui.white, e));
+                theme.round(theme.offset(r, 0, 5 * u), 16 * u, theme.fade(theme.rust, e));
+                theme.round(r, 16 * u, theme.fade(theme.coral, e));
+                theme.center(theme.heavy, "RESET", r.x + bw / 2, r.y + r.height / 2, 30 * u, theme.fade(theme.cream, e));
             },
         }
     }
 };
 
-fn lerpU8(a: u8, b: u8, t: f32) u8 {
-    const fa: f32 = @floatFromInt(a);
-    const fb: f32 = @floatFromInt(b);
-
-    return @intFromFloat(std.math.clamp(fa + (fb - fa) * t, 0, 255));
-}
-
-fn choiceDraw(font: rl.Font, c: rl.Rectangle, cy: f32, name: [:0]const u8, swatch: ?rl.Color, e: f32, index: usize, count: usize) void {
-    const u = unit();
-    const size = 19 * u;
-    const nw = ui.width(font, name, size);
-    const sw: f32 = if (swatch != null) 24 * u else 0;
+fn choiceDraw(c: rl.Rectangle, cy: f32, name: [:0]const u8, swatch: ?rl.Color, e: f32, index: usize, count: usize, wraps: bool) void {
+    const u = theme.view().u;
+    const sw: f32 = if (swatch != null) 40 * u else 0;
+    const box = @min(c.height - 12 * u, 60 * u);
+    const size = theme.fit(theme.heavy, name, 32 * u, c.width - box * 2 - sw - 24 * u);
+    const nw = theme.measure(theme.heavy, name, size);
     const mid = c.x + c.width / 2;
 
-    arrow(c.x + 12 * u, cy, -1, 7 * u, ui.fade(ui.white, (if (index > 0) @as(f32, 0.8) else 0.25) * e));
-    arrow(c.x + c.width - 12 * u, cy, 1, 7 * u, ui.fade(ui.white, (if (index + 1 < count) @as(f32, 0.8) else 0.25) * e));
+    for ([_]f32{ c.x, c.x + c.width - box }, 0..) |x, side| {
+        const live = wraps or (if (side == 0) index > 0 else index + 1 < count);
+        const r: rl.Rectangle = .{ .x = x, .y = cy - box / 2 - 2 * u, .width = box, .height = box };
+        const a = (if (live) @as(f32, 1) else 0.35) * e;
+
+        theme.round(theme.offset(r, 0, 5 * u), 16 * u, theme.fade(theme.deep, a));
+        theme.round(r, 16 * u, theme.fade(theme.teal, a));
+        theme.icon(if (side == 0) .back else .chevron, r.x + box / 2, r.y + box / 2, box * 0.58, theme.fade(theme.cream, a));
+    }
 
     if (swatch) |col| {
-        rl.DrawCircleV(v2(mid - (nw + sw) / 2 + 8 * u, cy), 8 * u, ui.fade(ui.ink, 0.5 * e));
-        rl.DrawCircleV(v2(mid - (nw + sw) / 2 + 8 * u, cy), 6.5 * u, ui.fade(col, e));
+        const x = mid - (nw + sw) / 2 + 13 * u;
+
+        theme.dot(x, cy - 5 * u, 15 * u, theme.fade(theme.navy, e));
+        theme.dot(x, cy - 5 * u, 11 * u, theme.fade(col, e));
     }
 
-    ui.text(font, name, mid - (nw + sw) / 2 + sw, cy - size / 2 - 1 * u, size, ui.fade(ui.white, e));
+    theme.write(theme.heavy, name, mid - (nw + sw) / 2 + sw, cy - 5 * u, size, theme.fade(theme.navy, e));
 
-    const dots_w = @as(f32, @floatFromInt(count)) * 12 * u;
+    const step = 15 * u;
+    const dots_w = @as(f32, @floatFromInt(count)) * step;
 
     for (0..count) |k| {
-        const dx = mid - dots_w / 2 + @as(f32, @floatFromInt(k)) * 12 * u + 6 * u;
+        const dx = mid - dots_w / 2 + @as(f32, @floatFromInt(k)) * step + step / 2;
 
-        rl.DrawCircleV(v2(dx, cy + 19 * u), 2.4 * u, ui.fade(ui.white, (if (k == index) @as(f32, 0.9) else 0.22) * e));
+        theme.dot(dx, cy + 21 * u, (if (k == index) @as(f32, 5) else 3.5) * u, theme.fade(if (k == index) theme.coral else theme.dune, e));
     }
 }
 
-fn arrow(x: f32, y: f32, dir: f32, s: f32, col: rl.Color) void {
-    if (dir < 0) {
-        rl.DrawTriangle(v2(x - s * 0.6, y), v2(x + s * 0.5, y + s), v2(x + s * 0.5, y - s), col);
-    } else {
-        rl.DrawTriangle(v2(x + s * 0.6, y), v2(x - s * 0.5, y - s), v2(x - s * 0.5, y + s), col);
-    }
+fn hasPreview(tab: Tab) bool {
+    return std.mem.eql(u8, tab.name, "Controller");
 }
 
-fn gearIcon(x: f32, y: f32, r: f32, col: rl.Color) void {
-    var k: f32 = 0;
-
-    while (k < 8) : (k += 1) {
-        const a = k * std.math.pi / 4;
-        const d = v2(@cos(a), @sin(a));
-
-        rl.DrawLineEx(v2(x + d.x * r * 0.55, y + d.y * r * 0.55), v2(x + d.x * r * 1.05, y + d.y * r * 1.05), r * 0.42, col);
-    }
-
-    rl.DrawCircleV(v2(x, y), r * 0.82, col);
-    rl.DrawCircleV(v2(x, y), r * 0.34, ui.ink);
-}
-
-fn layoutPreview(font: rl.Font, l: Layout, rows: usize, dy: f32, e: f32) void {
-    const u = unit();
-    const top = rowRect(l, rows).y + 14 * u + dy;
+fn layoutPreview(l: Layout, rows: usize, dy: f32, e: f32) void {
+    const u = l.u;
+    const top = rowRect(l, rows - 1).y + l.row_h + 6 * u + dy;
     const x = l.rows.x;
     const wdt = l.rows.width;
     const lines = [_][2][:0]const u8{
@@ -531,61 +498,58 @@ fn layoutPreview(font: rl.Font, l: Layout, rows: usize, dy: f32, e: f32) void {
         .{ "Right stick", "Look" },
         .{ "RT / LT", "Shoot / Aim" },
         .{ "A", "Jump" },
-        .{ "X  (hold)", "Reload  (pick up)" },
+        .{ "X (hold)", "Reload (pick up)" },
         .{ "RB", "Grenade" },
         .{ "Y", "Enter vehicle" },
         .{ "R3", "Fireball" },
         .{ "D-pad", "Switch weapon" },
         .{ "Start", "Pause" },
     };
-    const box_h = @min(l.panel.y + l.panel.height - 86 * u + dy - top, 5 * 34 * u + 46 * u);
+    const cols: usize = if (wdt > 1200 * u) 5 else if (wdt > 800 * u) 3 else 2;
+    const per_col = (lines.len + cols - 1) / cols;
+    const line_h = 38 * u;
+    const box_h = @min(l.rows.y + l.rows.height + dy - top, @as(f32, @floatFromInt(per_col)) * line_h + 66 * u);
 
-    if (box_h < 80 * u) return;
+    if (box_h < 120 * u) return;
 
-    rl.DrawRectangleRounded(.{ .x = x, .y = top, .width = wdt, .height = box_h }, 0.08, 10, ui.fade(ui.ink, 0.45 * e));
-    ui.text(font, "Button layout", x + 22 * u, top + 12 * u, 15 * u, ui.fade(ui.yellow, 0.9 * e));
+    theme.round(.{ .x = x, .y = top, .width = wdt, .height = box_h }, 20 * u, theme.fade(theme.navy, e));
+    theme.write(theme.heavy, "BUTTON LAYOUT", x + 28 * u, top + 28 * u, 28 * u, theme.fade(theme.sun, e));
 
-    const col_w = (wdt - 44 * u) / 2;
-    const per_col = (lines.len + 1) / 2;
+    const col_w = (wdt - 56 * u) / @as(f32, @floatFromInt(cols));
 
     for (lines, 0..) |ln, i| {
-        const cx = x + 22 * u + @as(f32, @floatFromInt(i / per_col)) * col_w;
-        const ly = top + 40 * u + @as(f32, @floatFromInt(i % per_col)) * 26 * u;
+        const cx = x + 28 * u + @as(f32, @floatFromInt(i / per_col)) * col_w;
+        const ly = top + 68 * u + @as(f32, @floatFromInt(i % per_col)) * line_h;
 
-        if (ly + 20 * u > top + box_h) continue;
+        if (ly + 18 * u > top + box_h) continue;
 
-        const ks = 15 * u;
-        const kw = ui.width(font, ln[0], ks) + 14 * u;
+        const ks = 23 * u;
+        const kw = theme.measure(theme.heavy, ln[0], ks) + 20 * u;
 
-        rl.DrawRectangleRounded(.{ .x = cx, .y = ly - 2 * u, .width = kw, .height = 22 * u }, 0.4, 8, ui.fade(ui.white, 0.14 * e));
-        ui.text(font, ln[0], cx + 7 * u, ly + 1 * u, ks, ui.fade(ui.white, 0.9 * e));
-        ui.text(font, ln[1], cx + kw + 10 * u, ly + 1 * u, ks, ui.fade(ui.white, 0.6 * e));
+        theme.round(.{ .x = cx, .y = ly - 16 * u, .width = kw, .height = 32 * u }, 9 * u, theme.fade(theme.cream, e));
+        theme.write(theme.heavy, ln[0], cx + 10 * u, ly, ks, theme.fade(theme.navy, e));
+        theme.write(theme.body, ln[1], cx + kw + 12 * u, ly, theme.fit(theme.body, ln[1], 25 * u, col_w - kw - 18 * u), theme.fade(theme.cream, e));
     }
 }
 
-fn footer(m: *const Menu, font: rl.Font, l: Layout, dy: f32, e: f32, pad: bool) void {
-    const u = unit();
+fn footer(m: *const Menu, l: Layout, dy: f32, e: f32, pad: bool) void {
+    const u = l.u;
     const mp = rl.GetMousePosition();
-    const hint: [:0]const u8 = if (pad) "D-pad select    Left / Right adjust    A toggle    LB / RB tabs    X reset    B back" else if (assets.mobile) "Tap to change    Drag sliders" else "Arrows select    Left / Right adjust    Enter toggle    Q / E tabs    Esc back";
-    const hs = 15 * u;
+    const touching = theme.view().touch;
+    const hint: [:0]const u8 = if (pad) "D-pad select   Left / Right adjust   A toggle   LB / RB tabs   X reset   B back" else if (touching) "Tap to change, drag the sliders" else "Arrows select   Left / Right adjust   Enter toggle   Q / E tabs   Esc back";
     const reset = shift(l.reset, dy);
     const back = shift(l.back, dy);
+    const room = reset.x - l.rows.x - 24 * u;
 
-    ui.text(font, hint, l.panel.x + 30 * u, reset.y + reset.height / 2 - hs / 2, hs, ui.fade(ui.white, 0.45 * e));
+    theme.write(theme.body, hint, l.rows.x + 6 * u, reset.y + reset.height / 2, theme.fit(theme.body, hint, 24 * u, room), theme.fade(theme.soft, e));
 
-    for ([_]struct { r: rl.Rectangle, label: [:0]const u8, primary: bool }{ .{ .r = reset, .label = if (m.flash > 0) "Done!" else "Reset all", .primary = false }, .{ .r = back, .label = "Back", .primary = true } }) |b| {
-        const hot = m.using_mouse and rl.CheckCollisionPointRec(mp, b.r);
-        const bg = if (b.primary) ui.yellow else ui.white;
-        const alpha: f32 = if (b.primary) (if (hot) @as(f32, 1.0) else 0.92) else (if (hot) @as(f32, 0.22) else 0.12);
-        const s = 18 * u;
-        const tc = if (b.primary) ui.ink else ui.white;
+    const hot_reset = m.using_mouse and rl.CheckCollisionPointRec(mp, reset);
+    const hot_back = m.using_mouse and rl.CheckCollisionPointRec(mp, back);
+    const first = theme.button(theme.tag("reset", 0), reset, 20 * u, theme.tones.sand_tone, hot_reset, .{ .a = e });
+    const second = theme.button(theme.tag("done", 0), back, 20 * u, theme.tones.coral_tone, hot_back, .{ .a = e });
 
-        rl.DrawRectangleRounded(b.r, 0.5, 10, ui.fade(bg, alpha * e));
-
-        const tw = ui.width(font, b.label, s);
-
-        rl.DrawTextEx(font, b.label.ptr, v2(b.r.x + b.r.width / 2 - tw / 2, b.r.y + b.r.height / 2 - s / 2 - 1 * u), s, 0.5, ui.fade(tc, e));
-    }
+    theme.center(theme.heavy, if (m.flash > 0) "DONE!" else "RESET ALL", first.face.x + first.face.width / 2, first.face.y + first.face.height / 2, 32 * u, theme.fade(theme.navy, e));
+    theme.center(theme.heavy, "BACK", second.face.x + second.face.width / 2, second.face.y + second.face.height / 2, 38 * u, theme.fade(theme.cream, e));
 }
 
 fn repeat(timer: *f32, last: *i32, dir: i32, dt: f32) bool {
@@ -626,15 +590,17 @@ fn adjust(it: Item, dir: i32) void {
             c.ptr.* = @intCast(@mod(@as(i32, c.ptr.*) + dir, n));
         },
         .preset => {
-            const cur: i32 = @intFromEnum(settings.preset);
+            const cur: i32 = @backingInt(settings.preset);
             const next: i32 = if (settings.preset == .custom) (if (dir > 0) 2 else 1) else @mod(cur + dir, 3);
 
-            settings.applyPreset(@enumFromInt(next));
+            settings.applyPreset(@fromBackingInt(@intCast(next)));
         },
         .reset_touch => {
             settings.touch_size = 1;
             settings.touch_opacity = 1;
             settings.touch_look = 1;
+            settings.touch_ads = 0.95;
+            settings.touch_assist = 0.5;
         },
     }
 
@@ -663,13 +629,6 @@ fn tabsFor(touch_enabled: bool) []const Tab {
     return if (assets.mobile) all.mobile[0..4] else &all.desktop;
 }
 
-fn unit() f32 {
-    const w: f32 = @floatFromInt(rl.GetScreenWidth());
-    const h: f32 = @floatFromInt(rl.GetScreenHeight());
-
-    return @min(h / 900, w / 1500);
-}
-
 fn ease(t: f32) f32 {
     const k = 1 - t;
 
@@ -681,74 +640,130 @@ fn shift(r: rl.Rectangle, dy: f32) rl.Rectangle {
 }
 
 const Layout = struct {
+    u: f32,
     panel: rl.Rectangle,
+    title: rl.Rectangle,
+    tabs: rl.Rectangle,
     rows: rl.Rectangle,
     reset: rl.Rectangle,
     back: rl.Rectangle,
+    cols: usize,
+    per: usize,
+    row_h: f32,
 };
 
-fn layout() Layout {
-    const w: f32 = @floatFromInt(rl.GetScreenWidth());
-    const h: f32 = @floatFromInt(rl.GetScreenHeight());
-    const u = unit();
-    const pw = @min(1000 * u, w - 40 * u);
-    const ph = @min(760 * u, h - 40 * u);
-    const px = (w - pw) / 2;
-    const py = (h - ph) / 2;
+const Grid = struct {
+    cols: usize,
+    per: usize,
+    height: f32,
+};
+
+fn grid(tab: Tab, room: f32, compact: bool) Grid {
+    const v = theme.view();
+    const count = @min(tab.items.len, max_rows);
+    const want = @max(v.tap(76), 76 * v.u);
+    const full = @as(f32, @floatFromInt(count)) * want;
+    const preview: f32 = if (hasPreview(tab)) 200 * v.u else 0;
+    const cols: usize = if (full > room or (compact and full + preview > room)) 2 else 1;
+    const per = (count + cols - 1) / cols;
+
+    return .{ .cols = cols, .per = per, .height = @min(room, @as(f32, @floatFromInt(per)) * want + preview) };
+}
+
+fn layout(tabs: []const Tab, at: usize) Layout {
+    const v = theme.view();
+    const u = v.u;
+    const compact = v.height() < 840 * u;
+    const pw = @min((if (compact) @as(f32, 1560) else 1160) * u, v.width());
+    const top = v.top - 14 * u;
+    const space = v.h - top - (v.h - v.bottom) + 14 * u;
+    const inset = 28 * u;
+    const tab_h = v.tap(68);
+    const title_w = 300 * u;
+    const head = if (compact) 16 * u + tab_h + 14 * u else 24 * u + 68 * u + 18 * u + tab_h + 22 * u;
+    const foot_h = v.tap(72);
+    const foot = foot_h + (if (compact) 18 * u else 24 * u) + 16 * u;
+    const room = @min(860 * u, space) - head - foot;
+    var content: f32 = 0;
+
+    for (tabs) |t| content = @max(content, grid(t, room, compact).height);
+
+    const g = grid(tabs[at], room, compact);
+    const ph = head + content + foot;
+    const px = v.cx() - pw / 2;
+    const py = top + (space - ph) / 2;
+    const title: rl.Rectangle = .{ .x = px + inset, .y = py + (if (compact) 16 * u else 24 * u), .width = title_w, .height = if (compact) tab_h else 68 * u };
+    const tabs_r: rl.Rectangle = if (compact)
+        .{ .x = title.x + title_w, .y = title.y, .width = pw - inset * 2 - title_w, .height = tab_h }
+    else
+        .{ .x = px + inset, .y = title.y + title.height + 18 * u, .width = pw - inset * 2, .height = tab_h };
+    const rows: rl.Rectangle = .{ .x = px + inset, .y = py + head, .width = pw - inset * 2, .height = content };
+    const foot_y = rows.y + content + 16 * u;
+    const row_h = @min(@max(v.tap(76), 76 * u), room / @as(f32, @floatFromInt(g.per)));
+    const bw = 210 * u;
 
     return .{
+        .u = u,
         .panel = .{ .x = px, .y = py, .width = pw, .height = ph },
-        .rows = .{ .x = px + 28 * u, .y = py + 128 * u, .width = pw - 56 * u, .height = ph - 128 * u - 84 * u },
-        .reset = .{ .x = px + pw - 28 * u - 140 * u - 14 * u - 140 * u, .y = py + ph - 66 * u, .width = 140 * u, .height = 44 * u },
-        .back = .{ .x = px + pw - 28 * u - 140 * u, .y = py + ph - 66 * u, .width = 140 * u, .height = 44 * u },
+        .title = title,
+        .tabs = tabs_r,
+        .rows = rows,
+        .reset = .{ .x = px + pw - inset - bw * 2 - 18 * u, .y = foot_y, .width = bw, .height = foot_h },
+        .back = .{ .x = px + pw - inset - bw, .y = foot_y, .width = bw, .height = foot_h },
+        .cols = g.cols,
+        .per = g.per,
+        .row_h = row_h,
     };
 }
 
 fn tabRect(l: Layout, i: usize, n: usize) rl.Rectangle {
-    const u = unit();
-    const start = l.panel.x + 380 * u;
-    const avail = l.panel.x + l.panel.width - 28 * u - start;
-    const tw = avail / @as(f32, @floatFromInt(n));
+    const tw = l.tabs.width / @as(f32, @floatFromInt(n));
 
-    return .{ .x = start + tw * @as(f32, @floatFromInt(i)), .y = l.panel.y + 22 * u, .width = tw, .height = 56 * u };
+    return .{ .x = l.tabs.x + tw * @as(f32, @floatFromInt(i)), .y = l.tabs.y, .width = tw, .height = l.tabs.height };
 }
 
 fn rowRect(l: Layout, i: usize) rl.Rectangle {
-    const u = unit();
-    const rh = 64 * u;
+    const u = l.u;
+    const gap = 16 * u;
+    const cols: f32 = @floatFromInt(l.cols);
+    const cw = (l.rows.width - gap * (cols - 1)) / cols;
 
-    return .{ .x = l.rows.x, .y = l.rows.y + rh * @as(f32, @floatFromInt(i)), .width = l.rows.width, .height = rh - 6 * u };
+    return .{ .x = l.rows.x + (cw + gap) * @as(f32, @floatFromInt(i / l.per)), .y = l.rows.y + l.row_h * @as(f32, @floatFromInt(i % l.per)), .width = cw, .height = l.row_h - 8 * u };
 }
 
 fn controlRect(l: Layout, i: usize) rl.Rectangle {
-    const u = unit();
+    const u = l.u;
     const row = rowRect(l, i);
-    const cw = 380 * u;
+    const cw = @min(460 * u, row.width * 0.56);
 
-    return .{ .x = row.x + row.width - cw - 22 * u, .y = row.y, .width = cw, .height = row.height };
+    return .{ .x = row.x + row.width - cw - 20 * u, .y = row.y, .width = cw, .height = row.height };
 }
 
 fn sliderTrack(l: Layout, i: usize) rl.Rectangle {
-    const u = unit();
+    const u = l.u;
     const c = controlRect(l, i);
     const cy = c.y + c.height / 2;
 
-    return .{ .x = c.x + 10 * u, .y = cy - 4 * u, .width = c.width - 100 * u, .height = 8 * u };
+    return .{ .x = c.x + 22 * u, .y = cy - 7 * u, .width = c.width - 150 * u, .height = 14 * u };
 }
 
-fn slotRect(slot: f32) rl.Rectangle {
-    const g = gearRect();
-    const u = unit();
+pub fn pauseSlot(i: usize) rl.Rectangle {
+    const v = theme.view();
+    const u = v.u;
+    const gap = 24 * u;
+    const bw = @min(310 * u, (v.width() - gap * 3) / 4);
+    const bh = v.tap(86);
+    const x = v.cx() - (bw * 4 + gap * 3) / 2;
 
-    return .{ .x = g.x, .y = g.y + (g.height + 14 * u) * slot, .width = g.width, .height = g.height };
+    return .{ .x = x + (bw + gap) * @as(f32, @floatFromInt(i)), .y = v.bottom - bh - 8 * u, .width = bw, .height = bh };
 }
 
 pub fn homeRect() rl.Rectangle {
-    return slotRect(2);
+    return pauseSlot(2);
 }
 
 pub fn quitRect() rl.Rectangle {
-    return slotRect(3);
+    return pauseSlot(3);
 }
 
 pub fn wantsHome(pad: ?c_int) bool {
@@ -771,33 +786,37 @@ pub fn wantsQuit(pad: ?c_int) bool {
     return rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT) and rl.CheckCollisionPointRec(rl.GetMousePosition(), quitRect());
 }
 
-pub fn drawQuit(font: rl.Font, pad: bool, fade: f32) void {
-    pauseButton(font, homeRect(), "MAIN MENU", if (pad) "R1" else "M", fade);
-    pauseButton(font, quitRect(), "EXIT GAME", if (pad) "X" else "F10", fade);
+pub fn drawQuit(pad: bool, fade: f32) void {
+    pauseButton(2, homeRect(), .home, "MAIN MENU", if (pad) "R1" else "M", theme.tones.cream_tone, fade);
+    pauseButton(3, quitRect(), .exit, "EXIT GAME", if (pad) "X" else "F10", theme.tones.sand_tone, fade);
 }
 
-fn pauseButton(font: rl.Font, r: rl.Rectangle, label: [:0]const u8, hint: [:0]const u8, fade: f32) void {
-    const u = unit();
-    const hot = rl.CheckCollisionPointRec(rl.GetMousePosition(), r);
-    const size = 22 * u;
-    const a = 1 - fade;
+pub fn pauseButton(slot: usize, r: rl.Rectangle, icon: theme.Icon, label: [:0]const u8, hint: [:0]const u8, tone: theme.Tone, fade: f32) void {
+    const v = theme.view();
+    const u = v.u;
+    const a = std.math.clamp(1 - fade, 0, 1);
+    const b = theme.button(theme.tag("pause", slot), r, 22 * u, tone, rl.CheckCollisionPointRec(rl.GetMousePosition(), r), .{ .a = a });
+    const f = b.face;
+    const mid = f.y + f.height / 2;
+    const keys = !v.touch;
+    const ks = 20 * u;
+    const kw = if (keys) theme.measure(theme.heavy, hint, ks) + 18 * u else 0;
+    const art = 40 * u;
+    const size = theme.fit(theme.heavy, label, 36 * u, f.width - art - kw - 50 * u);
+    const total = art + 10 * u + theme.measure(theme.heavy, label, size);
+    const x = f.x + (f.width - kw - total) / 2;
 
-    rl.DrawRectangleRounded(.{ .x = r.x + 3 * u, .y = r.y + 5 * u, .width = r.width, .height = r.height }, 0.5, 12, ui.fade(ui.ink, 0.35 * a));
-    rl.DrawRectangleRounded(r, 0.5, 12, ui.fade(if (hot) ui.white else ui.ink, (if (hot) @as(f32, 0.95) else 0.82) * a));
-    ui.text(font, label, r.x + 30 * u, r.y + r.height / 2 - size / 2, size, ui.fade(if (hot) ui.ink else ui.white, a));
+    theme.icon(icon, x + art / 2, mid, art, theme.fade(tone.ink, a));
+    theme.write(theme.heavy, label, x + art + 10 * u, mid, size, theme.fade(tone.ink, a));
 
-    const kw = ui.width(font, hint, 15 * u) + 14 * u;
-    const kx = r.x + r.width - 18 * u - kw;
+    if (!keys) return;
 
-    rl.DrawRectangleRounded(.{ .x = kx, .y = r.y + r.height / 2 - 13 * u, .width = kw, .height = 26 * u }, 0.4, 8, ui.fade(if (hot) ui.ink else ui.white, 0.16 * a));
-    ui.text(font, hint, kx + 7 * u, r.y + r.height / 2 - 8 * u, 15 * u, ui.fade(if (hot) ui.ink else ui.white, 0.75 * a));
+    const key: rl.Rectangle = .{ .x = f.x + f.width - kw - 12 * u, .y = mid - 16 * u, .width = kw, .height = 32 * u };
+
+    theme.round(key, 9 * u, theme.fade(theme.navy, 0.14 * a));
+    theme.center(theme.heavy, hint, key.x + kw / 2, mid, ks, theme.fade(tone.ink, 0.8 * a));
 }
 
 pub fn gearRect() rl.Rectangle {
-    const w: f32 = @floatFromInt(rl.GetScreenWidth());
-    const h: f32 = @floatFromInt(rl.GetScreenHeight());
-    const u = unit();
-    const bw = 250 * u;
-
-    return .{ .x = w / 2 - bw / 2, .y = h / 2 + 120 * u, .width = bw, .height = 54 * u };
+    return pauseSlot(1);
 }

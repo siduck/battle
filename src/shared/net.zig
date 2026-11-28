@@ -5,7 +5,7 @@ const Vec3 = math.Vec3;
 
 pub const port: u16 = 27015;
 pub const magic: u16 = 0xDF1E;
-pub const version: u8 = 2;
+pub const version: u8 = 5;
 pub const max_slots = 16;
 pub const max_humans = 12;
 pub const max_packet = 1200;
@@ -253,7 +253,6 @@ pub const Ride = struct {
     roll: f32 = 0,
     speed: f32 = 0,
     steer: f32 = 0,
-    turret: f32 = 0,
     gun: f32 = 0,
 
     pub fn write(d: Ride, w: *Writer) void {
@@ -269,7 +268,6 @@ pub const Ride = struct {
         w.i16v(qangle(d.roll));
         w.i16v(@intFromFloat(std.math.clamp(@round(d.speed * 64), -32767, 32767)));
         w.i8v(qsmall(d.steer, 100));
-        w.i16v(qangle(d.turret));
         w.i8v(qsmall(d.gun, 200));
     }
 
@@ -286,7 +284,6 @@ pub const Ride = struct {
         d.roll = dangle(r.i16v());
         d.speed = @as(f32, @floatFromInt(r.i16v())) / 64;
         d.steer = @as(f32, @floatFromInt(r.i8v())) / 100;
-        d.turret = dangle(r.i16v());
         d.gun = @as(f32, @floatFromInt(r.i8v())) / 200;
 
         if (d.kind > RideKind.air) d.kind = RideKind.none;

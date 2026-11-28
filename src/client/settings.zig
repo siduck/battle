@@ -5,14 +5,17 @@ const assets = @import("assets.zig");
 
 pub const Preset = enum { low, medium, high, custom };
 
+const tuning_level: u8 = 1;
+
 pub var master: f32 = 1;
 pub var sfx: f32 = 1;
 pub var ui: f32 = 0.8;
 
 pub var mouse_sens: f32 = 1;
-pub var ads_sens: f32 = 0.75;
+pub var ads_sens: f32 = 0.95;
 pub var invert_y = false;
-pub var fov: f32 = 74;
+pub var fov: f32 = 80;
+pub var tuning: u8 = tuning_level;
 pub var crosshair_style: u8 = 0;
 pub var crosshair_color: u8 = 0;
 pub var show_fps = true;
@@ -35,6 +38,8 @@ pub var fullscreen = false;
 pub var touch_size: f32 = 1;
 pub var touch_opacity: f32 = 1;
 pub var touch_look: f32 = 1;
+pub var touch_ads: f32 = 0.95;
+pub var touch_assist: f32 = 0.5;
 
 pub var player_name: [16]u8 = @splat(0);
 
@@ -97,9 +102,10 @@ pub fn reset() void {
     sfx = 1;
     ui = 0.8;
     mouse_sens = 1;
-    ads_sens = 0.75;
+    ads_sens = 0.95;
     invert_y = false;
-    fov = 74;
+    fov = 80;
+    tuning = tuning_level;
     crosshair_style = 0;
     crosshair_color = 0;
     show_fps = true;
@@ -114,6 +120,8 @@ pub fn reset() void {
     touch_size = 1;
     touch_opacity = 1;
     touch_look = 1;
+    touch_ads = 0.95;
+    touch_assist = 0.5;
     applyPreset(if (assets.mobile) .medium else .high);
 }
 
@@ -164,7 +172,7 @@ const Field = struct {
     ptr: union(enum) { f: *f32, b: *bool, u: *u8, s: *[16]u8 },
 };
 
-fn fields() [25]Field {
+fn fields() [28]Field {
     return .{
         .{ .name = "master", .ptr = .{ .f = &master } },
         .{ .name = "sfx", .ptr = .{ .f = &sfx } },
@@ -190,7 +198,10 @@ fn fields() [25]Field {
         .{ .name = "touch_size", .ptr = .{ .f = &touch_size } },
         .{ .name = "touch_opacity", .ptr = .{ .f = &touch_opacity } },
         .{ .name = "touch_look", .ptr = .{ .f = &touch_look } },
+        .{ .name = "touch_ads", .ptr = .{ .f = &touch_ads } },
+        .{ .name = "touch_assist", .ptr = .{ .f = &touch_assist } },
         .{ .name = "name", .ptr = .{ .s = &player_name } },
+        .{ .name = "tuning", .ptr = .{ .u = &tuning } },
     };
 }
 
@@ -210,6 +221,8 @@ pub fn load() void {
     const text: [*:0]const u8 = @ptrCast(data);
     var lines = std.mem.splitScalar(u8, std.mem.sliceTo(text, 0), '\n');
     const all = fields();
+
+    tuning = 0;
 
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " \r\t");
@@ -246,10 +259,22 @@ pub fn load() void {
         }
     }
 
+    if (tuning < tuning_level) retune();
+
     shadows = @min(shadows, 2);
     effects = if (assets.mobile) 0 else @min(effects, 2);
     crosshair_style = @min(crosshair_style, crosshair_styles.len - 1);
     crosshair_color = @min(crosshair_color, crosshair_colors.len - 1);
+}
+
+fn retune() void {
+    if (fov == 74) fov = 80;
+
+    if (ads_sens == 0.75) ads_sens = 0.95;
+
+    if (touch_ads == 0.8) touch_ads = 0.95;
+
+    tuning = tuning_level;
 }
 
 pub fn save() void {

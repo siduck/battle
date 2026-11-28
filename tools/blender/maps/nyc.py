@@ -5,6 +5,41 @@ from pf import *
 from mathutils.bvhtree import BVHTree
 
 EXTRA = os.path.join(P, "extra")
+OWN = os.environ.get("OWN", "")
+OWN_SPLIT = float(os.environ.get("OWN_SPLIT", "1000.0"))
+OWN_AO = float(os.environ.get("OWN_AO", "0.6"))
+CUR = {"own": None}
+
+
+def own(name):
+    path = os.path.join(OWN, name + ".glb") if OWN else ""
+
+    return path if path and os.path.exists(path) else None
+
+
+import pf as _pf
+
+
+def normalize(bm, height=None, scale=None, rot=0.0):
+    if not CUR["own"]:
+        return _pf.normalize(bm, height, scale, rot)
+
+    lo, hi = bounds(bm)
+    bm.transform(Matrix.Translation(Vector((0, 0, -lo.z))))
+
+    return bm
+
+
+def own_side(path):
+    import json
+
+    side = path[:-4] + ".json"
+
+    if not os.path.exists(side):
+        return {}
+
+    with open(side) as f:
+        return json.load(f)
 
 
 def hemisphere(n):
@@ -44,6 +79,9 @@ def sky_glass(co, lo, hi):
 
 
 def load_skip(path, skip=None, glass=False):
+    if CUR["own"]:
+        path, skip, glass = CUR["own"], None, False
+
     reset()
     bpy.ops.import_scene.gltf(filepath=path)
     bm = bmesh.new()
@@ -108,6 +146,9 @@ def split_long(bm, limit):
 
 def weld(bm):
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0005)
+
+    if CUR["own"]:
+        return
 
     for f in bm.faces:
         f.smooth = False
@@ -361,14 +402,19 @@ def build(name, src, skip=None, scale=1.0, k=None, dist=4.0, strength=0.55, spli
 
     normalize(bm, scale=scale, rot=spin)
 
-    if split:
+    if CUR["own"]:
+        split_long(bm, OWN_SPLIT)
+        strength *= OWN_AO
+    elif split:
         split_long(bm, split)
 
     grade(bm, sat=sat)
     ao(bm, dist, strength, sky=sky)
     extra = {"kind": "prop", "group": "building", "collide": "none"}
 
-    if voxel:
+    if CUR["own"] and "solids" in own_side(CUR["own"]):
+        extra["solids"] = [[s[0], -s[3], s[2], -s[1], s[4], s[5]] for s in own_side(CUR["own"])["solids"]]
+    elif voxel:
         extra["solids"] = solids(bm, dy=dy, min_area=min_area, cell=cell, fill=fill)
 
     return finish(bm, name, extra)
@@ -446,7 +492,8 @@ def assemble(name, parts, dist=5.0, strength=0.55, split=4.0, dy=1.5, cell=0.5, 
 def main():
     root = os.environ.get("ROOT", os.getcwd())
     global OUT
-    OUT = os.path.join(root, "src/client/assets/props/nyc")
+    far = os.environ.get("FAROUT")
+    OUT = far or os.path.join(root, "src/client/assets/props/nyc")
     import pf
     pf.OUT = OUT
     os.makedirs(OUT, exist_ok=True)
@@ -524,7 +571,16 @@ def main():
         if only and name not in only.split(","):
             continue
 
+        CUR["own"] = own(name)
+
+        if far and not CUR["own"]:
+            continue
+
         infos[name] = fn()
+        CUR["own"] = None
+
+    if far:
+        return
 
     emit("nyc", infos, os.path.join(root, "src/shared/maps/nyc_kit.zig"))
 

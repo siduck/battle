@@ -18,6 +18,18 @@ pub const Rgb = [3]u8;
 
 pub const half_pi: f32 = std.math.pi / 2.0;
 
+pub const arena_half: f32 = 75;
+pub const arena_rim: f32 = 25;
+pub const arena_car_top: f32 = 30;
+
+pub fn inArena(x: f32, z: f32, margin: f32) bool {
+    return @abs(x) <= arena_half - margin and @abs(z) <= arena_half - margin;
+}
+
+pub fn arenaEdge(x: f32, z: f32) f32 {
+    return @max(@abs(x), @abs(z));
+}
+
 pub const Palette = struct {
     sun_dir: [3]f32 = .{ 0.55, 0.64, 0.53 },
     sun_tint: [3]f32 = .{ 1.15, 1.0, 0.86 },
@@ -33,7 +45,6 @@ pub const Palette = struct {
 
 pub const Scatter = struct {
     enabled: bool = true,
-    clumps: f32 = 1,
     flowers: f32 = 0.35,
     pebbles: f32 = 1,
     litter: f32 = 0.5,
@@ -45,14 +56,15 @@ pub const Def = struct {
     note: [:0]const u8,
     tint: Rgb,
     ready: bool = true,
-    half: f32 = 250,
-    play: f32 = 230,
+    half: f32 = arena_half + arena_rim,
+    play: f32 = arena_half,
     facet: f32 = 2.5,
     configure: ?*const fn () void = null,
     height: *const fn (x: f32, z: f32) f32,
     ground: *const fn (x: f32, z: f32) Rgb,
     road: ?*const fn (x: f32, z: f32) f32 = null,
     flat: ?*const fn (x: f32, z: f32) f32 = null,
+    water: ?*const fn (x: f32, z: f32) bool = null,
     build: *const fn (b: *Builder) void,
     spots: *const fn (gpa: std.mem.Allocator) void,
     props: []const Info = &.{},
@@ -60,11 +72,9 @@ pub const Def = struct {
     backdrop: Rgb = .{ 150, 140, 120 },
     floor_y: f32 = -0.2,
     runway: ?[4]f32 = null,
-    helipads: ?[3][2]f32 = null,
     aircraft: bool = false,
-    tanks: bool = false,
     grip: f32 = 0.84,
-    tufts: f32 = 0.85,
+    car_top: f32 = arena_car_top,
     paved: bool = false,
     scatter: Scatter = .{},
 };

@@ -1,5 +1,6 @@
 const std = @import("std");
 const rl = @import("raylib");
+const mips = @import("mips.zig");
 const shared = @import("shared");
 const mesh = @import("mesh.zig");
 const palette = @import("palette.zig");
@@ -23,6 +24,52 @@ pub const Chunk = struct {
 };
 
 pub var chunks: []Chunk = &.{};
+
+pub const Scenery = struct {
+    world: rl.Mesh,
+    backdrop: rl.Mesh,
+    sky: rl.Mesh,
+};
+
+pub fn buildScenery() Scenery {
+    buildBlobs();
+
+    if (shared.maps.current() != null) buildChunks();
+
+    return .{ .world = buildWorld(), .backdrop = buildBackdrop(), .sky = buildSky() };
+}
+
+pub fn dropScenery(s: Scenery) void {
+    const gpa = std.heap.page_allocator;
+
+    rl.UnloadMesh(s.world);
+    rl.UnloadMesh(s.backdrop);
+    rl.UnloadMesh(s.sky);
+
+    for (chunks) |c| {
+        rl.UnloadMesh(c.hi);
+        rl.UnloadMesh(c.lo);
+
+        for (c.things[0..c.things_n]) |t| rl.UnloadMesh(t);
+    }
+
+    gpa.free(chunks);
+    chunks = &.{};
+
+    for (extra[0..extra_n]) |e| rl.UnloadMesh(e);
+
+    extra_n = 0;
+    gpa.free(blob);
+    blob = &.{};
+    blob_n = 0;
+
+    if (ground_map) |t| rl.UnloadTexture(t);
+
+    ground_map = null;
+    gpa.free(ground_pixels);
+    ground_pixels = &.{};
+    ground_n = 0;
+}
 
 pub const Models = struct {
     world: rl.Mesh,
@@ -746,7 +793,6 @@ fn buildWorld() rl.Mesh {
 
     structures(&b);
 
-
     if (t.current == .desert) {
         b.style = .{ .color = .{ 52, 150, 168 }, .glow = 40 };
         b.cylinder(vec(t.oasis[0], water_level - 0.4, t.oasis[1]), vec(t.oasis[0], water_level, t.oasis[1]), 12.5, 24, true);
@@ -757,72 +803,72 @@ fn buildWorld() rl.Mesh {
 
 fn toneBase(tone: shared.world.Tone) [3]f32 {
     return switch (tone) {
-            .mud => .{ 172, 136, 98 },
-            .house => .{ 184, 150, 108 },
-            .roof => .{ 118, 94, 70 },
-            .ruin => .{ 214, 156, 100 },
-            .adobe => .{ 226, 196, 142 },
-            .floor => .{ 178, 146, 100 },
-            .stair => .{ 206, 176, 118 },
-            .beam => .{ 112, 74, 44 },
-            .wood => .{ 122, 80, 46 },
-            .cloth_red => .{ 196, 98, 62 },
-            .cloth_blue => .{ 70, 128, 132 },
-            .cloth_yellow => .{ 214, 164, 72 },
-            .f_floor => .{ 142, 140, 134 },
-            .f_floor_dark => .{ 124, 122, 116 },
-            .f_line => .{ 196, 176, 110 },
-            .f_mint => .{ 172, 172, 164 },
-            .f_mint_dark => .{ 146, 152, 140 },
-            .f_grey => .{ 172, 170, 164 },
-            .f_grey_dark => .{ 140, 140, 136 },
-            .f_hazard => .{ 184, 152, 72 },
-            .f_black => .{ 98, 100, 100 },
-            .f_rail => .{ 184, 152, 72 },
-            .f_light => .{ 236, 226, 196 },
-            .f_screen => .{ 58, 80, 86 },
-            .f_metal => .{ 142, 144, 140 },
-            .f_ceiling => .{ 156, 154, 146 },
-            .f_crate => .{ 150, 124, 84 },
-            .f_crate_teal => .{ 88, 112, 112 },
-            .f_container_red => .{ 150, 86, 58 },
-            .f_container_blue => .{ 74, 112, 116 },
-            .f_vault => .{ 120, 128, 132 },
-            .f_red_light => .{ 200, 70, 54 },
-            .f_pipe => .{ 120, 124, 122 },
-            .f_pipe_red => .{ 150, 70, 52 },
-            .f_barrel => .{ 90, 110, 116 },
-            .f_barrel_red => .{ 140, 70, 50 },
-            .f_rubber => .{ 44, 44, 46 },
-            .f_sign => .{ 214, 208, 192 },
-            .f_stain => .{ 70, 72, 70 },
-            .f_wood_pallet => .{ 150, 112, 70 },
-            .f_panel => .{ 110, 128, 118 },
-            .olive => .{ 112, 118, 74 },
-            .sandbag => .{ 186, 164, 116 },
-            .concrete => .{ 168, 164, 154 },
-            .tarmac => .{ 70, 72, 74 },
-            .marking => .{ 236, 232, 214 },
-            .cap_ring => .{ 250, 250, 245 },
-            .flag_cloth => .{ 236, 236, 230 },
-            .pole => .{ 92, 96, 100 },
-            .rust => .{ 150, 84, 46 },
-            .char => .{ 44, 40, 38 },
-            .tent => .{ 150, 140, 98 },
-            .sign => .{ 46, 120, 70 },
-            .trim => .{ 238, 220, 180 },
-            .plinth => .{ 168, 132, 92 },
-            .shutter => .{ 92, 138, 136 },
-            .frame => .{ 120, 82, 50 },
-            .tank => .{ 150, 156, 150 },
-            .rug => .{ 168, 82, 60 },
-            .leaf => .{ 112, 146, 70 },
-            .pot => .{ 186, 108, 70 },
-            .scuff => .{ 112, 108, 96 },
-            .scuff_soft => .{ 122, 118, 104 },
-            .paint_line => .{ 196, 176, 110 },
-            .blob => .{ 0, 0, 0 },
-            .blob_soft => .{ 0, 0, 0 },
+        .mud => .{ 172, 136, 98 },
+        .house => .{ 184, 150, 108 },
+        .roof => .{ 118, 94, 70 },
+        .ruin => .{ 214, 156, 100 },
+        .adobe => .{ 226, 196, 142 },
+        .floor => .{ 178, 146, 100 },
+        .stair => .{ 206, 176, 118 },
+        .beam => .{ 112, 74, 44 },
+        .wood => .{ 122, 80, 46 },
+        .cloth_red => .{ 196, 98, 62 },
+        .cloth_blue => .{ 70, 128, 132 },
+        .cloth_yellow => .{ 214, 164, 72 },
+        .f_floor => .{ 142, 140, 134 },
+        .f_floor_dark => .{ 124, 122, 116 },
+        .f_line => .{ 196, 176, 110 },
+        .f_mint => .{ 172, 172, 164 },
+        .f_mint_dark => .{ 146, 152, 140 },
+        .f_grey => .{ 172, 170, 164 },
+        .f_grey_dark => .{ 140, 140, 136 },
+        .f_hazard => .{ 184, 152, 72 },
+        .f_black => .{ 98, 100, 100 },
+        .f_rail => .{ 184, 152, 72 },
+        .f_light => .{ 236, 226, 196 },
+        .f_screen => .{ 58, 80, 86 },
+        .f_metal => .{ 142, 144, 140 },
+        .f_ceiling => .{ 156, 154, 146 },
+        .f_crate => .{ 150, 124, 84 },
+        .f_crate_teal => .{ 88, 112, 112 },
+        .f_container_red => .{ 150, 86, 58 },
+        .f_container_blue => .{ 74, 112, 116 },
+        .f_vault => .{ 120, 128, 132 },
+        .f_red_light => .{ 200, 70, 54 },
+        .f_pipe => .{ 120, 124, 122 },
+        .f_pipe_red => .{ 150, 70, 52 },
+        .f_barrel => .{ 90, 110, 116 },
+        .f_barrel_red => .{ 140, 70, 50 },
+        .f_rubber => .{ 44, 44, 46 },
+        .f_sign => .{ 214, 208, 192 },
+        .f_stain => .{ 70, 72, 70 },
+        .f_wood_pallet => .{ 150, 112, 70 },
+        .f_panel => .{ 110, 128, 118 },
+        .olive => .{ 112, 118, 74 },
+        .sandbag => .{ 186, 164, 116 },
+        .concrete => .{ 168, 164, 154 },
+        .tarmac => .{ 70, 72, 74 },
+        .marking => .{ 236, 232, 214 },
+        .cap_ring => .{ 250, 250, 245 },
+        .flag_cloth => .{ 236, 236, 230 },
+        .pole => .{ 92, 96, 100 },
+        .rust => .{ 150, 84, 46 },
+        .char => .{ 44, 40, 38 },
+        .tent => .{ 150, 140, 98 },
+        .sign => .{ 46, 120, 70 },
+        .trim => .{ 238, 220, 180 },
+        .plinth => .{ 168, 132, 92 },
+        .shutter => .{ 92, 138, 136 },
+        .frame => .{ 120, 82, 50 },
+        .tank => .{ 150, 156, 150 },
+        .rug => .{ 168, 82, 60 },
+        .leaf => .{ 112, 146, 70 },
+        .pot => .{ 186, 108, 70 },
+        .scuff => .{ 112, 108, 96 },
+        .scuff_soft => .{ 122, 118, 104 },
+        .paint_line => .{ 196, 176, 110 },
+        .blob => .{ 0, 0, 0 },
+        .blob_soft => .{ 0, 0, 0 },
     };
 }
 
@@ -1817,7 +1863,7 @@ pub fn buildGroundMap() void {
     const img: rl.Image = .{ .data = out.ptr, .width = @intCast(n), .height = @intCast(n), .mipmaps = 1, .format = rl.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 };
 
     if (std.c.getenv("DF_GROUNDDUMP")) |p| _ = rl.ExportImage(img, p);
-    var tex = rl.LoadTextureFromImage(img);
+    const tex = mips.upload(img);
 
     ground_pixels = out;
     ground_n = n;
@@ -1825,7 +1871,6 @@ pub fn buildGroundMap() void {
 
     if (tex.id == 0) return;
 
-    rl.GenTextureMipmaps(&tex);
     rl.SetTextureFilter(tex, rl.TEXTURE_FILTER_TRILINEAR);
     rl.SetTextureWrap(tex, rl.TEXTURE_WRAP_CLAMP);
     ground_map = tex;
