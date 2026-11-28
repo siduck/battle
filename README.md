@@ -2,6 +2,9 @@
 
 A fast stylised FPS with vehicles, aircraft and swords, built in Zig with raylib for Linux and Android.
 
+<img width="1920" height="1200" alt="image" src="https://github.com/user-attachments/assets/2c1894db-fe77-4f2c-b924-34d1b5ce84b8" />
+
+
 ## Build
 
 ```
